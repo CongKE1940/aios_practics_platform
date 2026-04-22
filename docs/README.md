@@ -29,7 +29,8 @@
 13. `docs/10_backend_code_standards.md`
 14. `docs/11_test_plan_and_acceptance.md`
 15. `docs/20_stage1_implementation_status.md`
-16. `templates/` 下的导入模板
+16. `docs/21_stage2a_implementation_status.md`
+17. `templates/` 下的导入模板
 
 ### 给你自己的阅读顺序
 1. `docs/01_prd_quiz_system.md`
@@ -59,6 +60,7 @@
 - `docs/12_milestones_and_delivery_plan.md`：里程碑与交付计划
 - `docs/13_release_and_deployment_guide.md`：环境、发布、回滚与上线检查
 - `docs/20_stage1_implementation_status.md`：阶段 1 当前实施状态、验证结果与下一步
+- `docs/21_stage2a_implementation_status.md`：阶段 2A 题库与题目管理实施状态
 - `templates/14_acceptance_checklist.csv`：验收清单
 - `templates/15_question_import_template.csv`：题目导入模板
 - `templates/16_bank_import_template.csv`：题库导入模板

@@ -502,21 +502,47 @@ paths:
     get:
       tags: [QuestionBank]
       summary: 题库列表
+      parameters:
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: keyword
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankPageOk' }
     post:
       tags: [QuestionBank]
       summary: 创建题库
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBankBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankOk' }
   /question-banks/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
     put:
       tags: [QuestionBank]
       summary: 更新题库
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBankBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankOk' }
   /question-banks/{id}/publish:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -524,34 +550,80 @@ paths:
       tags: [QuestionBank]
       summary: 发布题库
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankOk' }
   /question-banks/{id}/visibility:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [QuestionBank]
       summary: 下发题库可见范围
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBankVisibilityBody'
       responses:
         '200': { $ref: '#/components/responses/Ok' }
   /questions:
     get:
       tags: [Question]
       summary: 题目列表
+      parameters:
+        - in: query
+          name: question_type
+          schema:
+            type: string
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: bank_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: keyword
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionPageOk' }
     post:
       tags: [Question]
       summary: 创建题目
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionOk' }
   /questions/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
     put:
       tags: [Question]
       summary: 更新题目主信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                difficulty:
+                  type: string
+                status:
+                  type: string
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionOk' }
   /questions/{id}/versions:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -559,12 +631,14 @@ paths:
       tags: [Question]
       summary: 题目版本列表
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionVersionListOk' }
     post:
       tags: [Question]
       summary: 新增题目版本
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionVersionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionVersionOk' }
   /questions/{id}/tags:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -914,6 +988,42 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/BaseResponse'
+    QuestionBankOk:
+      description: 题库详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankResponse'
+    QuestionBankPageOk:
+      description: 题库分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankPageResponse'
+    QuestionOk:
+      description: 题目详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionResponse'
+    QuestionPageOk:
+      description: 题目分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionPageResponse'
+    QuestionVersionOk:
+      description: 题目版本详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionVersionResponse'
+    QuestionVersionListOk:
+      description: 题目版本列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionVersionListResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -975,6 +1085,30 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CourseInput'
+    QuestionBankBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankInput'
+    QuestionBankVisibilityBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankVisibilityInput'
+    QuestionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionInput'
+    QuestionVersionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionVersionInput'
   schemas:
     BaseResponse:
       type: object
@@ -1134,3 +1268,347 @@ components:
         description:
           type: string
           nullable: true
+    QuestionBank:
+      type: object
+      required: [id, tenant_id, owner_org_type, owner_org_id, creator_id, name, status, source_type]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        owner_org_type:
+          type: string
+          example: school
+        owner_org_id:
+          type: integer
+          format: int64
+        creator_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          example: draft
+        source_type:
+          type: string
+          example: manual
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    QuestionBankInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    QuestionBankVisibilityInput:
+      type: object
+      required: [grants]
+      properties:
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionBankVisibilityGrant'
+    QuestionBankVisibilityGrant:
+      type: object
+      required: [grant_type, target_type, target_id, permission_type]
+      properties:
+        grant_type:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: integer
+          format: int64
+        permission_type:
+          type: string
+        inherit_to_children:
+          type: boolean
+    Question:
+      type: object
+      required: [id, tenant_id, owner_org_type, owner_org_id, question_type, status, source_type, creator_id]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        owner_org_type:
+          type: string
+          example: school
+        owner_org_id:
+          type: integer
+          format: int64
+        question_type:
+          type: string
+          example: single_choice
+        difficulty:
+          type: string
+          nullable: true
+        current_version_id:
+          type: integer
+          format: int64
+          nullable: true
+        current_version_no:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          example: active
+        source_type:
+          type: string
+          example: manual
+        creator_id:
+          type: integer
+          format: int64
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    QuestionVersion:
+      type: object
+      required: [id, question_id, version_no, content, answer, structure_hash, created_by]
+      properties:
+        id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        version_no:
+          type: integer
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        structure_hash:
+          type: string
+        change_summary:
+          type: string
+          nullable: true
+        is_published:
+          type: boolean
+        created_by:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+    QuestionInput:
+      type: object
+      required: [question_type, content, answer]
+      properties:
+        question_type:
+          type: string
+        difficulty:
+          type: string
+          nullable: true
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    QuestionVersionInput:
+      type: object
+      required: [content, answer]
+      properties:
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        change_summary:
+          type: string
+          nullable: true
+    QuestionContentInput:
+      type: object
+      required: [stem]
+      properties:
+        stem:
+          $ref: '#/components/schemas/QuestionContentBlock'
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+        option_order_randomizable:
+          type: boolean
+        ext:
+          type: object
+          additionalProperties: true
+    QuestionContentBlock:
+      type: object
+      properties:
+        content_type:
+          type: string
+        text:
+          type: string
+          nullable: true
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionAsset'
+    QuestionOption:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        content_type:
+          type: string
+        text:
+          type: string
+          nullable: true
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionAsset'
+    QuestionAsset:
+      type: object
+      properties:
+        url:
+          type: string
+        type:
+          type: string
+    QuestionAnswerInput:
+      type: object
+      required: [judge_mode]
+      properties:
+        judge_mode:
+          type: string
+        correct_keys:
+          type: array
+          items:
+            type: string
+        correct_value:
+          type: boolean
+      additionalProperties: true
+    QuestionAnalysisInput:
+      type: object
+      additionalProperties: true
+    QuestionBankResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/QuestionBank'
+        request_id:
+          type: string
+    QuestionBankPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/QuestionBank'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    QuestionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Question'
+        request_id:
+          type: string
+    QuestionPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Question'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    QuestionVersionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/QuestionVersion'
+        request_id:
+          type: string
+    QuestionVersionListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionVersion'
+        request_id:
+          type: string

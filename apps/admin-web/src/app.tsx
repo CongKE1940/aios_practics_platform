@@ -5,6 +5,8 @@ import { PermissionButton } from "@aios/ui-web";
 
 import { NoticePanel, type NoticeApi } from "./notice-panel";
 import { OrganizationPanel, type OrganizationApi } from "./organization-panel";
+import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
+import { QuestionPanel, type QuestionPanelApi } from "./question-panel";
 import { RbacPanel, type RbacPanelApi } from "./rbac-panel";
 import { UserPanel, type UserPanelApi } from "./user-panel";
 
@@ -18,6 +20,8 @@ interface AdminAppProps {
   authApi?: AuthApi;
   noticeApi?: NoticeApi;
   orgApi?: OrganizationApi;
+  questionBankApi?: QuestionBankPanelApi;
+  questionApi?: QuestionPanelApi;
   userApi?: UserPanelApi;
   rbacApi?: RbacPanelApi;
   sessionStore?: SessionStore;
@@ -43,7 +47,16 @@ const defaultForm: LoginRequest = {
   password: ""
 };
 
-export function AdminApp({ authApi, noticeApi, orgApi, userApi, rbacApi, sessionStore }: AdminAppProps) {
+export function AdminApp({
+  authApi,
+  noticeApi,
+  orgApi,
+  questionBankApi,
+  questionApi,
+  userApi,
+  rbacApi,
+  sessionStore
+}: AdminAppProps) {
   const [form, setForm] = useState<LoginRequest>(defaultForm);
   const store = useMemo(() => sessionStore ?? createBrowserSessionStore(), [sessionStore]);
   const [session, setSession] = useState<SessionState | null>(() => store.load());
@@ -113,6 +126,30 @@ export function AdminApp({ authApi, noticeApi, orgApi, userApi, rbacApi, session
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [noticeApi, session]);
+
+  const currentQuestionBankApi = useMemo<QuestionBankPanelApi | undefined>(() => {
+    if (questionBankApi) {
+      return questionBankApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [questionBankApi, session]);
+
+  const currentQuestionApi = useMemo<QuestionPanelApi | undefined>(() => {
+    if (questionApi) {
+      return questionApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [questionApi, session]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -233,10 +270,16 @@ export function AdminApp({ authApi, noticeApi, orgApi, userApi, rbacApi, session
         {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
         {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
         {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
+        {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
+          <QuestionBankPanel api={currentQuestionBankApi} />
+        ) : null}
+        {selectedPath === "/admin/questions" && currentQuestionApi ? <QuestionPanel api={currentQuestionApi} /> : null}
         {selectedPath !== "/admin/org" &&
         selectedPath !== "/admin/users" &&
         selectedPath !== "/admin/roles" &&
-        selectedPath !== "/admin/notices" ? (
+        selectedPath !== "/admin/notices" &&
+        selectedPath !== "/admin/question-banks" &&
+        selectedPath !== "/admin/questions" ? (
           <p>请选择左侧功能入口。</p>
         ) : null}
       </section>

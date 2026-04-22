@@ -57,6 +57,16 @@ export interface ApiClient {
   getCourse(id: number): Promise<Course>;
   updateCourse(id: number, body: CourseInput): Promise<Course>;
   disableCourse(id: number): Promise<boolean>;
+  listQuestionBanks(query?: QuestionBankListQuery): Promise<PageResult<QuestionBank>>;
+  createQuestionBank(body: QuestionBankInput): Promise<QuestionBank>;
+  updateQuestionBank(id: number, body: QuestionBankInput): Promise<QuestionBank>;
+  publishQuestionBank(id: number): Promise<QuestionBank>;
+  assignQuestionBankVisibility(id: number, body: QuestionBankVisibilityInput): Promise<boolean>;
+  listQuestions(query?: QuestionListQuery): Promise<PageResult<Question>>;
+  createQuestion(body: QuestionInput): Promise<Question>;
+  updateQuestion(id: number, body: QuestionUpdateInput): Promise<Question>;
+  listQuestionVersions(id: number): Promise<QuestionVersion[]>;
+  createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
   listNotices(query?: NoticeListQuery): Promise<PageResult<Notice>>;
   createNotice(body: NoticeInput): Promise<Notice>;
   getNotice(id: number): Promise<Notice>;
@@ -160,6 +170,89 @@ export interface Course {
   end_at?: string | null;
   status: string;
   description?: string | null;
+}
+
+export interface QuestionBank {
+  id: number;
+  tenant_id: number;
+  owner_org_type: string;
+  owner_org_id: number;
+  creator_id: number;
+  course_id?: number | null;
+  name: string;
+  description?: string | null;
+  status: string;
+  source_type: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface QuestionBankVisibilityGrant {
+  grant_type: string;
+  target_type: string;
+  target_id: number;
+  permission_type: string;
+  inherit_to_children?: boolean;
+}
+
+export interface Question {
+  id: number;
+  tenant_id: number;
+  owner_org_type: string;
+  owner_org_id: number;
+  question_type: string;
+  difficulty?: string | null;
+  current_version_id?: number | null;
+  current_version_no?: number | null;
+  status: string;
+  source_type: string;
+  creator_id: number;
+  bank_ids?: number[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface QuestionAsset {
+  url: string;
+  type: string;
+}
+
+export interface QuestionContentBlock {
+  content_type: string;
+  text?: string | null;
+  assets?: QuestionAsset[];
+}
+
+export interface QuestionOption extends QuestionContentBlock {
+  key: string;
+}
+
+export interface QuestionContentInput {
+  stem: QuestionContentBlock;
+  options?: QuestionOption[];
+  option_order_randomizable?: boolean;
+  ext?: Record<string, unknown>;
+}
+
+export interface QuestionAnswerInput {
+  judge_mode: string;
+  correct_keys?: string[];
+  correct_value?: boolean;
+  [key: string]: unknown;
+}
+
+export interface QuestionVersion {
+  id: number;
+  question_id: number;
+  version_no: number;
+  content: QuestionContentInput | Record<string, unknown>;
+  answer: QuestionAnswerInput | Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  structure_hash: string;
+  change_summary?: string | null;
+  is_published?: boolean;
+  created_by: number;
+  created_at?: string;
 }
 
 export interface Notice {
@@ -267,6 +360,37 @@ export interface CourseInput {
   description?: string | null;
 }
 
+export interface QuestionBankInput {
+  name: string;
+  course_id?: number | null;
+  description?: string | null;
+}
+
+export interface QuestionBankVisibilityInput {
+  grants: QuestionBankVisibilityGrant[];
+}
+
+export interface QuestionInput {
+  question_type: string;
+  difficulty?: string | null;
+  content: QuestionContentInput | Record<string, unknown>;
+  answer: QuestionAnswerInput | Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  bank_ids?: number[];
+}
+
+export interface QuestionUpdateInput {
+  difficulty?: string | null;
+  status?: string;
+}
+
+export interface QuestionVersionInput {
+  content: QuestionContentInput | Record<string, unknown>;
+  answer: QuestionAnswerInput | Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  change_summary?: string | null;
+}
+
 export interface NoticeInput {
   title: string;
   content: string;
@@ -334,6 +458,24 @@ export interface CourseListQuery {
   status?: string;
   keyword?: string;
   active_at?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface QuestionBankListQuery {
+  course_id?: number;
+  status?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface QuestionListQuery {
+  question_type?: string;
+  course_id?: number;
+  bank_id?: number;
+  status?: string;
+  keyword?: string;
   page?: number;
   page_size?: number;
 }
@@ -437,6 +579,26 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     updateCourse: (id, body) =>
       request(fetcher, options, `/courses/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     disableCourse: (id) => request(fetcher, options, `/courses/${id}/disable`, { method: "POST" }),
+    listQuestionBanks: (query) =>
+      request(fetcher, options, buildPath("/question-banks", query), { method: "GET" }),
+    createQuestionBank: (body) =>
+      request(fetcher, options, "/question-banks", { method: "POST", body: JSON.stringify(body) }),
+    updateQuestionBank: (id, body) =>
+      request(fetcher, options, `/question-banks/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    publishQuestionBank: (id) =>
+      request(fetcher, options, `/question-banks/${id}/publish`, { method: "POST" }),
+    assignQuestionBankVisibility: (id, body) =>
+      request(fetcher, options, `/question-banks/${id}/visibility`, {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
+    listQuestions: (query) => request(fetcher, options, buildPath("/questions", query), { method: "GET" }),
+    createQuestion: (body) => request(fetcher, options, "/questions", { method: "POST", body: JSON.stringify(body) }),
+    updateQuestion: (id, body) =>
+      request(fetcher, options, `/questions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    listQuestionVersions: (id) => request(fetcher, options, `/questions/${id}/versions`, { method: "GET" }),
+    createQuestionVersion: (id, body) =>
+      request(fetcher, options, `/questions/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
     listNotices: (query) => request(fetcher, options, buildPath("/notices", query), { method: "GET" }),
     createNotice: (body) => request(fetcher, options, "/notices", { method: "POST", body: JSON.stringify(body) }),
     getNotice: (id) => request(fetcher, options, `/notices/${id}`, { method: "GET" }),

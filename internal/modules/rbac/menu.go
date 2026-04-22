@@ -83,6 +83,8 @@ var adminMenus = []menuDef{
 			{id: 12, name: "用户管理", path: "/admin/users", requiredPermissions: []string{"user:manage"}},
 			{id: 13, name: "角色权限", path: "/admin/roles", requiredPermissions: []string{"role:manage"}},
 			{id: 14, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
+			{id: 15, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
+			{id: 16, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
 		},
 	},
 }

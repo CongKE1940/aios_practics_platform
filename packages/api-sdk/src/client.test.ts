@@ -280,6 +280,209 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("POST");
   });
 
+  it("requests question bank list with filters and assigns visibility", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 1,
+                  tenant_id: 1,
+                  owner_org_type: "school",
+                  owner_org_id: 1,
+                  creator_id: 1,
+                  course_id: 10,
+                  name: "高一数学基础题库",
+                  description: "代数基础",
+                  status: "draft",
+                  source_type: "manual"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      })
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.listQuestionBanks({ course_id: 10, status: "draft", keyword: "高一" });
+    expect(result.items[0].name).toBe("高一数学基础题库");
+
+    await expect(
+      client.assignQuestionBankVisibility(1, {
+        grants: [
+          {
+            grant_type: "class",
+            target_type: "class",
+            target_id: 301,
+            permission_type: "practice",
+            inherit_to_children: false
+          }
+        ]
+      })
+    ).resolves.toBe(true);
+
+    const [listUrl, listInit] = fetchMock.mock.calls[0];
+    expect(String(listUrl)).toContain("/question-banks?course_id=10&status=draft&keyword=%E9%AB%98%E4%B8%80");
+    expect(listInit?.method).toBe("GET");
+
+    const [assignUrl, assignInit] = fetchMock.mock.calls[1];
+    expect(String(assignUrl)).toContain("/question-banks/1/visibility");
+    expect(assignInit?.method).toBe("POST");
+    expect(assignInit?.body).toBe(
+      JSON.stringify({
+        grants: [
+          {
+            grant_type: "class",
+            target_type: "class",
+            target_id: 301,
+            permission_type: "practice",
+            inherit_to_children: false
+          }
+        ]
+      })
+    );
+  });
+
+  it("creates question and posts new version", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1001,
+              tenant_id: 1,
+              owner_org_type: "school",
+              owner_org_id: 1,
+              question_type: "single_choice",
+              difficulty: "medium",
+              current_version_id: 3001,
+              current_version_no: 1,
+              status: "active",
+              source_type: "manual",
+              creator_id: 1,
+              bank_ids: [11]
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      })
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 3002,
+              question_id: 1001,
+              version_no: 2,
+              content: {
+                stem: { content_type: "text", text: "1+1=？", assets: [] }
+              },
+              answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+              analysis: { text: "修正后的解析" },
+              structure_hash: "hash_2",
+              change_summary: "修复题干文案",
+              is_published: true,
+              created_by: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await client.createQuestion({
+      question_type: "single_choice",
+      difficulty: "medium",
+      content: {
+        stem: { content_type: "text", text: "1+1等于几？", assets: [] },
+        options: [
+          { key: "A", content_type: "text", text: "1", assets: [] },
+          { key: "B", content_type: "text", text: "2", assets: [] }
+        ],
+        option_order_randomizable: true,
+        ext: {}
+      },
+      answer: {
+        judge_mode: "by_option_key",
+        correct_keys: ["B"]
+      },
+      analysis: {
+        text: "基础算术"
+      },
+      bank_ids: [11]
+    });
+
+    await client.createQuestionVersion(1001, {
+      content: {
+        stem: { content_type: "text", text: "1+1=？", assets: [] }
+      },
+      answer: {
+        judge_mode: "by_option_key",
+        correct_keys: ["B"]
+      },
+      analysis: {
+        text: "修正后的解析"
+      },
+      change_summary: "修复题干文案"
+    });
+
+    const [createUrl, createInit] = fetchMock.mock.calls[0];
+    expect(String(createUrl)).toContain("/questions");
+    expect(createInit?.method).toBe("POST");
+
+    const [versionUrl, versionInit] = fetchMock.mock.calls[1];
+    expect(String(versionUrl)).toContain("/questions/1001/versions");
+    expect(versionInit?.method).toBe("POST");
+    expect(versionInit?.body).toBe(
+      JSON.stringify({
+        content: {
+          stem: { content_type: "text", text: "1+1=？", assets: [] }
+        },
+        answer: {
+          judge_mode: "by_option_key",
+          correct_keys: ["B"]
+        },
+        analysis: {
+          text: "修正后的解析"
+        },
+        change_summary: "修复题干文案"
+      })
+    );
+  });
+
   it("requests notices with filters", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

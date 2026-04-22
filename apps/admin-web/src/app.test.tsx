@@ -320,6 +320,183 @@ describe("AdminApp", () => {
     expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
   });
 
+  it("opens question bank panel after selecting question bank menu", async () => {
+    render(
+      <AdminApp
+        questionBankApi={{
+          listQuestionBanks: async () => ({
+            items: [
+              {
+                id: 1,
+                tenant_id: 1,
+                owner_org_type: "school",
+                owner_org_id: 1,
+                creator_id: 1,
+                course_id: 10,
+                name: "高一数学基础题库",
+                description: "代数基础",
+                status: "draft",
+                source_type: "manual"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createQuestionBank: async (body) => ({
+            id: 2,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            creator_id: 1,
+            status: "draft",
+            source_type: "manual",
+            ...body
+          }),
+          publishQuestionBank: async (id) => ({
+            id,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            creator_id: 1,
+            course_id: 10,
+            name: "高一数学基础题库",
+            status: "active",
+            source_type: "manual"
+          }),
+          assignQuestionBankVisibility: async () => true
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 15, name: "题库管理", path: "/admin/question-banks", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["question_bank:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "题库管理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "题库管理" })).toBeTruthy();
+    });
+    expect(screen.getByText("高一数学基础题库")).toBeTruthy();
+  });
+
+  it("opens question panel after selecting question menu", async () => {
+    render(
+      <AdminApp
+        questionApi={{
+          listQuestions: async () => ({
+            items: [
+              {
+                id: 1001,
+                tenant_id: 1,
+                owner_org_type: "school",
+                owner_org_id: 1,
+                question_type: "single_choice",
+                difficulty: "medium",
+                current_version_id: 3001,
+                current_version_no: 1,
+                status: "active",
+                source_type: "manual",
+                creator_id: 1,
+                bank_ids: [1]
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createQuestion: async (body) => ({
+            id: 1002,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            current_version_id: 3002,
+            current_version_no: 1,
+            status: "active",
+            source_type: "manual",
+            creator_id: 1,
+            bank_ids: body.bank_ids ?? [],
+            question_type: body.question_type,
+            difficulty: body.difficulty ?? undefined
+          }),
+          updateQuestion: async (id, body) => ({
+            id,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            question_type: "single_choice",
+            difficulty: body.difficulty ?? "medium",
+            current_version_id: 3001,
+            current_version_no: 1,
+            status: body.status ?? "active",
+            source_type: "manual",
+            creator_id: 1,
+            bank_ids: [1]
+          }),
+          listQuestionVersions: async () => [],
+          createQuestionVersion: async (id, body) => ({
+            id: 3002,
+            question_id: id,
+            version_no: 2,
+            content: body.content,
+            answer: body.answer,
+            analysis: body.analysis,
+            structure_hash: "hash_2",
+            change_summary: body.change_summary,
+            is_published: true,
+            created_by: 1
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 16, name: "题目管理", path: "/admin/questions", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["question:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "题目管理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "题目管理" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("single_choice").length).toBeGreaterThan(0);
+  });
+
   it("opens user panel after selecting user menu", async () => {
     render(
       <AdminApp

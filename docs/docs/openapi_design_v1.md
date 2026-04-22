@@ -978,19 +978,28 @@ QuestionAnswer:
 - `course_id`
 - `status`
 - `keyword`
-- `visible_for_me` bool
+- `page`
+- `page_size`
 
 ### Response Item
 ```json
 {
   "id": 1,
+  "tenant_id": 2,
   "name": "高一数学基础题库",
   "course_id": 10,
   "status": "active",
   "owner_org_type": "school",
-  "owner_org_id": 1
+  "owner_org_id": 1,
+  "creator_id": 20001,
+  "source_type": "manual",
+  "description": "代数基础"
 }
 ```
+
+### 说明
+- 阶段 2A 题库归属先固定为学校级。
+- 列表返回统一分页结构：`items / page / page_size / total`。
 
 ---
 
@@ -1007,15 +1016,43 @@ QuestionAnswer:
 }
 ```
 
+### 业务说明
+- 新建默认 `status=draft`
+- 新建默认 `source_type=manual`
+- 新建默认 `owner_org_type=school`
+
 ---
 
 ## 9.3 更新题库
 
 ### PUT `/api/v1/question-banks/{id}`
 
+### Request Body
+```json
+{
+  "name": "高一数学基础题库（修订）",
+  "course_id": 10,
+  "description": "代数基础与函数入门"
+}
+```
+
+### 业务说明
+- 仅允许更新当前租户下的题库
+- 更新不改变题库归属与来源类型
+
 ---
 
-## 9.4 下发题库可见范围
+## 9.4 发布题库
+
+### POST `/api/v1/question-banks/{id}/publish`
+
+### 业务说明
+- 发布后 `status` 变更为 `active`
+- 阶段 2A 不实现归档流转
+
+---
+
+## 9.5 下发题库可见范围
 
 ### POST `/api/v1/question-banks/{id}/visibility`
 
@@ -1043,6 +1080,8 @@ QuestionAnswer:
 
 ### 说明
 - 题库下发采用授权模型，不复制题库或题目。
+- `permission_type` 阶段 2A 开放 `view / practice / exam`
+- `target_type` 阶段 2A 开放 `school / grade / class / user`
 
 ---
 
@@ -1055,21 +1094,33 @@ QuestionAnswer:
 ### Query
 - `question_type`
 - `course_id`
-- `tag_id`
 - `bank_id`
 - `status`
 - `keyword`
+- `page`
+- `page_size`
 
 ### Response Item
 ```json
 {
   "id": 1001,
+  "tenant_id": 2,
+  "owner_org_type": "school",
+  "owner_org_id": 1,
   "question_type": "single_choice",
   "difficulty": "medium",
   "status": "active",
-  "current_version_id": 3001
+  "current_version_id": 3001,
+  "current_version_no": 1,
+  "source_type": "manual",
+  "creator_id": 20001,
+  "bank_ids": [1, 2]
 }
 ```
+
+### 说明
+- 列表返回统一分页结构：`items / page / page_size / total`
+- `course_id` 查询通过题库与课程关系过滤题目
 
 ---
 
@@ -1103,8 +1154,7 @@ QuestionAnswer:
   "analysis": {
     "text": "基础算术"
   },
-  "bank_ids": [1, 2],
-  "tag_ids": [11, 12]
+  "bank_ids": [1, 2]
 }
 ```
 
@@ -1112,6 +1162,7 @@ QuestionAnswer:
 - 创建时生成 `questions`
 - 同时生成 `question_versions(version_no=1)`
 - 题库关系写入 `question_bank_questions`
+- 阶段 2A 仅开放 `single_choice / multiple_choice / true_false`
 
 ---
 
@@ -1122,6 +1173,14 @@ QuestionAnswer:
 ### 说明
 - 不直接覆盖内容版本
 - 仅更新非版本化主字段，如 `status`、`difficulty`
+
+### Request Body
+```json
+{
+  "difficulty": "hard",
+  "status": "disabled"
+}
+```
 
 ---
 
@@ -1137,8 +1196,31 @@ QuestionAnswer:
   "data": [
     {
       "id": 3001,
+      "question_id": 1001,
       "version_no": 1,
+      "content": {
+        "stem": {
+          "content_type": "text",
+          "text": "1+1等于几？",
+          "assets": []
+        },
+        "options": [
+          {"key": "A", "content_type": "text", "text": "1", "assets": []},
+          {"key": "B", "content_type": "text", "text": "2", "assets": []}
+        ],
+        "option_order_randomizable": true,
+        "ext": {}
+      },
+      "answer": {
+        "judge_mode": "by_option_key",
+        "correct_keys": ["B"]
+      },
+      "analysis": {
+        "text": "基础算术"
+      },
+      "structure_hash": "sha256:demo",
       "change_summary": "初始版本",
+      "created_by": 20001,
       "created_at": "2026-04-21T10:00:00+08:00"
     }
   ],
@@ -1182,6 +1264,7 @@ QuestionAnswer:
 ### 说明
 - 题目修订应新增版本，不直接覆盖历史版本
 - 考试与练题记录需要绑定 `question_version_id`
+- 新版本创建成功后，`questions.current_version_id` 应回指最新版本
 
 ---
 
