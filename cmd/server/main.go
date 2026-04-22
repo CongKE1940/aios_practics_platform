@@ -12,6 +12,7 @@ import (
 	"aios_practice_platform/internal/common/config"
 	"aios_practice_platform/internal/modules/auth"
 	"aios_practice_platform/internal/modules/fileasset"
+	"aios_practice_platform/internal/modules/importjob"
 	"aios_practice_platform/internal/modules/notice"
 	"aios_practice_platform/internal/modules/org"
 	"aios_practice_platform/internal/modules/question"
@@ -46,6 +47,7 @@ func main() {
 		menuHandler := rbac.NewMenuHandler(issuer)
 		rbacAdminHandler := rbac.NewAdminHandler(rbac.NewAdminService(rbac.NewMySQLAdminRepository(db)), issuer)
 		fileHandler := fileasset.NewHandler(fileasset.NewService(fileasset.NewMySQLRepository(db)), issuer)
+		importHandler := importjob.NewHandler(importjob.NewService(importjob.NewMySQLRepository(db)), issuer)
 		orgHandler := org.NewHandler(
 			org.NewService(org.NewMySQLRepository(db)),
 			issuer,
@@ -69,6 +71,7 @@ func main() {
 			bootstrap.WithAPIV1Routes(orgHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(questionBankHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(questionHandler.RegisterRoutes),
+			bootstrap.WithAPIV1Routes(importHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(menuHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(rbacAdminHandler.RegisterAdminRoutes),
 			bootstrap.WithAPIV1Routes(fileHandler.RegisterRoutes),

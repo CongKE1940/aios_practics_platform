@@ -850,23 +850,33 @@ paths:
     get:
       tags: [Import]
       summary: 导入任务列表
+      parameters:
+        - in: query
+          name: import_type
+          schema:
+            type: string
+            enum: [question, question_bank]
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobPageOk' }
     post:
       tags: [Import]
       summary: 创建导入任务
       requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [import_type, template_version, file]
-              properties:
-                import_type: { type: string, enum: [question, question_bank, exam] }
-                template_version: { type: string }
-                file: { type: string, format: binary }
+        $ref: '#/components/requestBodies/ImportJobBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobOk' }
   /import/jobs/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -874,15 +884,29 @@ paths:
       tags: [Import]
       summary: 导入任务详情
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobOk' }
   /import/jobs/{id}/rows:
     parameters:
       - $ref: '#/components/parameters/Id'
     get:
       tags: [Import]
       summary: 导入明细行
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [success, failed]
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobRowPageOk' }
   /import/templates/{type}:
     parameters:
       - in: path
@@ -896,8 +920,8 @@ paths:
         '200':
           description: 文件流
           content:
-            text/csv:
-              schema: { type: string, format: binary }
+            text/csv; charset=utf-8:
+              schema: { type: string }
   /files/upload:
     post:
       tags: [File]
@@ -1024,6 +1048,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/QuestionVersionListResponse'
+    ImportJobOk:
+      description: 导入任务详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobResponse'
+    ImportJobPageOk:
+      description: 导入任务分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobPageResponse'
+    ImportJobRowPageOk:
+      description: 导入明细行分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobRowPageResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -1109,6 +1151,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/QuestionVersionInput'
+    ImportJobBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobInput'
   schemas:
     BaseResponse:
       type: object
@@ -1522,6 +1570,110 @@ components:
     QuestionAnalysisInput:
       type: object
       additionalProperties: true
+    ImportJobInput:
+      type: object
+      required: [import_type, file_url, content]
+      properties:
+        import_type:
+          type: string
+          enum: [question, question_bank]
+        template_version:
+          type: string
+          default: v1
+        file_asset_id:
+          type: integer
+          format: int64
+          nullable: true
+        file_url:
+          type: string
+          example: /api/v1/files/1/content
+        content:
+          type: string
+          description: 阶段 2B 同步导入使用的 CSV 文本内容
+    ImportJob:
+      type: object
+      required: [id, tenant_id, import_type, template_version, file_url, status, total_rows, success_rows, failed_rows, operator_id]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        import_type:
+          type: string
+          enum: [question, question_bank]
+        template_version:
+          type: string
+        file_asset_id:
+          type: integer
+          format: int64
+          nullable: true
+        file_url:
+          type: string
+        status:
+          type: string
+          enum: [uploaded, parsing, validating, importing, success, partial_success, failed]
+        total_rows:
+          type: integer
+        success_rows:
+          type: integer
+        failed_rows:
+          type: integer
+        error_summary:
+          type: string
+          nullable: true
+        operator_id:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    ImportJobRow:
+      type: object
+      required: [id, job_id, row_no, raw_data, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        job_id:
+          type: integer
+          format: int64
+        row_no:
+          type: integer
+        raw_data:
+          type: object
+          additionalProperties: true
+        normalized_data:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [success, failed]
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        target_entity_type:
+          type: string
+          nullable: true
+        target_entity_id:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
     QuestionBankResponse:
       type: object
       properties:
@@ -1610,5 +1762,60 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/QuestionVersion'
+        request_id:
+          type: string
+    ImportJobResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ImportJob'
+        request_id:
+          type: string
+    ImportJobPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportJob'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    ImportJobRowPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportJobRow'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
         request_id:
           type: string

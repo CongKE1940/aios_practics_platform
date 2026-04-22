@@ -497,6 +497,82 @@ describe("AdminApp", () => {
     expect(screen.getAllByText("single_choice").length).toBeGreaterThan(0);
   });
 
+  it("opens import panel after selecting import menu", async () => {
+    render(
+      <AdminApp
+        importApi={{
+          downloadImportTemplate: async () => "bank_name,course_name\n",
+          listImportJobs: async () => ({
+            items: [
+              {
+                id: 1,
+                tenant_id: 1,
+                import_type: "question_bank",
+                template_version: "v1",
+                file_url: "/api/v1/files/1/content",
+                status: "success",
+                total_rows: 1,
+                success_rows: 1,
+                failed_rows: 0,
+                operator_id: 1
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createImportJob: async (body) => ({
+            id: 2,
+            tenant_id: 1,
+            import_type: body.import_type,
+            template_version: body.template_version ?? "v1",
+            file_asset_id: body.file_asset_id,
+            file_url: body.file_url,
+            status: "success",
+            total_rows: 1,
+            success_rows: 1,
+            failed_rows: 0,
+            operator_id: 1
+          }),
+          listImportJobRows: async () => ({
+            items: [],
+            page: 1,
+            page_size: 20,
+            total: 0
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 17, name: "导入中心", path: "/admin/imports", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["import:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "导入中心" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "导入中心" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("question_bank").length).toBeGreaterThan(0);
+  });
+
   it("opens user panel after selecting user menu", async () => {
     render(
       <AdminApp

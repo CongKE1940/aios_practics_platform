@@ -1720,12 +1720,25 @@ QuestionAnswer:
 ### POST `/api/v1/import/jobs`
 
 ### Content-Type
-- `multipart/form-data`
+- `application/json`
 
-### Form Data
-- `import_type`
-- `template_version`
-- `file`
+### Request
+```json
+{
+  "import_type": "question",
+  "template_version": "v1",
+  "file_asset_id": 30001,
+  "file_url": "/api/v1/files/30001/content",
+  "content": "bank_name,course_name,question_type,..."
+}
+```
+
+### 字段说明
+- `import_type`: `question` / `question_bank`，阶段 2B 支持题目和题库导入。
+- `template_version`: 模板版本，默认 `v1`。
+- `file_asset_id`: 可选，关联文件资产。
+- `file_url`: 必填，记录导入来源地址。
+- `content`: 必填，阶段 2B 同步导入使用的 CSV 文本内容；后续接入对象存储后可由服务端读取文件资产内容。
 
 ### Response
 ```json
@@ -1733,8 +1746,18 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "job_id": 10001,
-    "status": "uploaded"
+    "id": 10001,
+    "tenant_id": 1,
+    "import_type": "question",
+    "template_version": "v1",
+    "file_asset_id": 30001,
+    "file_url": "/api/v1/files/30001/content",
+    "status": "partial_success",
+    "total_rows": 2,
+    "success_rows": 1,
+    "failed_rows": 1,
+    "error_summary": "1 行导入失败",
+    "operator_id": 1
   },
   "request_id": "req_14"
 }
@@ -1749,18 +1772,8 @@ QuestionAnswer:
 ### Query
 - `import_type`
 - `status`
-
----
-
-## 14.3 导入任务详情
-
-### GET `/api/v1/import/jobs/{id}`
-
----
-
-## 14.4 导入明细行列表
-
-### GET `/api/v1/import/jobs/{id}/rows`
+- `page`
+- `page_size`
 
 ### Response
 ```json
@@ -1770,10 +1783,62 @@ QuestionAnswer:
   "data": {
     "items": [
       {
+        "id": 10001,
+        "tenant_id": 1,
+        "import_type": "question",
+        "template_version": "v1",
+        "file_url": "/api/v1/files/30001/content",
+        "status": "partial_success",
+        "total_rows": 2,
+        "success_rows": 1,
+        "failed_rows": 1,
+        "operator_id": 1
+      }
+    ],
+    "page": 1,
+    "page_size": 20,
+    "total": 1
+  },
+  "request_id": "req_14_list"
+}
+```
+
+---
+
+## 14.3 导入任务详情
+
+### GET `/api/v1/import/jobs/{id}`
+
+按 `tenant_id` 隔离，跨租户访问返回 404。
+
+---
+
+## 14.4 导入明细行列表
+
+### GET `/api/v1/import/jobs/{id}/rows`
+
+### Query
+- `status`: `success` / `failed`
+- `page`
+- `page_size`
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "id": 90001,
+        "job_id": 10001,
         "row_no": 2,
+        "raw_data": {
+          "bank_name": "未知题库"
+        },
         "status": "failed",
-        "error_code": "QUESTION_OPTION_INVALID",
-        "error_message": "选项数量不能为空"
+        "error_code": "bank_not_found",
+        "error_message": "题库不存在"
       }
     ],
     "page": 1,
@@ -1794,10 +1859,12 @@ QuestionAnswer:
 - `type`: `question` / `question_bank` / `exam`
 
 ### Response
-- 文件流下载
+- `text/csv; charset=utf-8`
 
 ### 说明
-- 一期仅支持模板导入，这来自原始需求。
+- 阶段 2B 模板从仓库 `docs/templates` 读取。
+- `question`、`question_bank`、`exam` 三类模板均可下载。
+- `exam` 当前仅支持模板下载，考试导入落库进入后续阶段。
 
 ---
 

@@ -825,6 +825,127 @@ describe("createApiClient", () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/files/30002");
   });
 
+  it("downloads import template and manages import jobs", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response("bank_name,course_name\n", { status: 200, headers: { "content-type": "text/csv" } }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1,
+              tenant_id: 1,
+              import_type: "question",
+              template_version: "v1",
+              file_url: "/api/v1/files/1/content",
+              status: "partial_success",
+              total_rows: 2,
+              success_rows: 1,
+              failed_rows: 1,
+              operator_id: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [],
+              page: 1,
+              page_size: 20,
+              total: 0
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1,
+              tenant_id: 1,
+              import_type: "question",
+              template_version: "v1",
+              file_url: "/api/v1/files/1/content",
+              status: "partial_success",
+              total_rows: 2,
+              success_rows: 1,
+              failed_rows: 1,
+              operator_id: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 11,
+                  job_id: 1,
+                  row_no: 2,
+                  raw_data: { bank_name: "阶段2题库" },
+                  status: "failed",
+                  error_code: "bank_not_found",
+                  error_message: "题库不存在"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await expect(client.downloadImportTemplate("question")).resolves.toContain("bank_name");
+    await client.createImportJob({
+      import_type: "question",
+      template_version: "v1",
+      file_url: "/api/v1/files/1/content",
+      content: "bank_name,..."
+    });
+    await client.listImportJobs({ import_type: "question", status: "partial_success" });
+    await client.getImportJob(1);
+    const rows = await client.listImportJobRows(1, { status: "failed" });
+
+    expect(rows.items[0].error_code).toBe("bank_not_found");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/import/templates/question");
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        import_type: "question",
+        template_version: "v1",
+        file_url: "/api/v1/files/1/content",
+        content: "bank_name,..."
+      })
+    );
+    expect(String(fetchMock.mock.calls[2][0])).toContain(
+      "/import/jobs?import_type=question&status=partial_success"
+    );
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/import/jobs/1");
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/import/jobs/1/rows?status=failed");
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

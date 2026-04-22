@@ -78,6 +78,11 @@ export interface ApiClient {
   uploadFile(body: FormData): Promise<FileAsset>;
   importFileFromUrl(body: FileImportUrlInput): Promise<FileAsset>;
   getFileAsset(id: number): Promise<FileAsset>;
+  downloadImportTemplate(type: ImportTemplateType): Promise<string>;
+  createImportJob(body: ImportJobInput): Promise<ImportJob>;
+  listImportJobs(query?: ImportJobListQuery): Promise<PageResult<ImportJob>>;
+  getImportJob(id: number): Promise<ImportJob>;
+  listImportJobRows(id: number, query?: ImportJobRowListQuery): Promise<PageResult<ImportJobRow>>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
   updateRole(id: number, body: RoleInput): Promise<RoleItem>;
@@ -297,6 +302,41 @@ export interface FileAsset {
   status: string;
 }
 
+export type ImportTemplateType = "question" | "question_bank" | "exam";
+export type ImportJobType = "question" | "question_bank";
+
+export interface ImportJob {
+  id: number;
+  tenant_id: number;
+  import_type: ImportJobType | string;
+  template_version: string;
+  file_asset_id?: number | null;
+  file_url: string;
+  status: string;
+  total_rows: number;
+  success_rows: number;
+  failed_rows: number;
+  error_summary?: string | null;
+  operator_id: number;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string;
+}
+
+export interface ImportJobRow {
+  id: number;
+  job_id: number;
+  row_no: number;
+  raw_data: Record<string, unknown>;
+  normalized_data?: Record<string, unknown>;
+  status: string;
+  error_code?: string | null;
+  error_message?: string | null;
+  target_entity_type?: string | null;
+  target_entity_id?: number | null;
+  created_at?: string;
+}
+
 export interface RoleItem {
   id: number;
   tenant_id: number;
@@ -406,6 +446,14 @@ export interface FileImportUrlInput {
   usage: string;
 }
 
+export interface ImportJobInput {
+  import_type: ImportJobType | string;
+  template_version?: string;
+  file_asset_id?: number | null;
+  file_url: string;
+  content: string;
+}
+
 export interface RoleInput {
   code: string;
   name: string;
@@ -513,6 +561,19 @@ export interface ManagedUserListQuery {
   page_size?: number;
 }
 
+export interface ImportJobListQuery {
+  import_type?: ImportJobType | string;
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ImportJobRowListQuery {
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const fetcher = options.fetch ?? globalThis.fetch;
   if (!fetcher) {
@@ -614,6 +675,13 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     importFileFromUrl: (body) =>
       request(fetcher, options, "/files/import-url", { method: "POST", body: JSON.stringify(body) }),
     getFileAsset: (id) => request(fetcher, options, `/files/${id}`, { method: "GET" }),
+    downloadImportTemplate: (type) =>
+      rawTextRequest(fetcher, options, `/import/templates/${type}`, { method: "GET" }),
+    createImportJob: (body) => request(fetcher, options, "/import/jobs", { method: "POST", body: JSON.stringify(body) }),
+    listImportJobs: (query) => request(fetcher, options, buildPath("/import/jobs", query), { method: "GET" }),
+    getImportJob: (id) => request(fetcher, options, `/import/jobs/${id}`, { method: "GET" }),
+    listImportJobRows: (id, query) =>
+      request(fetcher, options, buildPath(`/import/jobs/${id}/rows`, query), { method: "GET" }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),
     createRole: (body) => request(fetcher, options, "/roles", { method: "POST", body: JSON.stringify(body) }),
     updateRole: (id, body) =>
@@ -666,6 +734,35 @@ async function request<TData>(
   }
 
   return envelope.data as TData;
+}
+
+async function rawTextRequest(
+  fetcher: FetchLike,
+  options: ApiClientOptions,
+  path: string,
+  init: RequestInit
+): Promise<string> {
+  const headers = new Headers(options.headers);
+  mergeHeaders(headers, init.headers);
+  headers.set("Accept", "text/csv, text/plain, */*");
+
+  if (options.accessToken) {
+    headers.set("Authorization", `Bearer ${options.accessToken}`);
+  }
+
+  const response = await fetcher(joinUrl(options.baseUrl, path), {
+    ...init,
+    headers
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new ApiError({
+      code: response.status,
+      message: text || response.statusText,
+      status: response.status
+    });
+  }
+  return text;
 }
 
 function mergeHeaders(target: Headers, source?: HeadersInit): void {

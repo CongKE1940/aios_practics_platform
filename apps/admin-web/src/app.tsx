@@ -3,6 +3,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { createApiClient, type LoginRequest, type LoginResponse, type MenuItem } from "@aios/api-sdk";
 import { PermissionButton } from "@aios/ui-web";
 
+import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
 import { OrganizationPanel, type OrganizationApi } from "./organization-panel";
 import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
@@ -22,6 +23,7 @@ interface AdminAppProps {
   orgApi?: OrganizationApi;
   questionBankApi?: QuestionBankPanelApi;
   questionApi?: QuestionPanelApi;
+  importApi?: ImportPanelApi;
   userApi?: UserPanelApi;
   rbacApi?: RbacPanelApi;
   sessionStore?: SessionStore;
@@ -53,6 +55,7 @@ export function AdminApp({
   orgApi,
   questionBankApi,
   questionApi,
+  importApi,
   userApi,
   rbacApi,
   sessionStore
@@ -150,6 +153,18 @@ export function AdminApp({
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [questionApi, session]);
+
+  const currentImportApi = useMemo<ImportPanelApi | undefined>(() => {
+    if (importApi) {
+      return importApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [importApi, session]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -274,12 +289,14 @@ export function AdminApp({
           <QuestionBankPanel api={currentQuestionBankApi} />
         ) : null}
         {selectedPath === "/admin/questions" && currentQuestionApi ? <QuestionPanel api={currentQuestionApi} /> : null}
+        {selectedPath === "/admin/imports" && currentImportApi ? <ImportPanel api={currentImportApi} /> : null}
         {selectedPath !== "/admin/org" &&
         selectedPath !== "/admin/users" &&
         selectedPath !== "/admin/roles" &&
         selectedPath !== "/admin/notices" &&
         selectedPath !== "/admin/question-banks" &&
-        selectedPath !== "/admin/questions" ? (
+        selectedPath !== "/admin/questions" &&
+        selectedPath !== "/admin/imports" ? (
           <p>请选择左侧功能入口。</p>
         ) : null}
       </section>

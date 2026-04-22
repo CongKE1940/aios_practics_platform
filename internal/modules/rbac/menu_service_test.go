@@ -35,3 +35,20 @@ func TestBuildMenusIncludesQuestionBankEntries(t *testing.T) {
 		t.Fatalf("child[1].Path = %q", menus[0].Children[1].Path)
 	}
 }
+
+func TestBuildMenusIncludesImportCenterEntry(t *testing.T) {
+	menus := BuildMenus("admin", []string{"import:manage"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	if len(menus[0].Children) != 1 {
+		t.Fatalf("len(children) = %d", len(menus[0].Children))
+	}
+	if menus[0].Children[0].Path != "/admin/imports" {
+		t.Fatalf("child[0].Path = %q", menus[0].Children[0].Path)
+	}
+	if menus[0].Children[0].Name != "导入中心" {
+		t.Fatalf("child[0].Name = %q", menus[0].Children[0].Name)
+	}
+}
