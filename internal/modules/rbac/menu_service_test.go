@@ -59,10 +59,31 @@ func TestBuildUserMenusIncludesPracticeCenter(t *testing.T) {
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 2 {
+	if len(menus[0].Children) != 6 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
 	if menus[0].Children[1].Path != "/app/practice" {
 		t.Fatalf("practice path = %q", menus[0].Children[1].Path)
+	}
+}
+
+func TestBuildUserMenusIncludesPracticeReviewEntries(t *testing.T) {
+	menus := BuildMenus("user", []string{"practice:use"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	if len(menus[0].Children) != 6 {
+		t.Fatalf("len(children) = %d", len(menus[0].Children))
+	}
+	wantPaths := []string{"/app/courses", "/app/practice", "/app/practice/history", "/app/practice/wrong", "/app/practice/mastered", "/app/practice/confused"}
+	wantNames := []string{"我的课程", "练题中心", "练题记录", "错题本", "熟题本", "疑惑题"}
+	for i := range wantPaths {
+		if menus[0].Children[i].Path != wantPaths[i] {
+			t.Fatalf("child[%d].Path = %q", i, menus[0].Children[i].Path)
+		}
+		if menus[0].Children[i].Name != wantNames[i] {
+			t.Fatalf("child[%d].Name = %q", i, menus[0].Children[i].Name)
+		}
 	}
 }

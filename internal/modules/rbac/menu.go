@@ -98,6 +98,10 @@ var userMenus = []menuDef{
 		children: []menuDef{
 			{id: 21, name: "我的课程", path: "/app/courses", requiredPermissions: []string{"practice:use"}},
 			{id: 22, name: "练题中心", path: "/app/practice", requiredPermissions: []string{"practice:use"}},
+			{id: 23, name: "练题记录", path: "/app/practice/history", requiredPermissions: []string{"practice:use"}},
+			{id: 24, name: "错题本", path: "/app/practice/wrong", requiredPermissions: []string{"practice:use"}},
+			{id: 25, name: "熟题本", path: "/app/practice/mastered", requiredPermissions: []string{"practice:use"}},
+			{id: 26, name: "疑惑题", path: "/app/practice/confused", requiredPermissions: []string{"practice:use"}},
 		},
 	},
 }

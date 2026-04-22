@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import type {
   NextPracticeQuestionResult,
@@ -22,6 +22,13 @@ export interface PracticePanelApi {
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<{ items: UserQuestionState[]; page: number; page_size: number; total: number }>;
 }
 
+interface PracticePanelProps {
+  api: PracticePanelApi;
+  initialSession?: PracticeSessionDetail | null;
+  onInitialSessionConsumed?: () => void;
+  onFinished?: (summary: PracticeSessionSummary) => void;
+}
+
 const defaultForm = {
   bankIds: "",
   flowMode: "fixed_count",
@@ -30,7 +37,7 @@ const defaultForm = {
   excludeMastered: true
 };
 
-export function PracticePanel({ api }: { api: PracticePanelApi }) {
+export function PracticePanel({ api, initialSession, onInitialSessionConsumed, onFinished }: PracticePanelProps) {
   const [form, setForm] = useState(defaultForm);
   const [session, setSession] = useState<PracticeSessionDetail | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -38,6 +45,25 @@ export function PracticePanel({ api }: { api: PracticePanelApi }) {
   const [result, setResult] = useState<PracticeAnswerResult | null>(null);
   const [questionState, setQuestionState] = useState<UserQuestionState | null>(null);
   const currentQuestion = session?.questions[currentIndex] ?? null;
+
+  useEffect(() => {
+    if (!initialSession) {
+      return;
+    }
+    setSession(initialSession);
+    setCurrentIndex(0);
+    setSelectedKeys([]);
+    setResult(null);
+    setQuestionState(null);
+    setForm((current) => ({
+      ...current,
+      flowMode: initialSession.flow_mode,
+      practiceMode: initialSession.practice_mode,
+      questionCount: String(initialSession.question_count ?? current.questionCount),
+      excludeMastered: initialSession.exclude_mastered
+    }));
+    onInitialSessionConsumed?.();
+  }, [initialSession, onInitialSessionConsumed]);
 
   async function handleStart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,7 +121,8 @@ export function PracticePanel({ api }: { api: PracticePanelApi }) {
     if (!session) {
       return;
     }
-    await api.finishPracticeSession(session.id);
+    const summary = await api.finishPracticeSession(session.id);
+    onFinished?.(summary);
     setSession(null);
     setCurrentIndex(0);
     setSelectedKeys([]);

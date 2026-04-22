@@ -664,11 +664,48 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Ok' }
   /practice/sessions:
+    get:
+      tags: [Practice]
+      summary: 练题记录列表
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, finished]
+        - in: query
+          name: flow_mode
+          schema:
+            type: string
+            enum: [fixed_count, continuous]
+        - in: query
+          name: practice_mode
+          schema:
+            type: string
+            enum: [random, sequential]
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionPageOk' }
     post:
       tags: [Practice]
       summary: 创建练题会话
       requestBody:
         $ref: '#/components/requestBodies/PracticeSessionBody'
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionOk' }
+  /practice/sessions/from-questions:
+    post:
+      tags: [Practice]
+      summary: 从题目列表创建练题会话
+      requestBody:
+        $ref: '#/components/requestBodies/PracticeSessionFromQuestionsBody'
       responses:
         '200': { $ref: '#/components/responses/PracticeSessionOk' }
   /practice/sessions/{id}:
@@ -679,6 +716,14 @@ paths:
       summary: 练题会话详情
       responses:
         '200': { $ref: '#/components/responses/PracticeSessionOk' }
+  /practice/sessions/{id}/results:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Practice]
+      summary: 练题会话结果详情
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionResultsOk' }
   /practice/sessions/{id}/next-question:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -1115,6 +1160,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/PracticeSessionResponse'
+    PracticeSessionPageOk:
+      description: 练题会话分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionPageResponse'
+    PracticeSessionResultsOk:
+      description: 练题会话结果详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionResultsResponse'
     PracticeNextQuestionOk:
       description: 下一题结果
       content:
@@ -1242,6 +1299,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/PracticeSessionInput'
+    PracticeSessionFromQuestionsBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionFromQuestionsInput'
     PracticeAnswerBody:
       required: true
       content:
@@ -1800,6 +1863,28 @@ components:
         random_seed:
           type: integer
           format: int64
+    PracticeSessionFromQuestionsInput:
+      type: object
+      required: [question_ids]
+      properties:
+        question_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        practice_mode:
+          type: string
+          enum: [random, sequential]
+        flow_mode:
+          type: string
+          enum: [fixed_count, continuous]
+        question_count:
+          type: integer
+        exclude_mastered:
+          type: boolean
+        random_seed:
+          type: integer
+          format: int64
     PracticeSessionQuestion:
       type: object
       required: [session_question_id, session_id, question_id, question_version_id, display_order, question_type, content, round_no]
@@ -1873,6 +1958,88 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PracticeSessionQuestion'
+    PracticeSessionListItem:
+      type: object
+      required: [id, status, practice_mode, source_mode, flow_mode, bank_ids, total_count, answered_count, correct_count, wrong_count, accuracy]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+        practice_mode:
+          type: string
+        source_mode:
+          type: string
+        flow_mode:
+          type: string
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        total_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+    PracticeSessionResultQuestion:
+      type: object
+      required: [session_question_id, question_id, question_version_id, display_order, question_type, content, correct_answer, is_correct, state]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        answer:
+          type: object
+          additionalProperties: true
+          nullable: true
+        correct_answer:
+          type: object
+          additionalProperties: true
+        is_correct:
+          type: boolean
+        analysis:
+          type: object
+          additionalProperties: true
+        state:
+          $ref: '#/components/schemas/UserQuestionState'
+    PracticeSessionResults:
+      type: object
+      required: [session, questions]
+      properties:
+        session:
+          $ref: '#/components/schemas/PracticeSessionListItem'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PracticeSessionResultQuestion'
     PracticeAnswerInput:
       type: object
       required: [session_question_id, answer]
@@ -1908,6 +2075,11 @@ components:
         question_version_id:
           type: integer
           format: int64
+        question_type:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
         practice_correct_count:
           type: integer
         practice_wrong_count:
@@ -2129,6 +2301,39 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/PracticeSessionDetail'
+        request_id:
+          type: string
+    PracticeSessionPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/PracticeSessionListItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    PracticeSessionResultsResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeSessionResults'
         request_id:
           type: string
     PracticeNextQuestionResponse:

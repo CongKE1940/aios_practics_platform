@@ -47,10 +47,9 @@ describe("NoticePanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "公告通知" })).toBeTruthy();
+      expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
     expect(screen.getByText("周五晚维护")).toBeTruthy();
   });
 

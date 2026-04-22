@@ -1518,6 +1518,121 @@ QuestionAnswer:
 - `page`
 - `page_size`
 
+### 阶段 2D 增强响应字段
+- `question_type`
+- `content`
+
+用于错题本、熟题本、疑惑题列表直接展示题干摘要，并支持从当前筛选结果继续练。
+
+---
+
+## 11.9 练题记录列表
+
+### GET `/api/v1/practice/sessions`
+
+### Query
+- `status`: `active` / `finished`
+- `flow_mode`: `fixed_count` / `continuous`
+- `practice_mode`: `random` / `sequential`
+- `page`
+- `page_size`
+
+### Response Data
+```json
+{
+  "items": [
+    {
+      "id": 501,
+      "status": "finished",
+      "practice_mode": "random",
+      "source_mode": "multi_bank",
+      "flow_mode": "fixed_count",
+      "bank_ids": [1, 2],
+      "total_count": 10,
+      "answered_count": 10,
+      "correct_count": 8,
+      "wrong_count": 2,
+      "accuracy": 0.8
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+### 业务说明
+- 默认按会话维度展示练题记录。
+- 统计口径按每道会话题目的最新一次作答计算。
+- 仅返回当前登录用户自己的练题会话。
+
+---
+
+## 11.10 练题会话结果详情
+
+### GET `/api/v1/practice/sessions/{id}/results`
+
+### Response Data
+```json
+{
+  "session": {
+    "id": 501,
+    "status": "finished",
+    "answered_count": 10,
+    "correct_count": 8,
+    "wrong_count": 2,
+    "accuracy": 0.8
+  },
+  "questions": [
+    {
+      "session_question_id": 9001,
+      "question_id": 1001,
+      "question_version_id": 3001,
+      "display_order": 1,
+      "question_type": "single_choice",
+      "content": {},
+      "answer": {"selected_keys": ["B"]},
+      "correct_answer": {"judge_mode": "by_option_key", "correct_keys": ["B"]},
+      "is_correct": true,
+      "analysis": {"text": "基础算术"},
+      "state": {
+        "practice_correct_count": 1,
+        "practice_wrong_count": 0,
+        "is_mastered": false,
+        "is_confused": false
+      }
+    }
+  ]
+}
+```
+
+### 业务说明
+- 用于练题结果页和练题会话详情页。
+- 仅允许查看当前登录用户自己的会话，跨用户或跨租户返回 404。
+
+---
+
+## 11.11 从题目列表继续练
+
+### POST `/api/v1/practice/sessions/from-questions`
+
+### Request Body
+```json
+{
+  "question_ids": [1001, 1002],
+  "practice_mode": "random",
+  "flow_mode": "fixed_count",
+  "question_count": 10,
+  "exclude_mastered": false
+}
+```
+
+### 业务说明
+- 用于错题本、熟题本、疑惑题从当前筛选结果发起新练习。
+- `question_count` 未传或小于等于 0 时默认 10。
+- 候选题为空时返回明确的暂无可练题目错误。
+- 后端仍按当前租户和当前用户状态校验候选题。
+
 ---
 
 ## 12. 考试接口

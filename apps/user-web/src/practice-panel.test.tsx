@@ -64,7 +64,13 @@ describe("PracticePanel", () => {
           is_confused: false
         }
       })),
-      finishPracticeSession: vi.fn(),
+      finishPracticeSession: vi.fn(async () => ({
+        id: 501,
+        status: "finished",
+        answered_count: 1,
+        correct_count: 1,
+        wrong_count: 0
+      })),
       markPracticeQuestionMastered: vi.fn(async () => ({
         id: 1,
         tenant_id: 1,
@@ -92,7 +98,8 @@ describe("PracticePanel", () => {
       listUserQuestionStates: vi.fn()
     };
 
-    render(<PracticePanel api={api} />);
+    const onFinished = vi.fn();
+    render(<PracticePanel api={api} onFinished={onFinished} />);
 
     fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "开始练题" }));
@@ -124,6 +131,17 @@ describe("PracticePanel", () => {
       expect(api.markPracticeQuestionConfused).toHaveBeenCalledWith(1001, { value: true });
     });
     expect(screen.getByText("状态：已标熟 / 已标疑惑")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "退出练题" }));
+    await waitFor(() => {
+      expect(onFinished).toHaveBeenCalledWith({
+        id: 501,
+        status: "finished",
+        answered_count: 1,
+        correct_count: 1,
+        wrong_count: 0
+      });
+    });
   });
 
   it("creates continuous practice session and loads next question", async () => {

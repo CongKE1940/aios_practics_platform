@@ -1073,6 +1073,130 @@ describe("createApiClient", () => {
     expect(String(fetchMock.mock.calls[7][0])).toContain("/user-question-states?state_type=wrong");
   });
 
+  it("lists practice sessions, reads results, and creates sessions from questions", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 501,
+                  practice_mode: "random",
+                  source_mode: "question_list",
+                  flow_mode: "fixed_count",
+                  bank_ids: [1, 2],
+                  status: "finished",
+                  total_count: 10,
+                  answered_count: 10,
+                  correct_count: 8,
+                  wrong_count: 2,
+                  accuracy: 0.8
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              session: {
+                id: 501,
+                practice_mode: "random",
+                source_mode: "question_list",
+                flow_mode: "fixed_count",
+                bank_ids: [1, 2],
+                status: "finished",
+                total_count: 10,
+                answered_count: 10,
+                correct_count: 8,
+                wrong_count: 2,
+                accuracy: 0.8
+              },
+              questions: []
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 502,
+              tenant_id: 1,
+              user_id: 7,
+              practice_mode: "random",
+              source_mode: "question_list",
+              flow_mode: "fixed_count",
+              bank_scope: { source_mode: "question_list" },
+              bank_ids: [1, 2],
+              exclude_mastered: false,
+              question_count: 10,
+              random_seed: 20260422,
+              round_no: 1,
+              status: "active",
+              questions: []
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const listResult = await client.listPracticeSessions({ status: "finished", flow_mode: "fixed_count" });
+    expect(listResult.items[0].id).toBe(501);
+
+    const results = await client.getPracticeSessionResults(501);
+    expect(results.session.id).toBe(501);
+
+    const body = {
+      question_ids: [1001, 1002],
+      practice_mode: "random",
+      flow_mode: "fixed_count",
+      question_count: 10,
+      exclude_mastered: false
+    } satisfies {
+      question_ids: number[];
+      practice_mode: string;
+      flow_mode: string;
+      question_count: number;
+      exclude_mastered: boolean;
+    };
+    await client.createPracticeSessionFromQuestions(body);
+
+    const [listUrl, listInit] = fetchMock.mock.calls[0];
+    expect(String(listUrl)).toContain("/practice/sessions?status=finished&flow_mode=fixed_count");
+    expect(listInit?.method).toBe("GET");
+
+    const [resultsUrl, resultsInit] = fetchMock.mock.calls[1];
+    expect(String(resultsUrl)).toContain("/practice/sessions/501/results");
+    expect(resultsInit?.method).toBe("GET");
+
+    const [createUrl, createInit] = fetchMock.mock.calls[2];
+    expect(String(createUrl)).toContain("/practice/sessions/from-questions");
+    expect(createInit?.method).toBe("POST");
+    expect(createInit?.body).toBe(JSON.stringify(body));
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

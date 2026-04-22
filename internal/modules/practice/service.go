@@ -62,8 +62,63 @@ func (service *Service) CreateSession(ctx context.Context, scope Scope, input Pr
 	return service.repo.CreateSession(ctx, session, questions)
 }
 
+func (service *Service) CreateSessionFromQuestions(ctx context.Context, scope Scope, input PracticeSessionFromQuestionsInput) (PracticeSessionDetail, error) {
+	input = normalizeFromQuestionsInput(input)
+	if len(input.QuestionIDs) == 0 {
+		return PracticeSessionDetail{}, ErrInvalidInput
+	}
+	candidates, err := service.repo.ListCandidatesByQuestionIDs(ctx, scope, input.QuestionIDs, input.ExcludeMastered)
+	if err != nil {
+		return PracticeSessionDetail{}, err
+	}
+	if len(candidates) == 0 {
+		return PracticeSessionDetail{}, ErrNoCandidates
+	}
+	if input.PracticeMode == PracticeModeRandom {
+		rng := rand.New(rand.NewSource(input.RandomSeed))
+		rng.Shuffle(len(candidates), func(i int, j int) {
+			candidates[i], candidates[j] = candidates[j], candidates[i]
+		})
+	}
+	selected := limitCandidates(candidates, input.QuestionCount)
+	questions := buildSessionQuestions(selected, 1, 1)
+	session := PracticeSession{
+		TenantID:        scope.TenantID,
+		UserID:          scope.UserID,
+		PracticeMode:    input.PracticeMode,
+		SourceMode:      "question_list",
+		FlowMode:        input.FlowMode,
+		BankIDs:         []int64{},
+		ExcludeMastered: input.ExcludeMastered,
+		QuestionCount:   input.QuestionCount,
+		RandomSeed:      input.RandomSeed,
+		RoundNo:         1,
+		Status:          StatusActive,
+		BankScope: map[string]any{
+			"flow_mode":        input.FlowMode,
+			"source_mode":      "question_list",
+			"question_ids":     append([]int64{}, input.QuestionIDs...),
+			"exclude_mastered": input.ExcludeMastered,
+			"question_count":   input.QuestionCount,
+			"random_seed":      input.RandomSeed,
+			"round_no":         1,
+		},
+	}
+	return service.repo.CreateSession(ctx, session, questions)
+}
+
 func (service *Service) GetSession(ctx context.Context, scope Scope, id int64) (PracticeSessionDetail, error) {
 	return service.repo.GetSession(ctx, scope, id)
+}
+
+func (service *Service) ListSessions(ctx context.Context, scope Scope, filter PracticeSessionListFilter) (PageResult[PracticeSessionListItem], error) {
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	return service.repo.ListSessions(ctx, scope, filter)
+}
+
+func (service *Service) GetSessionResults(ctx context.Context, scope Scope, id int64) (PracticeSessionResults, error) {
+	return service.repo.GetSessionResults(ctx, scope, id)
 }
 
 func (service *Service) NextQuestion(ctx context.Context, scope Scope, id int64) (NextQuestionResult, error) {
@@ -74,13 +129,7 @@ func (service *Service) NextQuestion(ctx context.Context, scope Scope, id int64)
 	if detail.Status != StatusActive {
 		return NextQuestionResult{}, ErrInvalidInput
 	}
-	candidates, err := service.candidates(ctx, scope, PracticeSessionInput{
-		PracticeMode:    detail.PracticeMode,
-		FlowMode:        detail.FlowMode,
-		BankIDs:         detail.BankIDs,
-		ExcludeMastered: detail.ExcludeMastered,
-		RandomSeed:      detail.RandomSeed + int64(detail.RoundNo-1),
-	})
+	candidates, err := service.sessionCandidates(ctx, scope, detail)
 	if err != nil {
 		return NextQuestionResult{}, err
 	}
@@ -179,6 +228,12 @@ func (service *Service) ListStates(ctx context.Context, scope Scope, filter User
 	return service.repo.ListStates(ctx, scope, filter)
 }
 
+func (service *Service) ListStateDetails(ctx context.Context, scope Scope, filter UserQuestionStateFilter) (PageResult[UserQuestionStateDetail], error) {
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	return service.repo.ListStateDetails(ctx, scope, filter)
+}
+
 func (service *Service) candidates(ctx context.Context, scope Scope, input PracticeSessionInput) ([]QuestionCandidate, error) {
 	candidates, err := service.repo.ListCandidates(ctx, scope, CandidateFilter{
 		BankIDs:         input.BankIDs,
@@ -200,6 +255,34 @@ func (service *Service) candidates(ctx context.Context, scope Scope, input Pract
 	return candidates, nil
 }
 
+func (service *Service) sessionCandidates(ctx context.Context, scope Scope, detail PracticeSessionDetail) ([]QuestionCandidate, error) {
+	seed := detail.RandomSeed + int64(detail.RoundNo-1)
+	if detail.SourceMode == "question_list" {
+		questionIDs := anyInt64Slice(detail.BankScope["question_ids"])
+		if len(questionIDs) == 0 {
+			return []QuestionCandidate{}, nil
+		}
+		candidates, err := service.repo.ListCandidatesByQuestionIDs(ctx, scope, questionIDs, detail.ExcludeMastered)
+		if err != nil {
+			return nil, err
+		}
+		if detail.PracticeMode == PracticeModeRandom {
+			rng := rand.New(rand.NewSource(seed))
+			rng.Shuffle(len(candidates), func(i int, j int) {
+				candidates[i], candidates[j] = candidates[j], candidates[i]
+			})
+		}
+		return candidates, nil
+	}
+	return service.candidates(ctx, scope, PracticeSessionInput{
+		PracticeMode:    detail.PracticeMode,
+		FlowMode:        detail.FlowMode,
+		BankIDs:         detail.BankIDs,
+		ExcludeMastered: detail.ExcludeMastered,
+		RandomSeed:      seed,
+	})
+}
+
 func normalizeSessionInput(input PracticeSessionInput) PracticeSessionInput {
 	if input.PracticeMode == "" {
 		input.PracticeMode = PracticeModeRandom
@@ -215,6 +298,22 @@ func normalizeSessionInput(input PracticeSessionInput) PracticeSessionInput {
 		input.FlowMode = FlowModeFixedCount
 	}
 	if input.FlowMode == FlowModeFixedCount && input.QuestionCount <= 0 {
+		input.QuestionCount = 10
+	}
+	if input.RandomSeed == 0 {
+		input.RandomSeed = time.Now().Unix()
+	}
+	return input
+}
+
+func normalizeFromQuestionsInput(input PracticeSessionFromQuestionsInput) PracticeSessionFromQuestionsInput {
+	if input.PracticeMode == "" {
+		input.PracticeMode = PracticeModeRandom
+	}
+	if input.FlowMode == "" {
+		input.FlowMode = FlowModeFixedCount
+	}
+	if input.QuestionCount <= 0 {
 		input.QuestionCount = 10
 	}
 	if input.RandomSeed == 0 {

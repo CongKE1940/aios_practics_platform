@@ -28,6 +28,9 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/practice/sessions", handler.createSession)
+	router.GET("/practice/sessions", handler.listSessions)
+	router.POST("/practice/sessions/from-questions", handler.createSessionFromQuestions)
+	router.GET("/practice/sessions/:id/results", handler.getSessionResults)
 	router.GET("/practice/sessions/:id", handler.getSession)
 	router.POST("/practice/sessions/:id/next-question", handler.nextQuestion)
 	router.POST("/practice/sessions/:id/answer", handler.submitAnswer)
@@ -55,12 +58,63 @@ func (handler *Handler) createSession(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
 }
 
+func (handler *Handler) createSessionFromQuestions(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	var input PracticeSessionFromQuestionsInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	result, err := handler.service.CreateSessionFromQuestions(ctx.Request.Context(), scope, input)
+	if err != nil {
+		writePracticeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) listSessions(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	filter := PracticeSessionListFilter{
+		Status:       ctx.Query("status"),
+		FlowMode:     ctx.Query("flow_mode"),
+		PracticeMode: ctx.Query("practice_mode"),
+		Page:         parseInt(ctx.Query("page")),
+		PageSize:     parseInt(ctx.Query("page_size")),
+	}
+	result, err := handler.service.ListSessions(ctx.Request.Context(), scope, filter)
+	if err != nil {
+		writePracticeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
 func (handler *Handler) getSession(ctx *gin.Context) {
 	scope, id, ok := handler.authorizeWithID(ctx)
 	if !ok {
 		return
 	}
 	result, err := handler.service.GetSession(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writePracticeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) getSessionResults(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.GetSessionResults(ctx.Request.Context(), scope, id)
 	if err != nil {
 		writePracticeError(ctx, err)
 		return
@@ -159,7 +213,7 @@ func (handler *Handler) listStates(ctx *gin.Context) {
 	if bankID, ok := parseOptionalInt64(ctx.Query("bank_id")); ok {
 		filter.BankID = bankID
 	}
-	result, err := handler.service.ListStates(ctx.Request.Context(), scope, filter)
+	result, err := handler.service.ListStateDetails(ctx.Request.Context(), scope, filter)
 	if err != nil {
 		writePracticeError(ctx, err)
 		return
@@ -200,7 +254,9 @@ func (handler *Handler) authorizeWithID(ctx *gin.Context) (Scope, int64, bool) {
 
 func writePracticeError(ctx *gin.Context, err error) {
 	switch {
-	case errors.Is(err, ErrInvalidInput), errors.Is(err, ErrNoCandidates):
+	case errors.Is(err, ErrNoCandidates):
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeNoCandidates, "暂无可练题目", ctx.GetHeader("X-Request-Id")))
+	case errors.Is(err, ErrInvalidInput):
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, response.Failure(CodeNotFound, "资源不存在", ctx.GetHeader("X-Request-Id")))

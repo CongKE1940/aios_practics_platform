@@ -20,6 +20,7 @@ const (
 	StateTypeMastered      = "mastered"
 	StateTypeConfused      = "confused"
 	CodeInvalidInput       = 40000
+	CodeNoCandidates       = 40001
 	CodeForbidden          = 40300
 	CodeNotFound           = 40400
 )
@@ -172,6 +173,64 @@ type UserQuestionStateFilter struct {
 	PageSize  int
 }
 
+type PracticeSessionListFilter struct {
+	Status       string
+	FlowMode     string
+	PracticeMode string
+	Page         int
+	PageSize     int
+}
+
+type PracticeSessionListItem struct {
+	ID            int64      `json:"id"`
+	Status        string     `json:"status"`
+	PracticeMode  string     `json:"practice_mode"`
+	SourceMode    string     `json:"source_mode"`
+	FlowMode      string     `json:"flow_mode"`
+	BankIDs       []int64    `json:"bank_ids"`
+	StartedAt     time.Time  `json:"started_at,omitempty"`
+	EndedAt       *time.Time `json:"ended_at,omitempty"`
+	TotalCount    int        `json:"total_count"`
+	AnsweredCount int        `json:"answered_count"`
+	CorrectCount  int        `json:"correct_count"`
+	WrongCount    int        `json:"wrong_count"`
+	Accuracy      float64    `json:"accuracy"`
+}
+
+type PracticeSessionResults struct {
+	Session   PracticeSessionListItem         `json:"session"`
+	Questions []PracticeSessionResultQuestion `json:"questions"`
+}
+
+type PracticeSessionResultQuestion struct {
+	SessionQuestionID int64             `json:"session_question_id"`
+	QuestionID        int64             `json:"question_id"`
+	QuestionVersionID int64             `json:"question_version_id"`
+	DisplayOrder      int               `json:"display_order"`
+	QuestionType      string            `json:"question_type"`
+	Content           map[string]any    `json:"content"`
+	Answer            map[string]any    `json:"answer"`
+	CorrectAnswer     map[string]any    `json:"correct_answer"`
+	IsCorrect         bool              `json:"is_correct"`
+	Analysis          map[string]any    `json:"analysis,omitempty"`
+	State             UserQuestionState `json:"state"`
+}
+
+type PracticeSessionFromQuestionsInput struct {
+	QuestionIDs     []int64 `json:"question_ids" binding:"required"`
+	PracticeMode    string  `json:"practice_mode"`
+	FlowMode        string  `json:"flow_mode"`
+	QuestionCount   int     `json:"question_count"`
+	ExcludeMastered bool    `json:"exclude_mastered"`
+	RandomSeed      int64   `json:"random_seed"`
+}
+
+type UserQuestionStateDetail struct {
+	UserQuestionState
+	QuestionType string         `json:"question_type"`
+	Content      map[string]any `json:"content"`
+}
+
 type PracticeSessionSummary struct {
 	ID            int64  `json:"id"`
 	Status        string `json:"status"`
@@ -189,6 +248,10 @@ type Repository interface {
 	SaveAnswerAndState(ctx context.Context, scope Scope, answer PracticeAnswer, isCorrect bool) (UserQuestionState, error)
 	SetQuestionState(ctx context.Context, scope Scope, questionID int64, input QuestionStateUpdate) (UserQuestionState, error)
 	ListStates(ctx context.Context, scope Scope, filter UserQuestionStateFilter) (PageResult[UserQuestionState], error)
+	ListSessions(ctx context.Context, scope Scope, filter PracticeSessionListFilter) (PageResult[PracticeSessionListItem], error)
+	GetSessionResults(ctx context.Context, scope Scope, id int64) (PracticeSessionResults, error)
+	ListCandidatesByQuestionIDs(ctx context.Context, scope Scope, questionIDs []int64, excludeMastered bool) ([]QuestionCandidate, error)
+	ListStateDetails(ctx context.Context, scope Scope, filter UserQuestionStateFilter) (PageResult[UserQuestionStateDetail], error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

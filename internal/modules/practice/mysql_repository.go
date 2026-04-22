@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -33,7 +34,7 @@ FROM question_bank_questions qbq
 JOIN question_banks qb ON qb.id = qbq.question_bank_id
 JOIN questions q ON q.id = qbq.question_id
 JOIN question_versions qv ON qv.id = q.current_version_id
-LEFT JOIN user_question_states uqs ON uqs.user_id = ? AND uqs.question_id = q.id
+LEFT JOIN user_question_states uqs ON uqs.tenant_id = q.tenant_id AND uqs.user_id = ? AND uqs.question_id = q.id
 WHERE qb.tenant_id = ?
   AND qb.deleted_at IS NULL
   AND q.tenant_id = ?
@@ -57,27 +58,7 @@ WHERE qb.tenant_id = ?
 	}
 	defer rows.Close()
 
-	items := make([]QuestionCandidate, 0)
-	for rows.Next() {
-		var item QuestionCandidate
-		var contentJSON []byte
-		var answerJSON []byte
-		var analysisJSON []byte
-		if err := rows.Scan(&item.BankID, &item.QuestionID, &item.QuestionVersionID, &item.QuestionType, &contentJSON, &answerJSON, &analysisJSON); err != nil {
-			return nil, err
-		}
-		if err := unmarshalMap(contentJSON, &item.Content); err != nil {
-			return nil, err
-		}
-		if err := unmarshalMap(answerJSON, &item.Answer); err != nil {
-			return nil, err
-		}
-		if err := unmarshalMap(analysisJSON, &item.Analysis); err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	return items, rows.Err()
+	return scanCandidates(rows)
 }
 
 func (repo *MySQLRepository) CreateSession(ctx context.Context, session PracticeSession, questions []PracticeSessionQuestion) (PracticeSessionDetail, error) {
@@ -164,6 +145,168 @@ LIMIT 1
 	return PracticeSessionDetail{PracticeSession: session, Questions: questions}, nil
 }
 
+func (repo *MySQLRepository) ListSessions(ctx context.Context, scope Scope, filter PracticeSessionListFilter) (PageResult[PracticeSessionListItem], error) {
+	query := `
+SELECT
+  ps.id,
+  ps.practice_mode,
+  ps.source_mode,
+  ps.bank_scope_json,
+  ps.started_at,
+  ps.ended_at,
+  ps.status,
+  COUNT(psq.id) AS total_count,
+  COUNT(pa.session_question_id) AS answered_count,
+  COALESCE(SUM(CASE WHEN pa.is_correct = 1 THEN 1 ELSE 0 END), 0) AS correct_count,
+  COALESCE(SUM(CASE WHEN pa.is_correct = 0 THEN 1 ELSE 0 END), 0) AS wrong_count
+FROM practice_sessions ps
+LEFT JOIN practice_session_questions psq ON psq.session_id = ps.id
+LEFT JOIN (
+  SELECT pa1.session_question_id, pa1.user_id, pa1.is_correct
+  FROM practice_answers pa1
+  JOIN (
+    SELECT session_question_id, user_id, MAX(id) AS max_id
+    FROM practice_answers
+    GROUP BY session_question_id, user_id
+  ) latest ON latest.max_id = pa1.id
+) pa ON pa.session_question_id = psq.id AND pa.user_id = ps.user_id
+WHERE ps.tenant_id = ? AND ps.user_id = ?
+`
+	args := []any{scope.TenantID, scope.UserID}
+	if filter.Status != "" {
+		query += " AND ps.status = ?"
+		args = append(args, filter.Status)
+	}
+	if filter.PracticeMode != "" {
+		query += " AND ps.practice_mode = ?"
+		args = append(args, filter.PracticeMode)
+	}
+	query += " GROUP BY ps.id, ps.practice_mode, ps.source_mode, ps.bank_scope_json, ps.started_at, ps.ended_at, ps.status ORDER BY ps.started_at DESC, ps.id DESC"
+
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return PageResult[PracticeSessionListItem]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]PracticeSessionListItem, 0)
+	for rows.Next() {
+		item, err := scanSessionListItem(rows)
+		if err != nil {
+			return PageResult[PracticeSessionListItem]{}, err
+		}
+		if filter.FlowMode != "" && item.FlowMode != filter.FlowMode {
+			continue
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[PracticeSessionListItem]{}, err
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *MySQLRepository) GetSessionResults(ctx context.Context, scope Scope, id int64) (PracticeSessionResults, error) {
+	session, err := repo.GetSession(ctx, scope, id)
+	if err != nil {
+		return PracticeSessionResults{}, err
+	}
+	result := PracticeSessionResults{
+		Session: PracticeSessionListItem{
+			ID:           session.ID,
+			Status:       session.Status,
+			PracticeMode: session.PracticeMode,
+			SourceMode:   session.SourceMode,
+			FlowMode:     session.FlowMode,
+			BankIDs:      append([]int64{}, session.BankIDs...),
+			StartedAt:    session.StartedAt,
+			EndedAt:      session.EndedAt,
+			TotalCount:   len(session.Questions),
+		},
+		Questions: []PracticeSessionResultQuestion{},
+	}
+	for _, question := range session.Questions {
+		answer, answered, err := repo.latestAnswer(ctx, scope.UserID, question.ID)
+		if err != nil {
+			return PracticeSessionResults{}, err
+		}
+		state, err := repo.getState(ctx, scope, question.QuestionID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return PracticeSessionResults{}, err
+		}
+		item := PracticeSessionResultQuestion{
+			SessionQuestionID: question.ID,
+			QuestionID:        question.QuestionID,
+			QuestionVersionID: question.QuestionVersionID,
+			DisplayOrder:      question.DisplayOrder,
+			QuestionType:      question.QuestionType,
+			Content:           question.Content,
+			CorrectAnswer:     question.Answer,
+			Analysis:          question.Analysis,
+			State:             state,
+		}
+		if answered {
+			item.Answer = answer.Answer
+			item.IsCorrect = answer.IsCorrect
+			result.Session.AnsweredCount++
+			if answer.IsCorrect {
+				result.Session.CorrectCount++
+			} else {
+				result.Session.WrongCount++
+			}
+		}
+		result.Questions = append(result.Questions, item)
+	}
+	if result.Session.AnsweredCount > 0 {
+		result.Session.Accuracy = float64(result.Session.CorrectCount) / float64(result.Session.AnsweredCount)
+	}
+	return result, nil
+}
+
+func (repo *MySQLRepository) ListCandidatesByQuestionIDs(ctx context.Context, scope Scope, questionIDs []int64, excludeMastered bool) ([]QuestionCandidate, error) {
+	if len(questionIDs) == 0 {
+		return []QuestionCandidate{}, nil
+	}
+	query := `
+SELECT
+  COALESCE(MIN(qb.id), 0) AS bank_id,
+  q.id,
+  q.current_version_id,
+  q.question_type,
+  qv.content_json,
+  qv.answer_json,
+  qv.analysis_json
+FROM questions q
+JOIN question_versions qv ON qv.id = q.current_version_id
+LEFT JOIN question_bank_questions qbq ON qbq.question_id = q.id
+LEFT JOIN question_banks qb ON qb.id = qbq.question_bank_id AND qb.tenant_id = q.tenant_id
+LEFT JOIN user_question_states uqs ON uqs.tenant_id = q.tenant_id AND uqs.user_id = ? AND uqs.question_id = q.id
+WHERE q.tenant_id = ?
+  AND q.status = 'active'
+  AND q.deleted_at IS NULL
+  AND q.current_version_id IS NOT NULL
+  AND q.id IN (` + placeholders(len(questionIDs)) + `)
+`
+	args := []any{scope.UserID, scope.TenantID}
+	for _, questionID := range questionIDs {
+		args = append(args, questionID)
+	}
+	if excludeMastered {
+		query += " AND COALESCE(uqs.is_mastered, 0) = 0"
+	}
+	query += " GROUP BY q.id, q.current_version_id, q.question_type, qv.content_json, qv.answer_json, qv.analysis_json ORDER BY FIELD(q.id, " + placeholders(len(questionIDs)) + ")"
+	for _, questionID := range questionIDs {
+		args = append(args, questionID)
+	}
+
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCandidates(rows)
+}
+
 func (repo *MySQLRepository) AddSessionQuestion(ctx context.Context, scope Scope, sessionID int64, question PracticeSessionQuestion) (PracticeSessionQuestion, error) {
 	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -211,9 +354,20 @@ WHERE id = ? AND tenant_id = ? AND user_id = ?
 	}
 
 	const countQuery = `
-SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN is_correct = 0 THEN 1 ELSE 0 END), 0)
-FROM practice_answers
-WHERE user_id = ? AND session_question_id IN (SELECT id FROM practice_session_questions WHERE session_id = ?)
+SELECT
+  COUNT(pa.session_question_id),
+  COALESCE(SUM(CASE WHEN pa.is_correct = 1 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN pa.is_correct = 0 THEN 1 ELSE 0 END), 0)
+FROM (
+  SELECT pa1.session_question_id, pa1.user_id, pa1.is_correct
+  FROM practice_answers pa1
+  JOIN (
+    SELECT session_question_id, user_id, MAX(id) AS max_id
+    FROM practice_answers
+    GROUP BY session_question_id, user_id
+  ) latest ON latest.max_id = pa1.id
+) pa
+WHERE pa.user_id = ? AND pa.session_question_id IN (SELECT id FROM practice_session_questions WHERE session_id = ?)
 `
 	summary := PracticeSessionSummary{ID: id, Status: StatusFinished}
 	if err := repo.db.QueryRowContext(ctx, countQuery, scope.UserID, id).Scan(&summary.AnsweredCount, &summary.CorrectCount, &summary.WrongCount); err != nil {
@@ -330,8 +484,8 @@ WHERE tenant_id = ? AND user_id = ?
 		query += " AND is_confused = 1"
 	}
 	if filter.BankID != nil {
-		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq WHERE qbq.question_id = user_question_states.question_id AND qbq.question_bank_id = ?)"
-		args = append(args, *filter.BankID)
+		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = user_question_states.question_id AND qbq.question_bank_id = ? AND qb.tenant_id = ?)"
+		args = append(args, *filter.BankID, scope.TenantID)
 	}
 	query += " ORDER BY updated_at DESC"
 	rows, err := repo.db.QueryContext(ctx, query, args...)
@@ -349,6 +503,54 @@ WHERE tenant_id = ? AND user_id = ?
 	}
 	if err := rows.Err(); err != nil {
 		return PageResult[UserQuestionState]{}, err
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *MySQLRepository) ListStateDetails(ctx context.Context, scope Scope, filter UserQuestionStateFilter) (PageResult[UserQuestionStateDetail], error) {
+	query := `
+SELECT
+  uqs.id, uqs.tenant_id, uqs.user_id, uqs.question_id, uqs.question_version_id,
+  uqs.practice_correct_count, uqs.practice_wrong_count, uqs.exam_wrong_count,
+  uqs.is_mastered, uqs.mastered_at, uqs.is_confused, uqs.confused_at,
+  uqs.last_wrong_at, uqs.last_answer_json, uqs.last_result, uqs.updated_at,
+  q.question_type, qv.content_json
+FROM user_question_states uqs
+JOIN questions q ON q.id = uqs.question_id AND q.tenant_id = uqs.tenant_id
+JOIN question_versions qv ON qv.id = uqs.question_version_id
+WHERE uqs.tenant_id = ? AND uqs.user_id = ?
+`
+	args := []any{scope.TenantID, scope.UserID}
+	switch filter.StateType {
+	case StateTypeWrong:
+		query += " AND uqs.practice_wrong_count > 0"
+	case StateTypeMastered:
+		query += " AND uqs.is_mastered = 1"
+	case StateTypeConfused:
+		query += " AND uqs.is_confused = 1"
+	}
+	if filter.BankID != nil {
+		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = uqs.question_id AND qbq.question_bank_id = ? AND qb.tenant_id = ?)"
+		args = append(args, *filter.BankID, scope.TenantID)
+	}
+	query += " ORDER BY uqs.updated_at DESC"
+
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return PageResult[UserQuestionStateDetail]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]UserQuestionStateDetail, 0)
+	for rows.Next() {
+		item, err := scanStateDetail(rows)
+		if err != nil {
+			return PageResult[UserQuestionStateDetail]{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[UserQuestionStateDetail]{}, err
 	}
 	return pageOf(items, filter.Page, filter.PageSize), nil
 }
@@ -495,6 +697,96 @@ func scanState(rows *sql.Rows) (UserQuestionState, error) {
 	return scanStateScanner(rows)
 }
 
+func scanCandidates(rows *sql.Rows) ([]QuestionCandidate, error) {
+	items := make([]QuestionCandidate, 0)
+	for rows.Next() {
+		var item QuestionCandidate
+		var contentJSON []byte
+		var answerJSON []byte
+		var analysisJSON []byte
+		if err := rows.Scan(&item.BankID, &item.QuestionID, &item.QuestionVersionID, &item.QuestionType, &contentJSON, &answerJSON, &analysisJSON); err != nil {
+			return nil, err
+		}
+		if err := unmarshalMap(contentJSON, &item.Content); err != nil {
+			return nil, err
+		}
+		if err := unmarshalMap(answerJSON, &item.Answer); err != nil {
+			return nil, err
+		}
+		if err := unmarshalMap(analysisJSON, &item.Analysis); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func scanSessionListItem(scanner interface{ Scan(dest ...any) error }) (PracticeSessionListItem, error) {
+	var item PracticeSessionListItem
+	var bankScopeJSON []byte
+	var endedAt sql.NullTime
+	if err := scanner.Scan(
+		&item.ID,
+		&item.PracticeMode,
+		&item.SourceMode,
+		&bankScopeJSON,
+		&item.StartedAt,
+		&endedAt,
+		&item.Status,
+		&item.TotalCount,
+		&item.AnsweredCount,
+		&item.CorrectCount,
+		&item.WrongCount,
+	); err != nil {
+		return PracticeSessionListItem{}, err
+	}
+	if endedAt.Valid {
+		value := endedAt.Time
+		item.EndedAt = &value
+	}
+	var scope map[string]any
+	if err := unmarshalMap(bankScopeJSON, &scope); err != nil {
+		return PracticeSessionListItem{}, err
+	}
+	item.FlowMode, _ = scope["flow_mode"].(string)
+	item.BankIDs = anyInt64Slice(scope["bank_ids"])
+	if item.AnsweredCount > 0 {
+		item.Accuracy = float64(item.CorrectCount) / float64(item.AnsweredCount)
+	}
+	return item, nil
+}
+
+func (repo *MySQLRepository) latestAnswer(ctx context.Context, userID int64, sessionQuestionID int64) (PracticeAnswer, bool, error) {
+	const query = `
+SELECT id, session_question_id, user_id, question_id, question_version_id, answer_json, is_correct, answered_at
+FROM practice_answers
+WHERE user_id = ? AND session_question_id = ?
+ORDER BY id DESC
+LIMIT 1
+`
+	var item PracticeAnswer
+	var answerJSON []byte
+	if err := repo.db.QueryRowContext(ctx, query, userID, sessionQuestionID).Scan(
+		&item.ID,
+		&item.SessionQuestionID,
+		&item.UserID,
+		&item.QuestionID,
+		&item.QuestionVersionID,
+		&answerJSON,
+		&item.IsCorrect,
+		&item.AnsweredAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return PracticeAnswer{}, false, nil
+		}
+		return PracticeAnswer{}, false, err
+	}
+	if err := unmarshalMap(answerJSON, &item.Answer); err != nil {
+		return PracticeAnswer{}, false, err
+	}
+	return item, true, nil
+}
+
 func scanStateScanner(scanner interface{ Scan(dest ...any) error }) (UserQuestionState, error) {
 	var item UserQuestionState
 	var masteredAt sql.NullTime
@@ -542,6 +834,63 @@ func scanStateScanner(scanner interface{ Scan(dest ...any) error }) (UserQuestio
 	}
 	if lastResult.Valid {
 		item.LastResult = lastResult.String
+	}
+	return item, nil
+}
+
+func scanStateDetail(scanner interface{ Scan(dest ...any) error }) (UserQuestionStateDetail, error) {
+	var item UserQuestionStateDetail
+	var masteredAt sql.NullTime
+	var confusedAt sql.NullTime
+	var lastWrongAt sql.NullTime
+	var lastAnswerJSON []byte
+	var lastResult sql.NullString
+	var contentJSON []byte
+	err := scanner.Scan(
+		&item.ID,
+		&item.TenantID,
+		&item.UserID,
+		&item.QuestionID,
+		&item.QuestionVersionID,
+		&item.PracticeCorrectCount,
+		&item.PracticeWrongCount,
+		&item.ExamWrongCount,
+		&item.IsMastered,
+		&masteredAt,
+		&item.IsConfused,
+		&confusedAt,
+		&lastWrongAt,
+		&lastAnswerJSON,
+		&lastResult,
+		&item.UpdatedAt,
+		&item.QuestionType,
+		&contentJSON,
+	)
+	if err != nil {
+		return UserQuestionStateDetail{}, err
+	}
+	if masteredAt.Valid {
+		value := masteredAt.Time
+		item.MasteredAt = &value
+	}
+	if confusedAt.Valid {
+		value := confusedAt.Time
+		item.ConfusedAt = &value
+	}
+	if lastWrongAt.Valid {
+		value := lastWrongAt.Time
+		item.LastWrongAt = &value
+	}
+	if len(lastAnswerJSON) > 0 {
+		if err := unmarshalMap(lastAnswerJSON, &item.LastAnswer); err != nil {
+			return UserQuestionStateDetail{}, err
+		}
+	}
+	if lastResult.Valid {
+		item.LastResult = lastResult.String
+	}
+	if err := unmarshalMap(contentJSON, &item.Content); err != nil {
+		return UserQuestionStateDetail{}, err
 	}
 	return item, nil
 }

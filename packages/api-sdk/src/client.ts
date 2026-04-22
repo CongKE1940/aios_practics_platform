@@ -84,7 +84,10 @@ export interface ApiClient {
   getImportJob(id: number): Promise<ImportJob>;
   listImportJobRows(id: number, query?: ImportJobRowListQuery): Promise<PageResult<ImportJobRow>>;
   createPracticeSession(body: PracticeSessionInput): Promise<PracticeSessionDetail>;
+  listPracticeSessions(query?: PracticeSessionListQuery): Promise<PageResult<PracticeSessionListItem>>;
   getPracticeSession(id: number): Promise<PracticeSessionDetail>;
+  getPracticeSessionResults(id: number): Promise<PracticeSessionResults>;
+  createPracticeSessionFromQuestions(body: PracticeSessionFromQuestionsInput): Promise<PracticeSessionDetail>;
   nextPracticeQuestion(id: number): Promise<NextPracticeQuestionResult>;
   submitPracticeAnswer(id: number, body: PracticeAnswerInput): Promise<PracticeAnswerResult>;
   finishPracticeSession(id: number): Promise<PracticeSessionSummary>;
@@ -359,6 +362,30 @@ export interface PracticeSessionQuestion {
   is_correct?: boolean | null;
 }
 
+export interface PracticeSessionListQuery {
+  status?: string;
+  flow_mode?: string;
+  practice_mode?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PracticeSessionListItem {
+  id: number;
+  practice_mode: string;
+  source_mode: string;
+  flow_mode: string;
+  bank_ids: number[];
+  status: string;
+  started_at?: string;
+  ended_at?: string | null;
+  total_count: number;
+  answered_count: number;
+  correct_count: number;
+  wrong_count: number;
+  accuracy: number;
+}
+
 export interface PracticeSessionDetail {
   id: number;
   tenant_id: number;
@@ -374,6 +401,25 @@ export interface PracticeSessionDetail {
   round_no: number;
   status: string;
   questions: PracticeSessionQuestion[];
+}
+
+export interface PracticeSessionResults {
+  session: PracticeSessionListItem;
+  questions: PracticeSessionResultQuestion[];
+}
+
+export interface PracticeSessionResultQuestion {
+  session_question_id: number;
+  question_id: number;
+  question_version_id: number;
+  display_order: number;
+  question_type: string;
+  content: QuestionContentInput | Record<string, unknown>;
+  answer?: Record<string, unknown>;
+  correct_answer: Record<string, unknown>;
+  is_correct: boolean;
+  analysis?: Record<string, unknown>;
+  state: UserQuestionState;
 }
 
 export interface NextPracticeQuestionResult {
@@ -402,6 +448,8 @@ export interface UserQuestionState {
   user_id: number;
   question_id: number;
   question_version_id: number;
+  question_type?: string;
+  content?: QuestionContentInput | Record<string, unknown>;
   practice_correct_count: number;
   practice_wrong_count: number;
   exam_wrong_count: number;
@@ -540,6 +588,15 @@ export interface PracticeSessionInput {
   bank_ids: number[];
   exclude_mastered?: boolean;
   question_count?: number;
+  random_seed?: number;
+}
+
+export interface PracticeSessionFromQuestionsInput {
+  question_ids: number[];
+  practice_mode?: string;
+  flow_mode?: string;
+  question_count?: number;
+  exclude_mastered?: boolean;
   random_seed?: number;
 }
 
@@ -789,7 +846,16 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, buildPath(`/import/jobs/${id}/rows`, query), { method: "GET" }),
     createPracticeSession: (body) =>
       request(fetcher, options, "/practice/sessions", { method: "POST", body: JSON.stringify(body) }),
+    listPracticeSessions: (query) =>
+      request(fetcher, options, buildPath("/practice/sessions", query), { method: "GET" }),
     getPracticeSession: (id) => request(fetcher, options, `/practice/sessions/${id}`, { method: "GET" }),
+    getPracticeSessionResults: (id) =>
+      request(fetcher, options, `/practice/sessions/${id}/results`, { method: "GET" }),
+    createPracticeSessionFromQuestions: (body) =>
+      request(fetcher, options, "/practice/sessions/from-questions", {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
     nextPracticeQuestion: (id) =>
       request(fetcher, options, `/practice/sessions/${id}/next-question`, { method: "POST" }),
     submitPracticeAnswer: (id, body) =>
