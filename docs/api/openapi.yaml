@@ -1,0 +1,1136 @@
+openapi: 3.0.3
+info:
+  title: Aios Practice Platform API
+  version: 1.0.0
+  description: 题练通一期正式 OpenAPI 基线。
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: RBAC
+  - name: Tenant
+  - name: Org
+  - name: User
+  - name: QuestionBank
+  - name: Question
+  - name: Practice
+  - name: Exam
+  - name: Notice
+  - name: Notification
+  - name: Import
+  - name: File
+  - name: Analytics
+  - name: Audit
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_code, username, password]
+              properties:
+                tenant_code:
+                  type: string
+                  description: 租户编码，平台系统管理员使用 platform
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 登出
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: 刷新令牌
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: 当前用户
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /menus:
+    get:
+      tags: [RBAC]
+      summary: 菜单树
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [RBAC]
+      summary: 创建菜单
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /menus/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [RBAC]
+      summary: 菜单详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [RBAC]
+      summary: 更新菜单
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    delete:
+      tags: [RBAC]
+      summary: 删除菜单
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /roles:
+    get:
+      tags: [RBAC]
+      summary: 角色列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: page_size
+          schema: { type: integer }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [RBAC]
+      summary: 创建角色
+      requestBody:
+        $ref: '#/components/requestBodies/RoleBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /roles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [RBAC]
+      summary: 更新角色
+      requestBody:
+        $ref: '#/components/requestBodies/RoleBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    delete:
+      tags: [RBAC]
+      summary: 删除角色
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /permissions:
+    get:
+      tags: [RBAC]
+      summary: 权限列表
+      parameters:
+        - in: query
+          name: module
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [RBAC]
+      summary: 创建权限
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /permissions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [RBAC]
+      summary: 更新权限
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /roles/{id}/permissions:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [RBAC]
+      summary: 分配角色权限
+      requestBody:
+        $ref: '#/components/requestBodies/RolePermissionsBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /roles/{id}/menus:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [RBAC]
+      summary: 分配角色菜单
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /roles/{id}/data-scopes:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [RBAC]
+      summary: 配置角色数据范围
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /tenants:
+    get:
+      tags: [Tenant]
+      summary: 租户列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Tenant]
+      summary: 创建租户
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /tenants/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Tenant]
+      summary: 租户详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [Tenant]
+      summary: 更新租户
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /tenants/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Tenant]
+      summary: 禁用租户
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /schools:
+    get:
+      tags: [Org]
+      summary: 学校列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: keyword
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Org]
+      summary: 创建学校
+      requestBody:
+        $ref: '#/components/requestBodies/SchoolBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /schools/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Org]
+      summary: 学校详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [Org]
+      summary: 更新学校
+      requestBody:
+        $ref: '#/components/requestBodies/SchoolBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /schools/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Org]
+      summary: 禁用学校
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /grades:
+    get:
+      tags: [Org]
+      summary: 年级列表
+      parameters:
+        - in: query
+          name: school_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Org]
+      summary: 创建年级
+      requestBody:
+        $ref: '#/components/requestBodies/GradeBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /grades/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Org]
+      summary: 年级详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [Org]
+      summary: 更新年级
+      requestBody:
+        $ref: '#/components/requestBodies/GradeBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /grades/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Org]
+      summary: 禁用年级
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /classes:
+    get:
+      tags: [Org]
+      summary: 班级列表
+      parameters:
+        - in: query
+          name: school_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: grade_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Org]
+      summary: 创建班级
+      requestBody:
+        $ref: '#/components/requestBodies/ClassBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /classes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Org]
+      summary: 班级详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [Org]
+      summary: 更新班级
+      requestBody:
+        $ref: '#/components/requestBodies/ClassBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /classes/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Org]
+      summary: 禁用班级
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /courses:
+    get:
+      tags: [Org]
+      summary: 课程列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: keyword
+          schema: { type: string }
+        - in: query
+          name: active_at
+          schema: { type: string, format: date-time }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Org]
+      summary: 创建课程
+      requestBody:
+        $ref: '#/components/requestBodies/CourseBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /courses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Org]
+      summary: 课程详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [Org]
+      summary: 更新课程
+      requestBody:
+        $ref: '#/components/requestBodies/CourseBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /courses/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Org]
+      summary: 禁用课程
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /users:
+    get:
+      tags: [User]
+      summary: 用户列表
+      parameters:
+        - in: query
+          name: user_type
+          schema: { type: string }
+        - in: query
+          name: keyword
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: page_size
+          schema: { type: integer }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [User]
+      summary: 创建用户
+      requestBody:
+        $ref: '#/components/requestBodies/UserBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [User]
+      summary: 用户详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [User]
+      summary: 更新用户
+      requestBody:
+        $ref: '#/components/requestBodies/UserBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /users/{id}/roles:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [User]
+      summary: 给用户分配角色
+      requestBody:
+        $ref: '#/components/requestBodies/UserRolesBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /users/{id}/reset-password:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [User]
+      summary: 重置密码
+      requestBody:
+        $ref: '#/components/requestBodies/ResetPasswordBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /users/{id}/disable:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [User]
+      summary: 禁用用户
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /students/transitions:
+    post:
+      tags: [User]
+      summary: 学生流转
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /teachers/assignments:
+    post:
+      tags: [User]
+      summary: 教师任课分配
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /teachers/assignments/{id}/end:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [User]
+      summary: 结束教师任课
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /question-banks:
+    get:
+      tags: [QuestionBank]
+      summary: 题库列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [QuestionBank]
+      summary: 创建题库
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /question-banks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [QuestionBank]
+      summary: 更新题库
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /question-banks/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [QuestionBank]
+      summary: 发布题库
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /question-banks/{id}/visibility:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [QuestionBank]
+      summary: 下发题库可见范围
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /questions:
+    get:
+      tags: [Question]
+      summary: 题目列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Question]
+      summary: 创建题目
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /questions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Question]
+      summary: 更新题目主信息
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /questions/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Question]
+      summary: 题目版本列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Question]
+      summary: 新增题目版本
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /questions/{id}/tags:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Question]
+      summary: 设置题目标签
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /questions/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Question]
+      summary: 题目评论
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /questions/{id}/challenges:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Question]
+      summary: 发起题目质疑
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /practice/sessions:
+    post:
+      tags: [Practice]
+      summary: 创建练题会话
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /practice/sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Practice]
+      summary: 练题会话详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /practice/sessions/{id}/answer:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 提交练题答案
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /practice/questions/{id}/mark-mastered:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 标记熟题
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /practice/questions/{id}/mark-confused:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 标记疑惑题
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /user-question-states:
+    get:
+      tags: [Practice]
+      summary: 用户题目状态列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exams:
+    get:
+      tags: [Exam]
+      summary: 考试列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Exam]
+      summary: 创建考试
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exams/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Exam]
+      summary: 更新考试
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exams/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Exam]
+      summary: 发布考试
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exams/{id}/generate-paper:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Exam]
+      summary: 生成试卷
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exams/{id}/attempts:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Exam]
+      summary: 开始考试
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exam-attempts/{id}/answers:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Exam]
+      summary: 保存考试作答
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exam-attempts/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Exam]
+      summary: 交卷
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /exam-attempts/{id}/result:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Exam]
+      summary: 考试结果
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /notices:
+    get:
+      tags: [Notice]
+      summary: 公告列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: notice_type
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Notice]
+      summary: 创建公告
+      requestBody:
+        $ref: '#/components/requestBodies/NoticeBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /notices/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Notice]
+      summary: 公告详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    put:
+      tags: [Notice]
+      summary: 更新公告
+      requestBody:
+        $ref: '#/components/requestBodies/NoticeBody'
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /notices/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Notice]
+      summary: 发布公告
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /notices/{id}/recall:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Notice]
+      summary: 撤回公告
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /notifications:
+    get:
+      tags: [Notification]
+      summary: 通知列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /notifications/{id}/read:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Notification]
+      summary: 标记通知已读
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /import/jobs:
+    get:
+      tags: [Import]
+      summary: 导入任务列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+    post:
+      tags: [Import]
+      summary: 创建导入任务
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [import_type, template_version, file]
+              properties:
+                import_type: { type: string, enum: [question, question_bank, exam] }
+                template_version: { type: string }
+                file: { type: string, format: binary }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /import/jobs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Import]
+      summary: 导入任务详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /import/jobs/{id}/rows:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Import]
+      summary: 导入明细行
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /import/templates/{type}:
+    parameters:
+      - in: path
+        name: type
+        required: true
+        schema: { type: string, enum: [question, question_bank, exam] }
+    get:
+      tags: [Import]
+      summary: 下载导入模板
+      responses:
+        '200':
+          description: 文件流
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+  /files/upload:
+    post:
+      tags: [File]
+      summary: 上传文件
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, usage]
+              properties:
+                file: { type: string, format: binary }
+                usage: { type: string, enum: [question_asset, challenge_attachment, import_file] }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /files/import-url:
+    post:
+      tags: [File]
+      summary: 第三方 URL 转储
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, usage]
+              properties:
+                url: { type: string, format: uri }
+                usage: { type: string, enum: [question_asset, challenge_attachment, import_file] }
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /files/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [File]
+      summary: 文件资产详情
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /analytics/practice-overview:
+    get:
+      tags: [Analytics]
+      summary: 练题概览
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /analytics/exam-overview:
+    get:
+      tags: [Analytics]
+      summary: 考试概览
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /analytics/wrong-questions:
+    get:
+      tags: [Analytics]
+      summary: 错题分析
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /analytics/class-performance:
+    get:
+      tags: [Analytics]
+      summary: 班级表现分析
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: 审计日志列表
+      responses:
+        '200': { $ref: '#/components/responses/Ok' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        format: int64
+  responses:
+    Ok:
+      description: OK
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BaseResponse'
+  requestBodies:
+    RoleBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RoleInput'
+    RolePermissionsBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RolePermissionsInput'
+    UserBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserInput'
+    UserRolesBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserRolesInput'
+    ResetPasswordBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResetPasswordInput'
+    NoticeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NoticeInput'
+    SchoolBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SchoolInput'
+    GradeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GradeInput'
+    ClassBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassInput'
+    CourseBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CourseInput'
+  schemas:
+    BaseResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          nullable: true
+        request_id:
+          type: string
+    SchoolInput:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+    GradeInput:
+      type: object
+      required: [school_id, code, name, grade_level]
+      properties:
+        school_id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        grade_level:
+          type: integer
+        school_year:
+          type: string
+          nullable: true
+    ClassInput:
+      type: object
+      required: [school_id, grade_id, code, name]
+      properties:
+        school_id:
+          type: integer
+          format: int64
+        grade_id:
+          type: integer
+          format: int64
+        code:
+          type: string
+        name:
+          type: string
+        class_no:
+          type: integer
+          nullable: true
+    NoticeInput:
+      type: object
+      required: [title, content, notice_type, publish_scope_type, publish_scope, publish_at]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        notice_type:
+          type: string
+        publish_scope_type:
+          type: string
+        publish_scope:
+          type: object
+          additionalProperties: true
+        publish_at:
+          type: string
+          format: date-time
+        expire_at:
+          type: string
+          format: date-time
+          nullable: true
+    RoleInput:
+      type: object
+      required: [code, name, role_type, data_scope_type]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        role_type:
+          type: string
+        data_scope_type:
+          type: string
+        remark:
+          type: string
+          nullable: true
+    RolePermissionsInput:
+      type: object
+      required: [permission_ids]
+      properties:
+        permission_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    UserInput:
+      type: object
+      required: [username, display_name, user_type]
+      properties:
+        username:
+          type: string
+        display_name:
+          type: string
+        user_type:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+        role_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    UserRolesInput:
+      type: object
+      required: [role_ids]
+      properties:
+        role_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    ResetPasswordInput:
+      type: object
+      required: [new_password]
+      properties:
+        new_password:
+          type: string
+    CourseInput:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        end_at:
+          type: string
+          format: date-time
+          nullable: true
+        description:
+          type: string
+          nullable: true

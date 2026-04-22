@@ -1,0 +1,60 @@
+CREATE TABLE users (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  tenant_id BIGINT NOT NULL,
+  username VARCHAR(64) NOT NULL,
+  phone VARCHAR(32) NULL,
+  email VARCHAR(128) NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  display_name VARCHAR(128) NOT NULL,
+  user_type VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  last_login_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3) NULL,
+  UNIQUE KEY uk_users_tenant_username (tenant_id, username),
+  UNIQUE KEY uk_users_tenant_phone (tenant_id, phone),
+  UNIQUE KEY uk_users_tenant_email (tenant_id, email),
+  KEY idx_users_tenant_status (tenant_id, status),
+  KEY idx_users_type (user_type),
+  CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE student_profiles (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  tenant_id BIGINT NOT NULL,
+  school_id BIGINT NOT NULL,
+  student_no VARCHAR(64) NULL,
+  enrollment_status VARCHAR(32) NOT NULL DEFAULT 'active',
+  entered_at DATETIME(3) NULL,
+  graduated_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uk_student_profiles_user (user_id),
+  UNIQUE KEY uk_student_profiles_tenant_no (tenant_id, student_no),
+  KEY idx_student_profiles_school_status (school_id, enrollment_status),
+  CONSTRAINT fk_student_profiles_user FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_student_profiles_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_student_profiles_school FOREIGN KEY (school_id) REFERENCES schools(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE teacher_profiles (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  tenant_id BIGINT NOT NULL,
+  school_id BIGINT NOT NULL,
+  teacher_no VARCHAR(64) NULL,
+  employment_status VARCHAR(32) NOT NULL DEFAULT 'active',
+  hired_at DATETIME(3) NULL,
+  left_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uk_teacher_profiles_user (user_id),
+  UNIQUE KEY uk_teacher_profiles_tenant_no (tenant_id, teacher_no),
+  KEY idx_teacher_profiles_school_status (school_id, employment_status),
+  CONSTRAINT fk_teacher_profiles_user FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_teacher_profiles_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  CONSTRAINT fk_teacher_profiles_school FOREIGN KEY (school_id) REFERENCES schools(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

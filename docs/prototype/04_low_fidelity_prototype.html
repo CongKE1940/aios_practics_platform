@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>题练通 - 低保真原型</title>
+  <style>
+    :root { --bg:#f5f7fb; --card:#fff; --line:#dfe6f1; --text:#1f2937; --sub:#6b7280; --primary:#2563eb; --soft:#eef4ff; --ok:#16a34a; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+    .shell { display:grid; grid-template-columns:260px 1fr; min-height:100vh; }
+    .sidebar { position:sticky; top:0; height:100vh; padding:24px; background:#0f172a; color:#fff; }
+    .sidebar a { display:block; color:rgba(255,255,255,.88); text-decoration:none; padding:8px 10px; border-radius:8px; margin-bottom:6px; }
+    .sidebar a:hover { background:rgba(255,255,255,.08); }
+    .content { padding:32px; }
+    .hero,.section,.page-card { max-width:1280px; margin:0 auto 24px; }
+    .hero { background:linear-gradient(135deg,#fff,#eef4ff); border:1px solid var(--line); border-radius:18px; padding:28px; }
+    .chip { display:inline-block; margin:8px 10px 0 0; background:var(--soft); color:var(--primary); padding:8px 12px; border-radius:999px; font-size:13px; font-weight:600; }
+    .page-card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:0 10px 30px rgba(15,23,42,.04); }
+    .wire { background:#fafcff; border:1px dashed #b8c4d9; border-radius:14px; padding:14px; display:grid; gap:12px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:20px; }
+    .topbar,.toolbar,.stat-row,.table-head,.list-row,.footer-actions { display:grid; gap:10px; }
+    .topbar { grid-template-columns:1.2fr .8fr .5fr; }
+    .toolbar { grid-template-columns:repeat(4,1fr); }
+    .stat-row { grid-template-columns:repeat(4,1fr); }
+    .table-head,.list-row { grid-template-columns:1.1fr 1fr .8fr .8fr .8fr; }
+    .footer-actions { grid-template-columns:repeat(3,140px); justify-content:end; }
+    .block { background:#fff; border:1px solid #d8e0ef; border-radius:10px; min-height:42px; padding:10px 12px; color:#64748b; display:flex; align-items:center; justify-content:center; text-align:center; font-size:13px; }
+    .block.tall { min-height:120px; }
+    .block.blue { background:#eef4ff; color:#1d4ed8; border-color:#bfd1ff; }
+    .block.green { background:#effcf5; color:#15803d; border-color:#b7ebc8; }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <h1>题练通原型</h1>
+    <p>一期网页端低保真原型，强调一页一功能、居中布局、清晰留白。</p>
+    <a href="#overview">总览</a>
+    <a href="#admin-dashboard">管理端工作台</a>
+    <a href="#bank-manage">题库管理</a>
+    <a href="#question-editor">题目编辑器</a>
+    <a href="#exam-builder">随机组卷</a>
+    <a href="#practice-page">练题页</a>
+    <a href="#exam-page">考试页</a>
+    <a href="#challenge-page">质疑处理</a>
+    <a href="#analytics-page">数据看板</a>
+  </aside>
+  <main class="content">
+    <section class="hero" id="overview">
+      <h2>题练通：管理端 + 用户端 + 多租户 + 题库/考试闭环</h2>
+      <p>所有示意块仅用于表达布局与交互意图，不代表最终视觉稿。建议与《页面设计与交互说明》配合查看。</p>
+      <span class="chip">一期：网页端</span><span class="chip">预留：手机/平板</span><span class="chip">题库下发</span><span class="chip">练题闭环</span><span class="chip">随机组卷</span>
+    </section>
+
+    <section class="section" id="admin-dashboard"><h3>管理端工作台</h3><div class="page-card"><div class="wire"><div class="topbar"><div class="block blue">页面标题 + 日期区间</div><div class="block">租户切换 / 当前范围</div><div class="block green">发布公告</div></div><div class="stat-row"><div class="block">租户数</div><div class="block">题库总数</div><div class="block">考试进行中</div><div class="block">待处理质疑</div></div><div class="grid"><div class="block tall">趋势图：练题与考试</div><div class="block tall">公告 / 通知</div></div></div></div></section>
+
+    <section class="section" id="bank-manage"><h3>题库管理</h3><div class="page-card"><div class="wire"><div class="topbar"><div class="block blue">页面标题 + 题库总数</div><div class="block">标签 / 课程 / 层级筛选</div><div class="block green">创建题库</div></div><div class="toolbar"><div class="block">课程筛选</div><div class="block">归属层级</div><div class="block">状态</div><div class="block">关键字搜索</div></div><div class="table-head"><div class="block">题库名称</div><div class="block">课程</div><div class="block">题数</div><div class="block">状态</div><div class="block">操作</div></div><div class="list-row"><div class="block">七年级数学基础题库</div><div class="block">数学</div><div class="block">256</div><div class="block">已发布</div><div class="block">详情 / 下发 / 查看题目</div></div></div></div></section>
+
+    <section class="section" id="question-editor"><h3>题目编辑器</h3><div class="page-card"><div class="wire"><div class="grid"><div class="block tall">基础信息：题型 / 课程 / 标签 / 难度</div><div class="block tall">实时预览区</div></div><div class="block tall">题干编辑区（支持文字 / 图片 / 混合）</div><div class="grid"><div class="block tall">选项编辑区（动态增删、拖拽排序）</div><div class="block tall">答案区 + 解析区</div></div><div class="footer-actions"><div class="block">保存草稿</div><div class="block">预览</div><div class="block green">保存并发布</div></div></div></div></section>
+
+    <section class="section" id="exam-builder"><h3>随机组卷</h3><div class="page-card"><div class="wire"><div class="grid"><div class="block tall">左侧规则表单：题型数量 / 分值 / 知识点 / 目标班级 / 时间</div><div class="block tall">右侧摘要：题量充足性 / 总分 / 风险提示 / 预览结果</div></div><div class="footer-actions"><div class="block">保存模板</div><div class="block">生成预览</div><div class="block green">立即发布</div></div></div></div></section>
+
+    <section class="section" id="practice-page"><h3>练题页</h3><div class="page-card"><div class="wire"><div class="topbar"><div class="block blue">题库来源 + 题号进度</div><div class="block">模式：随机 / 多题库 / 排除熟题</div><div class="block">退出练习</div></div><div class="block tall">题干区（文字 / 图片 / 混合）</div><div class="grid"><div class="block tall">选项区（支持超过 4 个选项）</div><div class="block tall">辅助区：标签 / 评论摘要 / 历史状态</div></div><div class="footer-actions"><div class="block">标记疑惑</div><div class="block">提交答案</div><div class="block green">下一题</div></div></div></div></section>
+
+    <section class="section" id="exam-page"><h3>考试作答页</h3><div class="page-card"><div class="wire"><div class="topbar"><div class="block blue">考试名称 + 当前题号</div><div class="block">剩余时间 00:42:18</div><div class="block green">交卷</div></div><div class="grid"><div class="block tall">题目区：题干 + 选项 + 上一题/下一题</div><div class="block tall">答题卡 / 已答未答状态</div></div></div></div></section>
+
+    <section class="section" id="challenge-page"><h3>质疑处理中心</h3><div class="page-card"><div class="wire"><div class="grid"><div class="block tall">左：待处理质疑列表</div><div class="block tall">中：题目当前版本 / 历史版本 / 质疑内容对照</div><div class="block tall">右：处理意见、修改建议、驳回原因</div></div><div class="footer-actions"><div class="block">退回补充</div><div class="block">驳回</div><div class="block green">通过并生成新版本</div></div></div></div></section>
+
+    <section class="section" id="analytics-page"><h3>数据看板</h3><div class="page-card"><div class="wire"><div class="toolbar"><div class="block">时间范围</div><div class="block">租户 / 年级 / 班级</div><div class="block">课程</div><div class="block">题库 / 考试</div></div><div class="stat-row"><div class="block">练题人数</div><div class="block">平均正确率</div><div class="block">错题 Top 标签</div><div class="block">考试参与率</div></div><div class="grid"><div class="block tall">趋势图：练题次数 / 正确率</div><div class="block tall">排行：班级 / 老师 / 课程</div></div></div></div></section>
+  </main>
+</div>
+</body>
+</html>

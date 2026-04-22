@@ -1,0 +1,2 @@
+exam_title,class_name,course_name,start_at,end_at,duration_minutes,total_score,question_type,score_per_question,question_count,knowledge_tags
+期中测试,一年级一班,数学,2026-05-01 09:00:00,2026-05-01 10:00:00,60,100,single_choice,5,10,加法;减法

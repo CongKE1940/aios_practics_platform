@@ -1,0 +1,210 @@
+openapi: 3.0.3
+info:
+  title: Quiz System API Draft
+  version: 0.1.0
+  description: >-
+    Draft API for the quiz and exam system. Supports multi-tenant school/organization
+    management, question banks, practice, exams, tagging, questioning, and analytics.
+servers:
+  - url: /api/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        data:
+          nullable: true
+    PageResponse:
+      type: object
+      properties:
+        list:
+          type: array
+          items:
+            type: object
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    Tenant:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, enum: [system, school, organization] }
+        status: { type: string, enum: [enabled, disabled] }
+    QuestionOption:
+      type: object
+      properties:
+        optionId: { type: string }
+        contentType: { type: string, enum: [text, image] }
+        content: { type: string }
+        sortOrder: { type: integer }
+        isCorrect: { type: boolean }
+    Question:
+      type: object
+      properties:
+        id: { type: string }
+        bankId: { type: string }
+        courseId: { type: string, nullable: true }
+        stemType: { type: string, enum: [text, image] }
+        stemContent: { type: string }
+        questionType: { type: string, enum: [single_choice, multiple_choice, true_false] }
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+        difficulty: { type: string }
+        explanation: { type: string, nullable: true }
+        status: { type: string, enum: [draft, published, archived] }
+    Exam:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        courseId: { type: string }
+        classId: { type: string }
+        totalScore: { type: integer }
+        durationMinutes: { type: integer }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: OK
+  /tenants:
+    get:
+      summary: List tenants visible to current user
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create tenant
+      responses:
+        '200': { description: OK }
+  /org/classes:
+    get:
+      summary: List classes
+      responses:
+        '200': { description: OK }
+  /courses:
+    get:
+      summary: List courses
+      responses:
+        '200': { description: OK }
+  /question-banks:
+    get:
+      summary: List question banks
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create question bank
+      responses:
+        '200': { description: OK }
+  /questions:
+    get:
+      summary: Query questions by bank, tags, course, status
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create question
+      responses:
+        '200': { description: OK }
+  /questions/import:
+    post:
+      summary: Import questions from template file
+      responses:
+        '200': { description: OK }
+  /questions/{questionId}/comments:
+    post:
+      summary: Add question comment
+      parameters:
+        - in: path
+          name: questionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /questions/{questionId}/challenges:
+    post:
+      summary: Submit question challenge or correction request
+      parameters:
+        - in: path
+          name: questionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /practice/sessions:
+    post:
+      summary: Start practice session with sequential or random mode
+      responses:
+        '200': { description: OK }
+  /practice/sessions/{sessionId}/submit:
+    post:
+      summary: Submit a practice answer
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /exams:
+    get:
+      summary: List exams
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Create exam or random paper generation rule
+      responses:
+        '200': { description: OK }
+  /exams/{examId}/publish:
+    post:
+      summary: Publish exam to target classes
+      parameters:
+        - in: path
+          name: examId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /exam-sessions/{sessionId}/submit:
+    post:
+      summary: Submit full exam paper
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /analytics/overview:
+    get:
+      summary: Overview analytics for admins
+      responses:
+        '200': { description: OK }

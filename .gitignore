@@ -1,0 +1,47 @@
+# 本地环境与敏感配置
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# 依赖与缓存
+node_modules/
+.pnpm-store/
+.turbo/
+.vite/
+.vitest/
+coverage/
+dist/
+build/
+tmp/
+temp/
+logs/
+*.log
+
+# Go 构建产物
+bin/
+*.exe
+*.test
+*.out
+*.prof
+vendor/
+
+# IDE 与系统文件
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# 数据库与导入导出临时文件
+*.dump
+*.sql.gz
+*.xlsx
+*.xls
+uploads/
+exports/

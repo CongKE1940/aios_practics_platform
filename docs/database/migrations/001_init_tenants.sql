@@ -1,0 +1,14 @@
+CREATE TABLE tenants (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  code VARCHAR(64) NOT NULL,
+  name VARCHAR(128) NOT NULL,
+  tenant_type VARCHAR(32) NOT NULL DEFAULT 'school',
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  remark VARCHAR(255) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3) NULL,
+  UNIQUE KEY uk_tenants_code (code),
+  KEY idx_tenants_type_status (tenant_type, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

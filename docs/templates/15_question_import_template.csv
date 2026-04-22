@@ -1,0 +1,2 @@
+bank_name,course_name,question_type,stem_type,stem_content,option_a,option_b,option_c,option_d,option_e,option_f,correct_options,analysis,difficulty,system_tags
+示例题库,数学,single_choice,text,1+1=?,1,2,3,,,,B,因为1+1=2,easy,加法;基础
