@@ -72,6 +72,119 @@ LIMIT 1
 	}
 }
 
+func TestMySQLRepositoryListClassCourseOptionsForTeacherUsesAssignmentScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  c.id AS class_id,
+  c.name AS class_name,
+  co.id AS course_id,
+  co.name AS course_name
+FROM teacher_class_course_assignments tcca
+JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
+JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
+WHERE tcca.tenant_id = ? AND tcca.teacher_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  AND c.status = 'active' AND c.deleted_at IS NULL
+  AND co.status = 'active' AND co.deleted_at IS NULL
+ORDER BY c.name ASC, co.name ASC
+`)).
+		WithArgs(int64(7), int64(88)).
+		WillReturnRows(sqlmock.NewRows([]string{"class_id", "class_name", "course_id", "course_name"}).
+			AddRow(int64(301), "七年级一班", int64(10), "数学").
+			AddRow(int64(301), "七年级一班", int64(11), "英语"))
+
+	items, err := repo.ListClassCourseOptions(context.Background(), Scope{
+		TenantID: 7,
+		UserID:   88,
+		UserType: "teacher",
+	})
+	if err != nil {
+		t.Fatalf("ListClassCourseOptions() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(items))
+	}
+	if items[0].ClassID != 301 || items[0].ClassName != "七年级一班" {
+		t.Fatalf("class option = %+v", items[0])
+	}
+	if len(items[0].Courses) != 2 {
+		t.Fatalf("courses len = %d, want 2", len(items[0].Courses))
+	}
+	if items[0].Courses[0].CourseID != 10 || items[0].Courses[1].CourseID != 11 {
+		t.Fatalf("courses = %+v", items[0].Courses)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryListClassCourseOptionsForAdminGroupsAndDedupes(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  c.id AS class_id,
+  c.name AS class_name,
+  co.id AS course_id,
+  co.name AS course_name
+FROM teacher_class_course_assignments tcca
+JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
+JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
+WHERE tcca.tenant_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  AND c.status = 'active' AND c.deleted_at IS NULL
+  AND co.status = 'active' AND co.deleted_at IS NULL
+ORDER BY c.name ASC, co.name ASC
+`)).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"class_id", "class_name", "course_id", "course_name"}).
+			AddRow(int64(302), "七年级二班", int64(12), "英语").
+			AddRow(int64(301), "七年级一班", int64(10), "数学").
+			AddRow(int64(301), "七年级一班", int64(10), "数学").
+			AddRow(int64(301), "七年级一班", int64(11), "英语"))
+
+	items, err := repo.ListClassCourseOptions(context.Background(), Scope{
+		TenantID: 7,
+		UserType: "sys_admin",
+	})
+	if err != nil {
+		t.Fatalf("ListClassCourseOptions() error = %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items len = %d, want 2", len(items))
+	}
+	if items[0].ClassID != 301 || items[0].ClassName != "七年级一班" {
+		t.Fatalf("first class option = %+v", items[0])
+	}
+	if len(items[0].Courses) != 2 {
+		t.Fatalf("first courses len = %d, want 2", len(items[0].Courses))
+	}
+	if items[0].Courses[0].CourseID != 10 || items[0].Courses[1].CourseID != 11 {
+		t.Fatalf("first courses = %+v", items[0].Courses)
+	}
+	if items[1].ClassID != 302 || items[1].ClassName != "七年级二班" {
+		t.Fatalf("second class option = %+v", items[1])
+	}
+	if len(items[1].Courses) != 1 || items[1].Courses[0].CourseID != 12 {
+		t.Fatalf("second courses = %+v", items[1].Courses)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryClassCourseExistsUsesTenantClassAndCourse(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

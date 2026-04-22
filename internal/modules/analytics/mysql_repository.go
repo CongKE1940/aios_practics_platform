@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"time"
 )
 
@@ -51,6 +52,99 @@ LIMIT 1
 		return false, err
 	}
 	return true, nil
+}
+
+func (repo *MySQLRepository) ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error) {
+	const teacherQuery = `
+SELECT
+  c.id AS class_id,
+  c.name AS class_name,
+  co.id AS course_id,
+  co.name AS course_name
+FROM teacher_class_course_assignments tcca
+JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
+JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
+WHERE tcca.tenant_id = ? AND tcca.teacher_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  AND c.status = 'active' AND c.deleted_at IS NULL
+  AND co.status = 'active' AND co.deleted_at IS NULL
+ORDER BY c.name ASC, co.name ASC
+`
+	const tenantQuery = `
+SELECT
+  c.id AS class_id,
+  c.name AS class_name,
+  co.id AS course_id,
+  co.name AS course_name
+FROM teacher_class_course_assignments tcca
+JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
+JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
+WHERE tcca.tenant_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  AND c.status = 'active' AND c.deleted_at IS NULL
+  AND co.status = 'active' AND co.deleted_at IS NULL
+ORDER BY c.name ASC, co.name ASC
+`
+
+	query := tenantQuery
+	args := []any{scope.TenantID}
+	if scope.UserType == "teacher" {
+		query = teacherQuery
+		args = append(args, scope.UserID)
+	}
+
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	options := make([]ClassCourseOption, 0)
+	classIndex := make(map[int64]int)
+	seenPairs := make(map[[2]int64]struct{})
+	for rows.Next() {
+		var classID, courseID int64
+		var className, courseName string
+		if err := rows.Scan(&classID, &className, &courseID, &courseName); err != nil {
+			return nil, err
+		}
+		pair := [2]int64{classID, courseID}
+		if _, exists := seenPairs[pair]; exists {
+			continue
+		}
+		seenPairs[pair] = struct{}{}
+
+		index, exists := classIndex[classID]
+		if !exists {
+			options = append(options, ClassCourseOption{
+				ClassID:   classID,
+				ClassName: className,
+				Courses:   make([]CourseOptionItem, 0),
+			})
+			index = len(options) - 1
+			classIndex[classID] = index
+		}
+		options[index].Courses = append(options[index].Courses, CourseOptionItem{
+			CourseID:   courseID,
+			CourseName: courseName,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(options, func(i, j int) bool {
+		if options[i].ClassName == options[j].ClassName {
+			return options[i].ClassID < options[j].ClassID
+		}
+		return options[i].ClassName < options[j].ClassName
+	})
+	for i := range options {
+		sort.Slice(options[i].Courses, func(j, k int) bool {
+			if options[i].Courses[j].CourseName == options[i].Courses[k].CourseName {
+				return options[i].Courses[j].CourseID < options[i].Courses[k].CourseID
+			}
+			return options[i].Courses[j].CourseName < options[i].Courses[k].CourseName
+		})
+	}
+	return options, nil
 }
 
 func (repo *MySQLRepository) GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error) {
