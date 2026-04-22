@@ -94,6 +94,7 @@ export interface ApiClient {
   markPracticeQuestionMastered(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
+  getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
   updateRole(id: number, body: RoleInput): Promise<RoleItem>;
@@ -466,6 +467,42 @@ export interface UserQuestionState {
   updated_at?: string;
 }
 
+export interface ClassPracticeSummary {
+  class_id: number;
+  class_name: string;
+  course_id: number;
+  course_name: string;
+  student_count: number;
+  participated_student_count: number;
+  session_count: number;
+  answered_count: number;
+  correct_count: number;
+  wrong_count: number;
+  accuracy: number;
+  wrong_question_count: number;
+  confused_question_count: number;
+  last_practiced_at?: string | null;
+}
+
+export interface ClassPracticeStudentItem {
+  student_id: number;
+  student_name: string;
+  student_no?: string | null;
+  session_count: number;
+  answered_count: number;
+  correct_count: number;
+  wrong_count: number;
+  accuracy: number;
+  wrong_question_count: number;
+  confused_question_count: number;
+  last_practiced_at?: string | null;
+}
+
+export interface ClassPracticeSummaryResult {
+  summary: ClassPracticeSummary;
+  students: PageResult<ClassPracticeStudentItem>;
+}
+
 export interface RoleItem {
   id: number;
   tenant_id: number;
@@ -740,6 +777,15 @@ export interface UserQuestionStateListQuery {
   page_size?: number;
 }
 
+export interface ClassPracticeSummaryQuery {
+  class_id: number;
+  course_id: number;
+  start_at?: string;
+  end_at?: string;
+  page?: number;
+  page_size?: number;
+}
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const fetcher = options.fetch ?? globalThis.fetch;
   if (!fetcher) {
@@ -872,6 +918,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/practice/questions/${id}/mark-confused`, { method: "POST", body: JSON.stringify(body) }),
     listUserQuestionStates: (query) =>
       request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
+    getClassPracticeSummary: (query) =>
+      request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),
     createRole: (body) => request(fetcher, options, "/roles", { method: "POST", body: JSON.stringify(body) }),
     updateRole: (id, body) =>

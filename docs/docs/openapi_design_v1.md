@@ -2200,6 +2200,80 @@ QuestionAnswer:
 
 ---
 
+## 16.5 老师侧班级课程练题概览
+
+### GET `/api/v1/analytics/class-practice-summary`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，后端按 `teacher_class_course_assignments` 校验当前老师是否正在任教该班级课程。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 租户范围查看。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `start_at`：可选，统计开始时间，RFC3339 格式。
+- `end_at`：可选，统计结束时间，RFC3339 格式。
+- `page`：可选，学生明细页码，默认 1。
+- `page_size`：可选，学生明细分页大小，默认 20，最大 100。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学",
+      "student_count": 42,
+      "participated_student_count": 35,
+      "session_count": 120,
+      "answered_count": 1800,
+      "correct_count": 1440,
+      "wrong_count": 360,
+      "accuracy": 0.8,
+      "wrong_question_count": 80,
+      "confused_question_count": 24,
+      "last_practiced_at": "2026-04-22T10:00:00+08:00"
+    },
+    "students": {
+      "items": [
+        {
+          "student_id": 7,
+          "student_name": "李同学",
+          "student_no": "stu_007",
+          "session_count": 3,
+          "answered_count": 30,
+          "correct_count": 24,
+          "wrong_count": 6,
+          "accuracy": 0.8,
+          "wrong_question_count": 4,
+          "confused_question_count": 1,
+          "last_practiced_at": "2026-04-22T10:00:00+08:00"
+        }
+      ],
+      "page": 1,
+      "page_size": 20,
+      "total": 42
+    }
+  },
+  "request_id": "req_analytics_class_1"
+}
+```
+
+### 统计口径
+- 班级学生范围来自当前 `current` 状态的学生班级归属。
+- `session_count` 按练题会话开始时间统计。
+- `answered_count`、`correct_count`、`wrong_count` 按答题时间统计。
+- `wrong_question_count` 和 `confused_question_count` 仅统计当前课程下有效题库与有效题目。
+- 阶段 2F 暂不新增统计表，直接基于现有练题会话、答题记录和用户题目状态实时聚合。
+
+---
+
 ## 17. 审计接口（可选开放）
 
 ## 17.1 审计日志列表

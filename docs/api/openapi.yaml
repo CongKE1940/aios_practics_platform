@@ -1083,6 +1083,57 @@ paths:
       summary: 班级表现分析
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /analytics/class-practice-summary:
+    get:
+      tags: [Analytics]
+      summary: 老师侧班级课程练题概览
+      operationId: getClassPracticeSummary
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: start_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计开始时间，RFC3339 格式。
+        - in: query
+          name: end_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计结束时间，RFC3339 格式。
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/ClassPracticeSummaryOk' }
   /audit-logs:
     get:
       tags: [Audit]
@@ -1212,6 +1263,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserQuestionStatePageResponse'
+    ClassPracticeSummaryOk:
+      description: 班级课程练题概览和学生明细
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassPracticeSummaryResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -2168,6 +2225,94 @@ components:
           type: integer
         wrong_count:
           type: integer
+    ClassPracticeSummary:
+      type: object
+      required: [class_id, class_name, course_id, course_name, student_count, participated_student_count, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
+      properties:
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+        student_count:
+          type: integer
+        participated_student_count:
+          type: integer
+        session_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        wrong_question_count:
+          type: integer
+        confused_question_count:
+          type: integer
+        last_practiced_at:
+          type: string
+          format: date-time
+          nullable: true
+    ClassPracticeStudentItem:
+      type: object
+      required: [student_id, student_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
+      properties:
+        student_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        session_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        wrong_question_count:
+          type: integer
+        confused_question_count:
+          type: integer
+        last_practiced_at:
+          type: string
+          format: date-time
+          nullable: true
+    ClassPracticeSummaryResult:
+      type: object
+      required: [summary, students]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ClassPracticeSummary'
+        students:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ClassPracticeStudentItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
     QuestionBankResponse:
       type: object
       properties:
@@ -2421,5 +2566,16 @@ components:
               type: integer
             total:
               type: integer
+        request_id:
+          type: string
+    ClassPracticeSummaryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ClassPracticeSummaryResult'
         request_id:
           type: string

@@ -10,6 +10,7 @@ import (
 
 	"aios_practice_platform/internal/bootstrap"
 	"aios_practice_platform/internal/common/config"
+	"aios_practice_platform/internal/modules/analytics"
 	"aios_practice_platform/internal/modules/auth"
 	"aios_practice_platform/internal/modules/fileasset"
 	"aios_practice_platform/internal/modules/importjob"
@@ -65,6 +66,10 @@ func main() {
 			practice.NewService(practice.NewMySQLRepository(db)),
 			issuer,
 		)
+		analyticsHandler := analytics.NewHandler(
+			analytics.NewService(analytics.NewMySQLRepository(db)),
+			issuer,
+		)
 		noticeHandler := notice.NewHandler(
 			notice.NewService(notice.NewMySQLRepository(db)),
 			issuer,
@@ -78,6 +83,7 @@ func main() {
 			bootstrap.WithAPIV1Routes(questionHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(importHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(practiceHandler.RegisterRoutes),
+			bootstrap.WithAPIV1Routes(analyticsHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(menuHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(rbacAdminHandler.RegisterAdminRoutes),
 			bootstrap.WithAPIV1Routes(fileHandler.RegisterRoutes),

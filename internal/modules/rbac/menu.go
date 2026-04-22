@@ -102,6 +102,7 @@ var userMenus = []menuDef{
 			{id: 24, name: "错题本", path: "/app/practice/wrong", requiredPermissions: []string{"practice:use"}},
 			{id: 25, name: "熟题本", path: "/app/practice/mastered", requiredPermissions: []string{"practice:use"}},
 			{id: 26, name: "疑惑题", path: "/app/practice/confused", requiredPermissions: []string{"practice:use"}},
+			{id: 27, name: "班级学习", path: "/app/class-learning", requiredPermissions: []string{"analytics:view"}},
 		},
 	},
 }

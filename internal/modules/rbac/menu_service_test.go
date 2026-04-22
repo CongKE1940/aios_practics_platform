@@ -87,3 +87,33 @@ func TestBuildUserMenusIncludesPracticeReviewEntries(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildUserMenusIncludesClassLearningWithAnalyticsPermission(t *testing.T) {
+	menus := BuildMenus("user", []string{"practice:use", "analytics:view"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	if len(menus[0].Children) != 7 {
+		t.Fatalf("len(children) = %d", len(menus[0].Children))
+	}
+	if menus[0].Children[6].Path != "/app/class-learning" {
+		t.Fatalf("class learning path = %q", menus[0].Children[6].Path)
+	}
+	if menus[0].Children[6].Name != "班级学习" {
+		t.Fatalf("class learning name = %q", menus[0].Children[6].Name)
+	}
+}
+
+func TestBuildUserMenusHidesClassLearningWithoutAnalyticsPermission(t *testing.T) {
+	menus := BuildMenus("user", []string{"practice:use"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	for _, child := range menus[0].Children {
+		if child.Path == "/app/class-learning" {
+			t.Fatalf("class learning should be hidden without analytics:view")
+		}
+	}
+}

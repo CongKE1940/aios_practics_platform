@@ -1210,6 +1210,78 @@ describe("createApiClient", () => {
     expect(createInit?.body).toBe(JSON.stringify(body));
   });
 
+  it("queries class practice summary analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学",
+              student_count: 2,
+              participated_student_count: 1,
+              session_count: 3,
+              answered_count: 20,
+              correct_count: 16,
+              wrong_count: 4,
+              accuracy: 0.8,
+              wrong_question_count: 2,
+              confused_question_count: 1
+            },
+            students: {
+              items: [
+                {
+                  student_id: 7,
+                  student_name: "李同学",
+                  student_no: "stu_007",
+                  session_count: 2,
+                  answered_count: 12,
+                  correct_count: 9,
+                  wrong_count: 3,
+                  accuracy: 0.75,
+                  wrong_question_count: 2,
+                  confused_question_count: 1,
+                  last_practiced_at: "2026-04-22T10:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getClassPracticeSummary({
+      class_id: 301,
+      course_id: 10,
+      start_at: "2026-04-01T00:00:00+08:00",
+      end_at: "2026-04-22T23:59:59+08:00",
+      page: 1,
+      page_size: 20
+    });
+    expect(result.summary.accuracy).toBe(0.8);
+    expect(result.students.items[0].student_name).toBe("李同学");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/class-practice-summary?class_id=301&course_id=10&start_at=2026-04-01T00%3A00%3A00%2B08%3A00&end_at=2026-04-22T23%3A59%3A59%2B08%3A00&page=1&page_size=20"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

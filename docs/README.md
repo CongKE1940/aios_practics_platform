@@ -34,7 +34,8 @@
 18. `docs/23_stage2c_implementation_status.md`
 19. `docs/24_stage2d_implementation_status.md`
 20. `docs/25_stage2e_implementation_status.md`
-21. `templates/` 下的导入模板
+21. `docs/26_stage2f_implementation_status.md`
+22. `templates/` 下的导入模板
 
 ### 给你自己的阅读顺序
 1. `docs/01_prd_quiz_system.md`
@@ -69,6 +70,7 @@
 - `docs/23_stage2c_implementation_status.md`：阶段 2C 练题核心链路实施状态
 - `docs/24_stage2d_implementation_status.md`：阶段 2D 练题记录与复习闭环实施状态
 - `docs/25_stage2e_implementation_status.md`：阶段 2E 课程来源练题实施状态
+- `docs/26_stage2f_implementation_status.md`：阶段 2F 老师侧班级学习页实施状态
 - `templates/14_acceptance_checklist.csv`：验收清单
 - `templates/15_question_import_template.csv`：题目导入模板
 - `templates/16_bank_import_template.csv`：题库导入模板

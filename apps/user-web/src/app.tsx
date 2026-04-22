@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { createApiClient, type PracticeSessionDetail } from "@aios/api-sdk";
 
+import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
 import { PracticePanel, type PracticePanelApi } from "./practice-panel";
 import {
   PracticeHistoryPage,
@@ -12,13 +13,13 @@ import {
 } from "./practice-review-pages";
 
 interface UserAppProps {
-  practiceApi?: PracticePanelApi & PracticeReviewApi;
+  practiceApi?: PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>;
 }
 
 export function UserApp({ practiceApi }: UserAppProps) {
   const [selectedPath, setSelectedPath] = useState("/app/courses");
   const [pendingPracticeSession, setPendingPracticeSession] = useState<PracticeSessionDetail | null>(null);
-  const currentPracticeApi = useMemo<(PracticePanelApi & PracticeReviewApi) | undefined>(() => {
+  const currentPracticeApi = useMemo<(PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined>(() => {
     if (practiceApi) {
       return practiceApi;
     }
@@ -36,6 +37,9 @@ export function UserApp({ practiceApi }: UserAppProps) {
         <button type="button" onClick={() => setSelectedPath("/app/practice")}>
           练题中心
         </button>
+        <button type="button" onClick={() => setSelectedPath("/app/class-learning")}>
+          班级学习
+        </button>
         <button type="button" onClick={() => setSelectedPath("/app/practice/history")}>
           练题记录
         </button>
@@ -51,6 +55,9 @@ export function UserApp({ practiceApi }: UserAppProps) {
       </nav>
       <section aria-label="学习入口">
         {selectedPath === "/app/courses" ? <h2>我的课程</h2> : null}
+        {selectedPath === "/app/class-learning" && isClassLearningApi(currentPracticeApi) ? (
+          <ClassLearningPage api={currentPracticeApi} />
+        ) : null}
         {selectedPath === "/app/practice" && currentPracticeApi ? (
           <PracticePanel
             api={currentPracticeApi}
@@ -109,4 +116,8 @@ export function UserApp({ practiceApi }: UserAppProps) {
 function getSessionId(path: string): number {
   const value = Number(path.split("/").pop());
   return Number.isFinite(value) ? value : 0;
+}
+
+function isClassLearningApi(api: (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi {
+  return typeof api?.getClassPracticeSummary === "function";
 }
