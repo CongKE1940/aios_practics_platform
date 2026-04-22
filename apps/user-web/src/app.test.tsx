@@ -26,6 +26,18 @@ describe("UserApp", () => {
       <UserApp
         practiceApi={{
           ...createPracticeApiMock(),
+          listClassCourseOptions: async () => ({
+            items: [
+              {
+                class_id: 301,
+                class_name: "七年级一班",
+                courses: [
+                  { course_id: 10, course_name: "数学" },
+                  { course_id: 11, course_name: "语文" }
+                ]
+              }
+            ]
+          }),
           getClassPracticeSummary: async () => ({
             summary: {
               class_id: 301,
@@ -69,8 +81,11 @@ describe("UserApp", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "班级学习" }));
-    fireEvent.change(screen.getByLabelText("班级ID"), { target: { value: "301" } });
-    fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "七年级一班" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "七年级一班" }));
+    fireEvent.click(screen.getByRole("button", { name: "数学" }));
     fireEvent.click(screen.getByRole("button", { name: "查询班级学习" }));
 
     await waitFor(() => {
@@ -78,6 +93,45 @@ describe("UserApp", () => {
       expect(screen.getByText("七年级一班 / 数学")).toBeTruthy();
       expect(screen.getByText("李同学")).toBeTruthy();
       expect(screen.getByText("正确率：75%")).toBeTruthy();
+    });
+  });
+
+  it("keeps legacy class learning callers from crashing when course options are unavailable", async () => {
+    render(
+      <UserApp
+        practiceApi={{
+          ...createPracticeApiMock(),
+          getClassPracticeSummary: async () => ({
+            summary: {
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学",
+              student_count: 0,
+              participated_student_count: 0,
+              session_count: 0,
+              answered_count: 0,
+              correct_count: 0,
+              wrong_count: 0,
+              accuracy: 0,
+              wrong_question_count: 0,
+              confused_question_count: 0
+            },
+            students: {
+              items: [],
+              page: 1,
+              page_size: 20,
+              total: 0
+            }
+          })
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "班级学习" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("当前班级学习功能暂不可用。")).toBeTruthy();
     });
   });
 

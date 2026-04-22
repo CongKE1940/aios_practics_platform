@@ -55,8 +55,12 @@ export function UserApp({ practiceApi }: UserAppProps) {
       </nav>
       <section aria-label="学习入口">
         {selectedPath === "/app/courses" ? <h2>我的课程</h2> : null}
-        {selectedPath === "/app/class-learning" && isClassLearningApi(currentPracticeApi) ? (
-          <ClassLearningPage api={currentPracticeApi} />
+        {selectedPath === "/app/class-learning" ? (
+          currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
+            <ClassLearningPage api={currentPracticeApi} />
+          ) : (
+            <p>当前班级学习功能暂不可用。</p>
+          )
         ) : null}
         {selectedPath === "/app/practice" && currentPracticeApi ? (
           <PracticePanel
@@ -119,5 +123,5 @@ function getSessionId(path: string): number {
 }
 
 function isClassLearningApi(api: (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi {
-  return typeof api?.getClassPracticeSummary === "function";
+  return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
 }
