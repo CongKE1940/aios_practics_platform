@@ -95,6 +95,7 @@ export interface ApiClient {
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
+  listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
   updateRole(id: number, body: RoleInput): Promise<RoleItem>;
@@ -501,6 +502,21 @@ export interface ClassPracticeStudentItem {
 export interface ClassPracticeSummaryResult {
   summary: ClassPracticeSummary;
   students: PageResult<ClassPracticeStudentItem>;
+}
+
+export interface CourseOptionItem {
+  course_id: number;
+  course_name: string;
+}
+
+export interface ClassCourseOption {
+  class_id: number;
+  class_name: string;
+  courses: CourseOptionItem[];
+}
+
+export interface ClassCourseOptionsResult {
+  items: ClassCourseOption[];
 }
 
 export interface RoleItem {
@@ -920,6 +936,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
     getClassPracticeSummary: (query) =>
       request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
+    listClassCourseOptions: () =>
+      request(fetcher, options, "/analytics/class-course-options", { method: "GET" }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),
     createRole: (body) => request(fetcher, options, "/roles", { method: "POST", body: JSON.stringify(body) }),
     updateRole: (id, body) =>

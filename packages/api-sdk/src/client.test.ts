@@ -1282,6 +1282,45 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("GET");
   });
 
+  it("queries class course options analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            items: [
+              {
+                class_id: 301,
+                class_name: "七年级一班",
+                courses: [
+                  {
+                    course_id: 10,
+                    course_name: "数学"
+                  }
+                ]
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.listClassCourseOptions();
+    expect(result.items[0].courses[0].course_name).toBe("数学");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/class-course-options");
+    expect(init?.method).toBe("GET");
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
