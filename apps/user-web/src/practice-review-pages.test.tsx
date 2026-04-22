@@ -24,6 +24,7 @@ describe("practice review pages", () => {
           practice_mode: "random",
           source_mode: "question_list",
           flow_mode: "fixed_count",
+          course_id: 10,
           bank_ids: [1, 2],
           status: "finished",
           total_count: 10,
@@ -69,6 +70,7 @@ describe("practice review pages", () => {
       expect(screen.getByRole("heading", { name: "练题结果" })).toBeTruthy();
     });
     expect(screen.getByText(/本次共 10 题/)).toBeTruthy();
+    expect(screen.getByText("课程ID：10")).toBeTruthy();
     expect(screen.getByRole("button", { name: "查看本次明细" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "进入错题本" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "继续练习" })).toBeTruthy();
@@ -84,6 +86,7 @@ describe("practice review pages", () => {
             practice_mode: "random",
             source_mode: "question_list",
             flow_mode: "fixed_count",
+            course_id: 10,
             bank_ids: [1, 2],
             status: "finished",
             total_count: 10,
@@ -103,6 +106,13 @@ describe("practice review pages", () => {
     };
 
     render(<PracticeHistoryPage api={api} onNavigate={navigate} />);
+
+    fireEvent.change(screen.getByLabelText("课程ID筛选"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "筛选记录" }));
+
+    await waitFor(() => {
+      expect(api.listPracticeSessions).toHaveBeenCalledWith({ course_id: 10, page: 1, page_size: 20 });
+    });
 
     await waitFor(() => {
       expect(screen.getByText("会话 #501")).toBeTruthy();
@@ -169,6 +179,13 @@ describe("practice review pages", () => {
       />
     );
 
+    fireEvent.change(screen.getByLabelText("课程ID筛选"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "筛选题目" }));
+
+    await waitFor(() => {
+      expect(api.listUserQuestionStates).toHaveBeenCalledWith({ state_type: "wrong", bank_id: 1, course_id: 10 });
+    });
+
     await waitFor(() => {
       expect(screen.getByText("1+1等于几？")).toBeTruthy();
     });
@@ -199,6 +216,7 @@ describe("practice review pages", () => {
           practice_mode: "random",
           source_mode: "question_list",
           flow_mode: "fixed_count",
+          course_id: 10,
           bank_ids: [1],
           status: "finished",
           total_count: 1,
@@ -245,6 +263,7 @@ describe("practice review pages", () => {
     await waitFor(() => {
       expect(screen.getByText("你的答案：B")).toBeTruthy();
     });
+    expect(screen.getByText("课程ID：10")).toBeTruthy();
     expect(screen.getByText("正确答案：B")).toBeTruthy();
     expect(screen.getByText("解析：基础算术")).toBeTruthy();
     expect(screen.getByText("状态：非错题 / 已标熟 / 未标疑惑")).toBeTruthy();

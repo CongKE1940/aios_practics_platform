@@ -20,7 +20,19 @@ func NewService(repo Repository) *Service {
 
 func (service *Service) CreateSession(ctx context.Context, scope Scope, input PracticeSessionInput) (PracticeSessionDetail, error) {
 	input = normalizeSessionInput(input)
-	if len(input.BankIDs) == 0 {
+	if input.SourceMode == SourceModeCourse {
+		if input.CourseID == nil || *input.CourseID <= 0 {
+			return PracticeSessionDetail{}, ErrInvalidInput
+		}
+		exists, err := service.repo.CourseExists(ctx, scope.TenantID, *input.CourseID)
+		if err != nil {
+			return PracticeSessionDetail{}, err
+		}
+		if !exists {
+			return PracticeSessionDetail{}, ErrNotFound
+		}
+		input.BankIDs = nil
+	} else if len(input.BankIDs) == 0 {
 		return PracticeSessionDetail{}, ErrInvalidInput
 	}
 	candidates, err := service.candidates(ctx, scope, input)
@@ -50,14 +62,21 @@ func (service *Service) CreateSession(ctx context.Context, scope Scope, input Pr
 		RandomSeed:      input.RandomSeed,
 		RoundNo:         1,
 		Status:          StatusActive,
-		BankScope: map[string]any{
-			"flow_mode":        input.FlowMode,
-			"bank_ids":         input.BankIDs,
-			"exclude_mastered": input.ExcludeMastered,
-			"question_count":   input.QuestionCount,
-			"random_seed":      input.RandomSeed,
-			"round_no":         1,
-		},
+		BankScope: func() map[string]any {
+			scope := map[string]any{
+				"flow_mode":        input.FlowMode,
+				"source_mode":      input.SourceMode,
+				"bank_ids":         input.BankIDs,
+				"exclude_mastered": input.ExcludeMastered,
+				"question_count":   input.QuestionCount,
+				"random_seed":      input.RandomSeed,
+				"round_no":         1,
+			}
+			if input.CourseID != nil {
+				scope["course_id"] = *input.CourseID
+			}
+			return scope
+		}(),
 	}
 	return service.repo.CreateSession(ctx, session, questions)
 }
@@ -237,10 +256,14 @@ func (service *Service) ListStateDetails(ctx context.Context, scope Scope, filte
 func (service *Service) candidates(ctx context.Context, scope Scope, input PracticeSessionInput) ([]QuestionCandidate, error) {
 	candidates, err := service.repo.ListCandidates(ctx, scope, CandidateFilter{
 		BankIDs:         input.BankIDs,
+		CourseID:        input.CourseID,
 		ExcludeMastered: input.ExcludeMastered,
 	})
 	if err != nil {
 		return nil, err
+	}
+	if input.SourceMode == SourceModeCourse {
+		candidates = dedupeQuestionCandidates(candidates)
 	}
 	if input.PracticeMode == PracticeModeRandom {
 		seed := input.RandomSeed
@@ -274,6 +297,20 @@ func (service *Service) sessionCandidates(ctx context.Context, scope Scope, deta
 		}
 		return candidates, nil
 	}
+	if detail.SourceMode == SourceModeCourse {
+		if detail.CourseID == nil || *detail.CourseID <= 0 {
+			return nil, ErrInvalidInput
+		}
+		return service.candidates(ctx, scope, PracticeSessionInput{
+			PracticeMode:    detail.PracticeMode,
+			SourceMode:      detail.SourceMode,
+			FlowMode:        detail.FlowMode,
+			CourseID:        detail.CourseID,
+			BankIDs:         detail.BankIDs,
+			ExcludeMastered: detail.ExcludeMastered,
+			RandomSeed:      seed,
+		})
+	}
 	return service.candidates(ctx, scope, PracticeSessionInput{
 		PracticeMode:    detail.PracticeMode,
 		FlowMode:        detail.FlowMode,
@@ -281,6 +318,22 @@ func (service *Service) sessionCandidates(ctx context.Context, scope Scope, deta
 		ExcludeMastered: detail.ExcludeMastered,
 		RandomSeed:      seed,
 	})
+}
+
+func dedupeQuestionCandidates(candidates []QuestionCandidate) []QuestionCandidate {
+	if len(candidates) < 2 {
+		return append([]QuestionCandidate{}, candidates...)
+	}
+	seen := make(map[int64]struct{}, len(candidates))
+	unique := make([]QuestionCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate.QuestionID]; ok {
+			continue
+		}
+		seen[candidate.QuestionID] = struct{}{}
+		unique = append(unique, candidate)
+	}
+	return unique
 }
 
 func normalizeSessionInput(input PracticeSessionInput) PracticeSessionInput {

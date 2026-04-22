@@ -366,6 +366,7 @@ export interface PracticeSessionListQuery {
   status?: string;
   flow_mode?: string;
   practice_mode?: string;
+  course_id?: number;
   page?: number;
   page_size?: number;
 }
@@ -375,6 +376,7 @@ export interface PracticeSessionListItem {
   practice_mode: string;
   source_mode: string;
   flow_mode: string;
+  course_id?: number | null;
   bank_ids: number[];
   status: string;
   started_at?: string;
@@ -393,6 +395,7 @@ export interface PracticeSessionDetail {
   practice_mode: string;
   source_mode: string;
   flow_mode: string;
+  course_id?: number | null;
   bank_scope: Record<string, unknown>;
   bank_ids: number[];
   exclude_mastered: boolean;
@@ -732,6 +735,7 @@ export interface ImportJobRowListQuery {
 export interface UserQuestionStateListQuery {
   state_type?: string;
   bank_id?: number;
+  course_id?: number;
   page?: number;
   page_size?: number;
 }

@@ -1317,9 +1317,10 @@ QuestionAnswer:
 ```json
 {
   "practice_mode": "random",
-  "source_mode": "multi_bank",
+  "source_mode": "course",
   "flow_mode": "fixed_count",
-  "bank_ids": [1, 2],
+  "course_id": 10,
+  "bank_ids": [],
   "exclude_mastered": true,
   "question_count": 10
 }
@@ -1333,7 +1334,8 @@ QuestionAnswer:
   "data": {
     "id": 501,
     "practice_mode": "random",
-    "source_mode": "multi_bank",
+    "source_mode": "course",
+    "course_id": 10,
     "flow_mode": "fixed_count",
     "status": "active",
     "questions": [
@@ -1347,7 +1349,7 @@ QuestionAnswer:
         "content": {
           "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
           "options": [
-            {"key": "A", "content_type": "text", "text": "1", "assets": []}
+            {"key": "A", "content_type": "text", "text": "1", "assets": []},
             {"key": "B", "content_type": "text", "text": "2", "assets": []}
           ],
           "option_order_randomizable": true,
@@ -1363,10 +1365,12 @@ QuestionAnswer:
 
 ### 说明
 - 支持顺序练题 / 随机练题
-- 支持单题库 / 多题库
+- 支持单题库 / 多题库 / 课程来源
+- `source_mode=question_list` 表示按前端已选题目列表创建练题会话的业务场景；在当前 OpenAPI 中，这类请求通过 `/api/v1/practice/sessions/from-questions` 携带 `question_ids` 发起，不依赖 `bank_ids` 或 `course_id`，且题目顺序默认与传入列表一致，除非另行启用随机出题策略。
 - 支持 `fixed_count` 与 `continuous`
 - 定量练习未传题量时默认 10 题
 - 熟题可从练题中排除，这来自原始需求。
+- 当 `source_mode=course` 时，`course_id` 必填，`bank_ids` 可为空数组，候选题来自当前租户下该课程关联的可用题库。
 
 ---
 
@@ -1375,6 +1379,7 @@ QuestionAnswer:
 ### GET `/api/v1/practice/sessions/{id}`
 
 返回会话基础信息与已抽取题目。
+会话详情需要能直接读取 `course_id`，用于课程入口和结果页一致展示。
 
 ---
 
@@ -1515,6 +1520,7 @@ QuestionAnswer:
 ### Query
 - `state_type`: `wrong` / `mastered` / `confused`
 - `bank_id`
+- `course_id`
 - `page`
 - `page_size`
 
@@ -1523,6 +1529,7 @@ QuestionAnswer:
 - `content`
 
 用于错题本、熟题本、疑惑题列表直接展示题干摘要，并支持从当前筛选结果继续练。
+`course_id` 用于按课程筛选用户题目状态；与 `bank_id` 同时传入时仍保持租户与用户隔离口径。
 
 ---
 
@@ -1534,6 +1541,7 @@ QuestionAnswer:
 - `status`: `active` / `finished`
 - `flow_mode`: `fixed_count` / `continuous`
 - `practice_mode`: `random` / `sequential`
+- `course_id`
 - `page`
 - `page_size`
 
@@ -1546,6 +1554,7 @@ QuestionAnswer:
       "status": "finished",
       "practice_mode": "random",
       "source_mode": "multi_bank",
+      "course_id": 10,
       "flow_mode": "fixed_count",
       "bank_ids": [1, 2],
       "total_count": 10,
@@ -1565,6 +1574,8 @@ QuestionAnswer:
 - 默认按会话维度展示练题记录。
 - 统计口径按每道会话题目的最新一次作答计算。
 - 仅返回当前登录用户自己的练题会话。
+- `course_id` 用于按课程筛选练题记录；如果传入该参数，只返回该课程下的会话。
+- 结果页和详情页应能直接读取会话的 `course_id`。
 
 ---
 
@@ -1578,6 +1589,7 @@ QuestionAnswer:
   "session": {
     "id": 501,
     "status": "finished",
+    "course_id": 10,
     "answered_count": 10,
     "correct_count": 8,
     "wrong_count": 2,
@@ -1609,6 +1621,7 @@ QuestionAnswer:
 ### 业务说明
 - 用于练题结果页和练题会话详情页。
 - 仅允许查看当前登录用户自己的会话，跨用户或跨租户返回 404。
+- 结果页中的 `session` 复用练题记录列表项结构，因此可以直接读取 `course_id`。
 
 ---
 

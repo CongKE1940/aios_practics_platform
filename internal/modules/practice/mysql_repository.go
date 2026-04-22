@@ -18,6 +18,43 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 }
 
 func (repo *MySQLRepository) ListCandidates(ctx context.Context, scope Scope, input CandidateFilter) ([]QuestionCandidate, error) {
+	if input.CourseID != nil {
+		query := `
+SELECT
+  qbq.question_bank_id,
+  q.id,
+  q.current_version_id,
+  q.question_type,
+  qv.content_json,
+  qv.answer_json,
+  qv.analysis_json
+FROM question_bank_questions qbq
+JOIN question_banks qb ON qb.id = qbq.question_bank_id
+JOIN questions q ON q.id = qbq.question_id
+JOIN question_versions qv ON qv.id = q.current_version_id
+LEFT JOIN user_question_states uqs ON uqs.tenant_id = q.tenant_id AND uqs.user_id = ? AND uqs.question_id = q.id
+WHERE qb.tenant_id = ?
+  AND qb.deleted_at IS NULL
+  AND q.tenant_id = ?
+  AND q.status = 'active'
+  AND q.deleted_at IS NULL
+  AND q.current_version_id IS NOT NULL
+  AND qb.course_id = ?
+`
+		args := []any{scope.UserID, scope.TenantID, scope.TenantID, *input.CourseID}
+		if input.ExcludeMastered {
+			query += " AND COALESCE(uqs.is_mastered, 0) = 0"
+		}
+		query += " ORDER BY qbq.question_bank_id ASC, qbq.sort_no ASC, q.id ASC"
+
+		rows, err := repo.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		return scanCandidates(rows)
+	}
 	if len(input.BankIDs) == 0 {
 		return []QuestionCandidate{}, nil
 	}
@@ -59,6 +96,23 @@ WHERE qb.tenant_id = ?
 	defer rows.Close()
 
 	return scanCandidates(rows)
+}
+
+func (repo *MySQLRepository) CourseExists(ctx context.Context, tenantID int64, courseID int64) (bool, error) {
+	const query = `
+SELECT id
+FROM courses
+WHERE tenant_id = ? AND id = ? AND status = 'active' AND deleted_at IS NULL
+LIMIT 1
+`
+	var id int64
+	if err := repo.db.QueryRowContext(ctx, query, tenantID, courseID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (repo *MySQLRepository) CreateSession(ctx context.Context, session PracticeSession, questions []PracticeSessionQuestion) (PracticeSessionDetail, error) {
@@ -151,6 +205,7 @@ SELECT
   ps.id,
   ps.practice_mode,
   ps.source_mode,
+  ps.course_id,
   ps.bank_scope_json,
   ps.started_at,
   ps.ended_at,
@@ -181,7 +236,11 @@ WHERE ps.tenant_id = ? AND ps.user_id = ?
 		query += " AND ps.practice_mode = ?"
 		args = append(args, filter.PracticeMode)
 	}
-	query += " GROUP BY ps.id, ps.practice_mode, ps.source_mode, ps.bank_scope_json, ps.started_at, ps.ended_at, ps.status ORDER BY ps.started_at DESC, ps.id DESC"
+	if filter.CourseID != nil {
+		query += " AND ps.course_id = ?"
+		args = append(args, *filter.CourseID)
+	}
+	query += " GROUP BY ps.id, ps.practice_mode, ps.source_mode, ps.course_id, ps.bank_scope_json, ps.started_at, ps.ended_at, ps.status ORDER BY ps.started_at DESC, ps.id DESC"
 
 	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -218,6 +277,7 @@ func (repo *MySQLRepository) GetSessionResults(ctx context.Context, scope Scope,
 			PracticeMode: session.PracticeMode,
 			SourceMode:   session.SourceMode,
 			FlowMode:     session.FlowMode,
+			CourseID:     session.CourseID,
 			BankIDs:      append([]int64{}, session.BankIDs...),
 			StartedAt:    session.StartedAt,
 			EndedAt:      session.EndedAt,
@@ -487,6 +547,10 @@ WHERE tenant_id = ? AND user_id = ?
 		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = user_question_states.question_id AND qbq.question_bank_id = ? AND qb.tenant_id = ?)"
 		args = append(args, *filter.BankID, scope.TenantID)
 	}
+	if filter.CourseID != nil {
+		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = user_question_states.question_id AND qb.tenant_id = ? AND qb.deleted_at IS NULL AND qb.course_id = ?)"
+		args = append(args, scope.TenantID, *filter.CourseID)
+	}
 	query += " ORDER BY updated_at DESC"
 	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -532,6 +596,10 @@ WHERE uqs.tenant_id = ? AND uqs.user_id = ?
 	if filter.BankID != nil {
 		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = uqs.question_id AND qbq.question_bank_id = ? AND qb.tenant_id = ?)"
 		args = append(args, *filter.BankID, scope.TenantID)
+	}
+	if filter.CourseID != nil {
+		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = uqs.question_id AND qb.tenant_id = ? AND qb.deleted_at IS NULL AND qb.course_id = ?)"
+		args = append(args, scope.TenantID, *filter.CourseID)
 	}
 	query += " ORDER BY uqs.updated_at DESC"
 
@@ -723,12 +791,14 @@ func scanCandidates(rows *sql.Rows) ([]QuestionCandidate, error) {
 
 func scanSessionListItem(scanner interface{ Scan(dest ...any) error }) (PracticeSessionListItem, error) {
 	var item PracticeSessionListItem
+	var courseID sql.NullInt64
 	var bankScopeJSON []byte
 	var endedAt sql.NullTime
 	if err := scanner.Scan(
 		&item.ID,
 		&item.PracticeMode,
 		&item.SourceMode,
+		&courseID,
 		&bankScopeJSON,
 		&item.StartedAt,
 		&endedAt,
@@ -743,6 +813,10 @@ func scanSessionListItem(scanner interface{ Scan(dest ...any) error }) (Practice
 	if endedAt.Valid {
 		value := endedAt.Time
 		item.EndedAt = &value
+	}
+	if courseID.Valid {
+		value := courseID.Int64
+		item.CourseID = &value
 	}
 	var scope map[string]any
 	if err := unmarshalMap(bankScopeJSON, &scope); err != nil {

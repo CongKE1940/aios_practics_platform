@@ -76,6 +76,7 @@ export function PracticeResultPage({ api, sessionId, onNavigate, onPracticeCreat
         <>
           <p>本次共 {summary.total_count} 题，答对 {summary.correct_count} 题，答错 {summary.wrong_count} 题。</p>
           <p>正确率：{formatPercent(summary.accuracy)}</p>
+          <p>课程ID：{summary.course_id ?? "-"}</p>
           <div>
             <button type="button" onClick={() => onNavigate?.(`/app/practice/history/${summary.id}`)}>
               查看本次明细
@@ -97,6 +98,7 @@ export function PracticeResultPage({ api, sessionId, onNavigate, onPracticeCreat
 
 export function PracticeHistoryPage({ api, onNavigate }: PracticePageProps) {
   const [sessions, setSessions] = useState<PracticeSessionListItem[]>([]);
+  const [courseId, setCourseId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -110,9 +112,25 @@ export function PracticeHistoryPage({ api, onNavigate }: PracticePageProps) {
     };
   }, [api]);
 
+  async function handleFilter() {
+    const query = buildCourseQuery(courseId);
+    const data = await api.listPracticeSessions({ ...query, page: 1, page_size: 20 });
+    setSessions(data.items);
+  }
+
   return (
-    <section aria-label="练题记录页">
+      <section aria-label="练题记录页">
       <h2>练题记录</h2>
+      <label htmlFor="practice_history_course_id">课程ID筛选</label>
+      <input
+        id="practice_history_course_id"
+        inputMode="numeric"
+        value={courseId}
+        onChange={(event) => setCourseId(event.target.value)}
+      />
+      <button type="button" onClick={() => void handleFilter()}>
+        筛选记录
+      </button>
       {sessions.length > 0 ? (
         <ul>
           {sessions.map((session) => (
@@ -157,6 +175,7 @@ export function PracticeSessionDetailPage({ api, sessionId, onNavigate }: Practi
       </button>
       {result ? (
         <>
+          <p>课程ID：{result.session.course_id ?? "-"}</p>
           <p>
             本次共 {result.session.total_count} 题，答对 {result.session.correct_count} 题，答错 {result.session.wrong_count} 题。
           </p>
@@ -187,6 +206,7 @@ export function PracticeSessionDetailPage({ api, sessionId, onNavigate }: Practi
 
 export function PracticeStateListPage({ api, stateType, bankId, onNavigate, onPracticeCreated }: PracticeStateListPageProps) {
   const [states, setStates] = useState<UserQuestionState[]>([]);
+  const [courseId, setCourseId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -201,6 +221,12 @@ export function PracticeStateListPage({ api, stateType, bankId, onNavigate, onPr
   }, [api, stateType, bankId]);
 
   const title = useMemo(() => stateTitle(stateType), [stateType]);
+
+  async function handleFilter() {
+    const query = buildCourseQuery(courseId);
+    const data = await api.listUserQuestionStates({ state_type: stateType, bank_id: bankId, ...query });
+    setStates(data.items);
+  }
 
   async function handleContinue() {
     if (states.length === 0) {
@@ -218,8 +244,18 @@ export function PracticeStateListPage({ api, stateType, bankId, onNavigate, onPr
   }
 
   return (
-    <section aria-label={`${title}页面`}>
+      <section aria-label={`${title}页面`}>
       <h2>{title}</h2>
+      <label htmlFor="practice_state_course_id">课程ID筛选</label>
+      <input
+        id="practice_state_course_id"
+        inputMode="numeric"
+        value={courseId}
+        onChange={(event) => setCourseId(event.target.value)}
+      />
+      <button type="button" onClick={() => void handleFilter()}>
+        筛选题目
+      </button>
       {states.length > 0 ? (
         <>
           <ul>
@@ -282,6 +318,11 @@ function answerText(answer: Record<string, unknown> | undefined): string {
 
 function analysisText(analysis?: Record<string, unknown>): string {
   return typeof analysis?.text === "string" ? analysis.text : "";
+}
+
+function buildCourseQuery(courseId: string): { course_id?: number } {
+  const parsed = Number(courseId);
+  return Number.isFinite(parsed) && parsed > 0 ? { course_id: parsed } : {};
 }
 
 function formatPercent(value: number): string {

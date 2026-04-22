@@ -1236,7 +1236,7 @@ pnpm build
 Run:
 
 ```powershell
-$tempPath = 'D:\workspace\temp\openapi_parse_stage2e_test.go'
+$tempPath = 'D:\workspace\temp\openapi_parse_stage2e.go'
 @'
 package main
 
@@ -1297,7 +1297,7 @@ Expected: all PASS。
 Run:
 
 ```powershell
-rg -n "filecite||1149637211qa" apps cmd docs internal packages .gitignore package.json pnpm-lock.yaml go.mod go.sum
+rg -n "<abnormal-citation-marker>|<initial-password>" apps cmd docs internal packages .gitignore package.json pnpm-lock.yaml go.mod go.sum
 ```
 
 Expected: no matches。

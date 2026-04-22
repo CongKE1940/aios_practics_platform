@@ -952,8 +952,9 @@ describe("createApiClient", () => {
       tenant_id: 1,
       user_id: 7,
       practice_mode: "random",
-      source_mode: "single_bank",
+      source_mode: "course",
       flow_mode: "fixed_count",
+      course_id: 10,
       bank_scope: {},
       bank_ids: [1],
       exclude_mastered: true,
@@ -1035,14 +1036,16 @@ describe("createApiClient", () => {
       fetch: fetchMock
     });
 
-    await client.createPracticeSession({
+    const createdSession = await client.createPracticeSession({
       practice_mode: "random",
-      source_mode: "single_bank",
+      source_mode: "course",
       flow_mode: "fixed_count",
+      course_id: 10,
       bank_ids: [1],
       exclude_mastered: true,
       question_count: 10
     });
+    expect(createdSession.course_id).toBe(10);
     await client.getPracticeSession(501);
     await client.nextPracticeQuestion(501);
     await client.submitPracticeAnswer(501, {
@@ -1052,14 +1055,15 @@ describe("createApiClient", () => {
     await client.finishPracticeSession(501);
     await client.markPracticeQuestionMastered(1001, { value: true });
     await client.markPracticeQuestionConfused(1001, { value: true });
-    await client.listUserQuestionStates({ state_type: "wrong" });
+    await client.listUserQuestionStates({ state_type: "wrong", course_id: 10 });
 
     expect(String(fetchMock.mock.calls[0][0])).toContain("/practice/sessions");
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({
         practice_mode: "random",
-        source_mode: "single_bank",
+        source_mode: "course",
         flow_mode: "fixed_count",
+        course_id: 10,
         bank_ids: [1],
         exclude_mastered: true,
         question_count: 10
@@ -1070,7 +1074,7 @@ describe("createApiClient", () => {
     expect(String(fetchMock.mock.calls[4][0])).toContain("/practice/sessions/501/finish");
     expect(String(fetchMock.mock.calls[5][0])).toContain("/practice/questions/1001/mark-mastered");
     expect(String(fetchMock.mock.calls[6][0])).toContain("/practice/questions/1001/mark-confused");
-    expect(String(fetchMock.mock.calls[7][0])).toContain("/user-question-states?state_type=wrong");
+    expect(String(fetchMock.mock.calls[7][0])).toContain("/user-question-states?state_type=wrong&course_id=10");
   });
 
   it("lists practice sessions, reads results, and creates sessions from questions", async () => {
@@ -1088,6 +1092,7 @@ describe("createApiClient", () => {
                   practice_mode: "random",
                   source_mode: "question_list",
                   flow_mode: "fixed_count",
+                  course_id: 10,
                   bank_ids: [1, 2],
                   status: "finished",
                   total_count: 10,
@@ -1116,6 +1121,7 @@ describe("createApiClient", () => {
                 practice_mode: "random",
                 source_mode: "question_list",
                 flow_mode: "fixed_count",
+                course_id: 10,
                 bank_ids: [1, 2],
                 status: "finished",
                 total_count: 10,
@@ -1142,6 +1148,7 @@ describe("createApiClient", () => {
               practice_mode: "random",
               source_mode: "question_list",
               flow_mode: "fixed_count",
+              course_id: 10,
               bank_scope: { source_mode: "question_list" },
               bank_ids: [1, 2],
               exclude_mastered: false,
@@ -1162,11 +1169,17 @@ describe("createApiClient", () => {
       fetch: fetchMock
     });
 
-    const listResult = await client.listPracticeSessions({ status: "finished", flow_mode: "fixed_count" });
+    const listResult = await client.listPracticeSessions({
+      status: "finished",
+      flow_mode: "fixed_count",
+      course_id: 10
+    });
     expect(listResult.items[0].id).toBe(501);
+    expect(listResult.items[0].course_id).toBe(10);
 
     const results = await client.getPracticeSessionResults(501);
     expect(results.session.id).toBe(501);
+    expect(results.session.course_id).toBe(10);
 
     const body = {
       question_ids: [1001, 1002],
@@ -1184,7 +1197,7 @@ describe("createApiClient", () => {
     await client.createPracticeSessionFromQuestions(body);
 
     const [listUrl, listInit] = fetchMock.mock.calls[0];
-    expect(String(listUrl)).toContain("/practice/sessions?status=finished&flow_mode=fixed_count");
+    expect(String(listUrl)).toContain("/practice/sessions?status=finished&flow_mode=fixed_count&course_id=10");
     expect(listInit?.method).toBe("GET");
 
     const [resultsUrl, resultsInit] = fetchMock.mock.calls[1];

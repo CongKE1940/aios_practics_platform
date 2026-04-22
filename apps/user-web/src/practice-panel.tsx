@@ -30,7 +30,9 @@ interface PracticePanelProps {
 }
 
 const defaultForm = {
+  sourceMode: "bank",
   bankIds: "",
+  courseId: "",
   flowMode: "fixed_count",
   practiceMode: "random",
   questionCount: "10",
@@ -59,21 +61,26 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
       ...current,
       flowMode: initialSession.flow_mode,
       practiceMode: initialSession.practice_mode,
+      sourceMode: initialSession.source_mode === "course" ? "course" : "bank",
       questionCount: String(initialSession.question_count ?? current.questionCount),
-      excludeMastered: initialSession.exclude_mastered
+      excludeMastered: initialSession.exclude_mastered,
+      courseId: initialSession.course_id ? String(initialSession.course_id) : current.courseId
     }));
     onInitialSessionConsumed?.();
   }, [initialSession, onInitialSessionConsumed]);
 
   async function handleStart(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const courseId = parsePositiveNumber(form.courseId);
+    const bankIds = parseBankIDs(form.bankIds);
     const created = await api.createPracticeSession({
       practice_mode: form.practiceMode,
-      source_mode: parseBankIDs(form.bankIds).length > 1 ? "multi_bank" : "single_bank",
+      source_mode: form.sourceMode === "course" ? "course" : bankIds.length > 1 ? "multi_bank" : "single_bank",
       flow_mode: form.flowMode,
-      bank_ids: parseBankIDs(form.bankIds),
+      course_id: form.sourceMode === "course" ? courseId : undefined,
+      bank_ids: form.sourceMode === "course" ? [] : bankIds,
       exclude_mastered: form.excludeMastered,
-      question_count: form.flowMode === "fixed_count" ? Number(form.questionCount || "10") : undefined
+      question_count: form.flowMode === "fixed_count" ? parsePositiveNumber(form.questionCount) ?? 10 : undefined
     });
     setSession(created);
     setCurrentIndex(0);
@@ -155,12 +162,43 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
       <h2>练题中心</h2>
 
       <form onSubmit={(event) => void handleStart(event)}>
-        <label htmlFor="practice_bank_ids">题库ID</label>
-        <input
-          id="practice_bank_ids"
-          value={form.bankIds}
-          onChange={(event) => setForm((current) => ({ ...current, bankIds: event.target.value }))}
-        />
+        <label htmlFor="practice_source_mode">练题来源</label>
+        <select
+          id="practice_source_mode"
+          value={form.sourceMode}
+          onChange={(event) =>
+            setForm((current) => ({
+              ...current,
+              sourceMode: event.target.value,
+              bankIds: "",
+              courseId: ""
+            }))
+          }
+        >
+          <option value="bank">bank</option>
+          <option value="course">course</option>
+        </select>
+
+        {form.sourceMode === "course" ? (
+          <>
+            <label htmlFor="practice_course_id">课程ID</label>
+            <input
+              id="practice_course_id"
+              inputMode="numeric"
+              value={form.courseId}
+              onChange={(event) => setForm((current) => ({ ...current, courseId: event.target.value }))}
+            />
+          </>
+        ) : (
+          <>
+            <label htmlFor="practice_bank_ids">题库ID</label>
+            <input
+              id="practice_bank_ids"
+              value={form.bankIds}
+              onChange={(event) => setForm((current) => ({ ...current, bankIds: event.target.value }))}
+            />
+          </>
+        )}
 
         <label htmlFor="practice_flow_mode">练题流</label>
         <select
@@ -255,6 +293,11 @@ function parseBankIDs(value: string): number[] {
     .split(",")
     .map((item) => Number(item.trim()))
     .filter((item) => Number.isFinite(item) && item > 0);
+}
+
+function parsePositiveNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function questionText(content: PracticeSessionDetail["questions"][number]["content"]): string {

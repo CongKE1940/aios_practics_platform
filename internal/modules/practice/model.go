@@ -12,6 +12,7 @@ const (
 	PracticeModeSequential = "sequential"
 	SourceModeSingleBank   = "single_bank"
 	SourceModeMultiBank    = "multi_bank"
+	SourceModeCourse       = "course"
 	FlowModeFixedCount     = "fixed_count"
 	FlowModeContinuous     = "continuous"
 	StatusActive           = "active"
@@ -48,7 +49,7 @@ type PracticeSessionInput struct {
 	SourceMode      string  `json:"source_mode"`
 	FlowMode        string  `json:"flow_mode"`
 	CourseID        *int64  `json:"course_id"`
-	BankIDs         []int64 `json:"bank_ids" binding:"required"`
+	BankIDs         []int64 `json:"bank_ids"`
 	ExcludeMastered bool    `json:"exclude_mastered"`
 	QuestionCount   int     `json:"question_count"`
 	RandomSeed      int64   `json:"random_seed"`
@@ -106,6 +107,7 @@ type QuestionCandidate struct {
 
 type CandidateFilter struct {
 	BankIDs         []int64
+	CourseID        *int64
 	ExcludeMastered bool
 }
 
@@ -169,6 +171,7 @@ type UserQuestionState struct {
 type UserQuestionStateFilter struct {
 	StateType string
 	BankID    *int64
+	CourseID  *int64
 	Page      int
 	PageSize  int
 }
@@ -177,6 +180,7 @@ type PracticeSessionListFilter struct {
 	Status       string
 	FlowMode     string
 	PracticeMode string
+	CourseID     *int64
 	Page         int
 	PageSize     int
 }
@@ -187,6 +191,7 @@ type PracticeSessionListItem struct {
 	PracticeMode  string     `json:"practice_mode"`
 	SourceMode    string     `json:"source_mode"`
 	FlowMode      string     `json:"flow_mode"`
+	CourseID      *int64     `json:"course_id,omitempty"`
 	BankIDs       []int64    `json:"bank_ids"`
 	StartedAt     time.Time  `json:"started_at,omitempty"`
 	EndedAt       *time.Time `json:"ended_at,omitempty"`
@@ -241,6 +246,7 @@ type PracticeSessionSummary struct {
 
 type Repository interface {
 	ListCandidates(ctx context.Context, scope Scope, input CandidateFilter) ([]QuestionCandidate, error)
+	CourseExists(ctx context.Context, tenantID int64, courseID int64) (bool, error)
 	CreateSession(ctx context.Context, session PracticeSession, questions []PracticeSessionQuestion) (PracticeSessionDetail, error)
 	GetSession(ctx context.Context, scope Scope, id int64) (PracticeSessionDetail, error)
 	AddSessionQuestion(ctx context.Context, scope Scope, sessionID int64, question PracticeSessionQuestion) (PracticeSessionQuestion, error)

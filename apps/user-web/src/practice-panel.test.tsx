@@ -144,6 +144,77 @@ describe("PracticePanel", () => {
     });
   });
 
+  it("creates fixed-count course practice session with default question count", async () => {
+    const api: PracticePanelApi = {
+      createPracticeSession: vi.fn(async () => ({
+        id: 510,
+        tenant_id: 1,
+        user_id: 7,
+        practice_mode: "random",
+        source_mode: "course",
+        flow_mode: "fixed_count",
+        course_id: 10,
+        bank_scope: {},
+        bank_ids: [],
+        exclude_mastered: true,
+        question_count: 10,
+        random_seed: 20260422,
+        round_no: 1,
+        status: "active",
+        questions: []
+      })),
+      getPracticeSession: vi.fn(),
+      nextPracticeQuestion: vi.fn(),
+      submitPracticeAnswer: vi.fn(),
+      finishPracticeSession: vi.fn(),
+      markPracticeQuestionMastered: vi.fn(),
+      markPracticeQuestionConfused: vi.fn(),
+      listUserQuestionStates: vi.fn()
+    };
+
+    render(<PracticePanel api={api} />);
+
+    fireEvent.change(screen.getByLabelText("练题来源"), { target: { value: "course" } });
+    fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始练题" }));
+
+    await waitFor(() => {
+      expect(api.createPracticeSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_mode: "course",
+          course_id: 10,
+          bank_ids: [],
+          question_count: 10
+        })
+      );
+    });
+  });
+
+  it("clears the opposite source input when switching practice source", async () => {
+    const api: PracticePanelApi = {
+      createPracticeSession: vi.fn(),
+      getPracticeSession: vi.fn(),
+      nextPracticeQuestion: vi.fn(),
+      submitPracticeAnswer: vi.fn(),
+      finishPracticeSession: vi.fn(),
+      markPracticeQuestionMastered: vi.fn(),
+      markPracticeQuestionConfused: vi.fn(),
+      listUserQuestionStates: vi.fn()
+    };
+
+    render(<PracticePanel api={api} />);
+
+    fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1,2" } });
+    fireEvent.change(screen.getByLabelText("练题来源"), { target: { value: "course" } });
+
+    expect((screen.getByLabelText("课程ID") as HTMLInputElement).value).toBe("");
+
+    fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("练题来源"), { target: { value: "bank" } });
+
+    expect((screen.getByLabelText("题库ID") as HTMLInputElement).value).toBe("");
+  });
+
   it("creates continuous practice session and loads next question", async () => {
     const api: PracticePanelApi = {
       createPracticeSession: vi.fn(async () => ({
@@ -209,6 +280,7 @@ describe("PracticePanel", () => {
 
     render(<PracticePanel api={api} />);
 
+    fireEvent.change(screen.getByLabelText("练题来源"), { target: { value: "bank" } });
     fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("练题流"), { target: { value: "continuous" } });
     fireEvent.click(screen.getByRole("button", { name: "开始练题" }));
@@ -222,6 +294,74 @@ describe("PracticePanel", () => {
     await waitFor(() => {
       expect(screen.getByText("第二题")).toBeTruthy();
     });
+  });
+
+  it("creates continuous course practice session without question count", async () => {
+    const api: PracticePanelApi = {
+      createPracticeSession: vi.fn(async () => ({
+        id: 602,
+        tenant_id: 1,
+        user_id: 7,
+        practice_mode: "sequential",
+        source_mode: "course",
+        flow_mode: "continuous",
+        course_id: 10,
+        bank_scope: {},
+        bank_ids: [],
+        exclude_mastered: false,
+        random_seed: 20260422,
+        round_no: 1,
+        status: "active",
+        questions: [
+          {
+            session_question_id: 9101,
+            session_id: 602,
+            question_id: 1101,
+            question_version_id: 3101,
+            display_order: 1,
+            question_type: "single_choice",
+            content: {
+              stem: { content_type: "text", text: "第一题", assets: [] },
+              options: [
+                { key: "A", content_type: "text", text: "甲", assets: [] },
+                { key: "B", content_type: "text", text: "乙", assets: [] }
+              ]
+            },
+            round_no: 1,
+            answered: false
+          }
+        ]
+      })),
+      getPracticeSession: vi.fn(),
+      nextPracticeQuestion: vi.fn(),
+      submitPracticeAnswer: vi.fn(),
+      finishPracticeSession: vi.fn(),
+      markPracticeQuestionMastered: vi.fn(),
+      markPracticeQuestionConfused: vi.fn(),
+      listUserQuestionStates: vi.fn()
+    };
+
+    render(<PracticePanel api={api} />);
+
+    fireEvent.change(screen.getByLabelText("练题来源"), { target: { value: "course" } });
+    fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("练题流"), { target: { value: "continuous" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始练题" }));
+
+    await waitFor(() => {
+      expect(api.createPracticeSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_mode: "course",
+          course_id: 10,
+          bank_ids: []
+        })
+      );
+    });
+    expect(api.createPracticeSession).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        question_count: expect.anything()
+      })
+    );
   });
 
   it("renders true_false questions with correct and wrong options", async () => {

@@ -443,6 +443,298 @@ func TestHandler_Stage2D_RejectsCrossUserResultAccess(t *testing.T) {
 	}
 }
 
+func TestHandler_Stage2E_CreateCourseSessionReturnsCourseInfo(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.declareBankCourse(2, 20)
+	repo.candidates[1] = buildCandidatesInBank(1, 1, 2)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	rec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(10),
+		"bank_ids":       []int64{99},
+		"question_count": 2,
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var created practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, rec, &created)
+	if created.Data.SourceMode != SourceModeCourse {
+		t.Fatalf("source_mode = %q", created.Data.SourceMode)
+	}
+	if created.Data.CourseID == nil || *created.Data.CourseID != 10 {
+		t.Fatalf("course_id = %+v", created.Data.CourseID)
+	}
+	if len(created.Data.BankIDs) != 0 {
+		t.Fatalf("bank_ids = %+v", created.Data.BankIDs)
+	}
+	if len(created.Data.Questions) != 2 {
+		t.Fatalf("question count = %d", len(created.Data.Questions))
+	}
+}
+
+func TestHandler_Stage2E_CreateCourseSessionDeduplicatesQuestionIDs(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.declareBankCourse(2, 10)
+	repo.candidates[1] = append(
+		buildCandidatesInBank(1, 1, 1),
+		buildCandidatesInBank(2, 1, 1)...,
+	)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	rec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(10),
+		"question_count": 2,
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var created practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, rec, &created)
+	if len(created.Data.Questions) != 1 {
+		t.Fatalf("question count = %d", len(created.Data.Questions))
+	}
+	if created.Data.Questions[0].QuestionID != 1 {
+		t.Fatalf("question_id = %d", created.Data.Questions[0].QuestionID)
+	}
+}
+
+func TestHandler_Stage2E_CreateCourseSessionRejectsMissingCourse(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.candidates[1] = buildCandidatesInBank(1, 1, 1)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	rec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(999),
+		"bank_ids":       []int64{1},
+		"question_count": 1,
+	}, "token")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing course status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_Stage2E_CreateSessionDoesNotInferCourseModeFromCourseID(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.candidates[1] = buildCandidatesInBank(1, 1, 1)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	rec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(10),
+		"bank_ids":       []int64{1},
+		"question_count": 1,
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var created practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, rec, &created)
+	if created.Data.SourceMode == SourceModeCourse {
+		t.Fatalf("source_mode unexpectedly inferred as course")
+	}
+}
+
+func TestHandler_Stage2E_ListSessionsFiltersByCourseID(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.declareBankCourse(2, 20)
+	repo.candidates[1] = buildCandidatesInBank(1, 1, 2)
+	repo.candidates[1] = append(repo.candidates[1], buildCandidatesInBank(2, 101, 2)...)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	createCourse10 := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(10),
+		"bank_ids":       []int64{1},
+		"question_count": 1,
+	}, "token")
+	if createCourse10.Code != http.StatusOK {
+		t.Fatalf("course 10 create status = %d, body = %s", createCourse10.Code, createCourse10.Body.String())
+	}
+	var course10Session practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, createCourse10, &course10Session)
+
+	createCourse20 := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(20),
+		"bank_ids":       []int64{2},
+		"question_count": 1,
+	}, "token")
+	if createCourse20.Code != http.StatusOK {
+		t.Fatalf("course 20 create status = %d, body = %s", createCourse20.Code, createCourse20.Body.String())
+	}
+
+	listRec := performPracticeRequest(router, http.MethodGet, "/api/v1/practice/sessions?course_id=10&page=1&page_size=20", nil, "token")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body = %s", listRec.Code, listRec.Body.String())
+	}
+	type sessionListItemWithCourse struct {
+		ID            int64      `json:"id"`
+		Status        string     `json:"status"`
+		PracticeMode  string     `json:"practice_mode"`
+		SourceMode    string     `json:"source_mode"`
+		FlowMode      string     `json:"flow_mode"`
+		CourseID      *int64     `json:"course_id,omitempty"`
+		BankIDs       []int64    `json:"bank_ids"`
+		StartedAt     time.Time  `json:"started_at,omitempty"`
+		EndedAt       *time.Time `json:"ended_at,omitempty"`
+		TotalCount    int        `json:"total_count"`
+		AnsweredCount int        `json:"answered_count"`
+		CorrectCount  int        `json:"correct_count"`
+		WrongCount    int        `json:"wrong_count"`
+		Accuracy      float64    `json:"accuracy"`
+	}
+	var list practiceEnvelope[PageResult[sessionListItemWithCourse]]
+	decodePracticeBody(t, listRec, &list)
+	if len(list.Data.Items) != 1 {
+		t.Fatalf("session count = %d", len(list.Data.Items))
+	}
+	if list.Data.Items[0].ID != course10Session.Data.ID {
+		t.Fatalf("session id = %d", list.Data.Items[0].ID)
+	}
+	if list.Data.Items[0].CourseID == nil || *list.Data.Items[0].CourseID != 10 {
+		t.Fatalf("session course_id = %+v", list.Data.Items[0].CourseID)
+	}
+}
+
+func TestHandler_Stage2E_ListWrongStatesFiltersByCourseID(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.declareBankCourse(2, 20)
+	repo.candidates[1] = buildCandidatesInBank(1, 1, 1)
+	repo.candidates[1] = append(repo.candidates[1], buildCandidatesInBank(2, 101, 1)...)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	createCourse10 := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(10),
+		"bank_ids":       []int64{1},
+		"question_count": 1,
+	}, "token")
+	if createCourse10.Code != http.StatusOK {
+		t.Fatalf("course 10 create status = %d, body = %s", createCourse10.Code, createCourse10.Body.String())
+	}
+	var course10Session practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, createCourse10, &course10Session)
+	answerCourse10 := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(course10Session.Data.ID, 10)+"/answer", map[string]any{
+		"session_question_id": course10Session.Data.Questions[0].ID,
+		"answer": map[string]any{
+			"selected_keys": []string{"A"},
+		},
+	}, "token")
+	if answerCourse10.Code != http.StatusOK {
+		t.Fatalf("course 10 answer status = %d, body = %s", answerCourse10.Code, answerCourse10.Body.String())
+	}
+
+	createCourse20 := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeCourse,
+		"flow_mode":      FlowModeFixedCount,
+		"course_id":      int64(20),
+		"bank_ids":       []int64{2},
+		"question_count": 1,
+	}, "token")
+	if createCourse20.Code != http.StatusOK {
+		t.Fatalf("course 20 create status = %d, body = %s", createCourse20.Code, createCourse20.Body.String())
+	}
+	var course20Session practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, createCourse20, &course20Session)
+	answerCourse20 := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(course20Session.Data.ID, 10)+"/answer", map[string]any{
+		"session_question_id": course20Session.Data.Questions[0].ID,
+		"answer": map[string]any{
+			"selected_keys": []string{"A"},
+		},
+	}, "token")
+	if answerCourse20.Code != http.StatusOK {
+		t.Fatalf("course 20 answer status = %d, body = %s", answerCourse20.Code, answerCourse20.Body.String())
+	}
+
+	statesRec := performPracticeRequest(router, http.MethodGet, "/api/v1/user-question-states?state_type=wrong&course_id=10", nil, "token")
+	if statesRec.Code != http.StatusOK {
+		t.Fatalf("states status = %d, body = %s", statesRec.Code, statesRec.Body.String())
+	}
+	var states practiceEnvelope[PageResult[UserQuestionStateDetail]]
+	decodePracticeBody(t, statesRec, &states)
+	if len(states.Data.Items) != 1 {
+		t.Fatalf("state count = %d", len(states.Data.Items))
+	}
+	if states.Data.Items[0].QuestionID != course10Session.Data.Questions[0].QuestionID {
+		t.Fatalf("state question_id = %d", states.Data.Items[0].QuestionID)
+	}
+}
+
+func TestHandler_Stage2E_CourseExistsRespectsTenantCandidates(t *testing.T) {
+	repo := newMemoryPracticeRepository()
+	repo.declareBankCourse(1, 10)
+	repo.declareBankCourse(2, 20)
+	repo.candidates[1] = buildCandidatesInBank(1, 1, 1)
+	repo.candidates[2] = buildCandidatesInBank(2, 101, 1)
+
+	ok, err := repo.CourseExists(context.Background(), 1, 20)
+	if err != nil {
+		t.Fatalf("course exists error: %v", err)
+	}
+	if ok {
+		t.Fatalf("tenant 1 should not see course 20 through tenant 2 bank mapping")
+	}
+
+	ok, err = repo.CourseExists(context.Background(), 2, 20)
+	if err != nil {
+		t.Fatalf("course exists error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("tenant 2 should see course 20 through its own candidates")
+	}
+}
+
 func TestHandler_PracticeRequiresPermission(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -519,6 +811,7 @@ type memoryPracticeRepository struct {
 	nextAnswerID          int64
 	nextStateID           int64
 	candidates            map[int64][]QuestionCandidate
+	bankCourseIDs         map[int64]int64
 	sessions              map[int64]PracticeSession
 	sessionQuestions      map[int64][]PracticeSessionQuestion
 	answers               []PracticeAnswer
@@ -532,16 +825,37 @@ func newMemoryPracticeRepository() *memoryPracticeRepository {
 		nextAnswerID:          1,
 		nextStateID:           1,
 		candidates:            map[int64][]QuestionCandidate{},
+		bankCourseIDs:         map[int64]int64{},
 		sessions:              map[int64]PracticeSession{},
 		sessionQuestions:      map[int64][]PracticeSessionQuestion{},
 		states:                map[string]UserQuestionState{},
 	}
 }
 
+func (repo *memoryPracticeRepository) declareBankCourse(bankID int64, courseID int64) {
+	repo.bankCourseIDs[bankID] = courseID
+}
+
+func (repo *memoryPracticeRepository) CourseExists(_ context.Context, tenantID int64, courseID int64) (bool, error) {
+	if tenantID == 0 {
+		return false, nil
+	}
+	for _, candidate := range repo.candidates[tenantID] {
+		if repo.bankCourseIDs[candidate.BankID] == courseID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (repo *memoryPracticeRepository) ListCandidates(_ context.Context, scope Scope, input CandidateFilter) ([]QuestionCandidate, error) {
 	items := make([]QuestionCandidate, 0)
 	for _, candidate := range repo.candidates[scope.TenantID] {
-		if !containsInt64(input.BankIDs, candidate.BankID) {
+		if input.CourseID != nil {
+			if repo.bankCourseIDs[candidate.BankID] != *input.CourseID {
+				continue
+			}
+		} else if !containsInt64(input.BankIDs, candidate.BankID) {
 			continue
 		}
 		if input.ExcludeMastered {
@@ -694,6 +1008,12 @@ func (repo *memoryPracticeRepository) ListStates(_ context.Context, scope Scope,
 		if filter.StateType == StateTypeConfused && !state.IsConfused {
 			continue
 		}
+		if filter.CourseID != nil {
+			candidate, ok := repo.candidateByQuestionID(scope.TenantID, state.QuestionID)
+			if !ok || repo.bankCourseIDs[candidate.BankID] != *filter.CourseID {
+				continue
+			}
+		}
 		items = append(items, state)
 	}
 	return pageOf(items, filter.Page, filter.PageSize), nil
@@ -714,12 +1034,18 @@ func (repo *memoryPracticeRepository) ListSessions(_ context.Context, scope Scop
 		if filter.PracticeMode != "" && session.PracticeMode != filter.PracticeMode {
 			continue
 		}
+		if filter.CourseID != nil {
+			if session.CourseID == nil || *session.CourseID != *filter.CourseID {
+				continue
+			}
+		}
 		item := PracticeSessionListItem{
 			ID:           session.ID,
 			Status:       session.Status,
 			PracticeMode: session.PracticeMode,
 			SourceMode:   session.SourceMode,
 			FlowMode:     session.FlowMode,
+			CourseID:     session.CourseID,
 			BankIDs:      append([]int64{}, session.BankIDs...),
 			StartedAt:    session.StartedAt,
 			EndedAt:      session.EndedAt,
@@ -774,6 +1100,7 @@ func (repo *memoryPracticeRepository) GetSessionResults(_ context.Context, scope
 			PracticeMode: session.PracticeMode,
 			SourceMode:   session.SourceMode,
 			FlowMode:     session.FlowMode,
+			CourseID:     session.CourseID,
 			BankIDs:      append([]int64{}, session.BankIDs...),
 			StartedAt:    session.StartedAt,
 			EndedAt:      session.EndedAt,
@@ -853,6 +1180,9 @@ func (repo *memoryPracticeRepository) ListStateDetails(_ context.Context, scope 
 		if filter.BankID != nil && candidate.BankID != *filter.BankID {
 			continue
 		}
+		if filter.CourseID != nil && repo.bankCourseIDs[candidate.BankID] != *filter.CourseID {
+			continue
+		}
 		items = append(items, UserQuestionStateDetail{
 			UserQuestionState: state,
 			QuestionType:      candidate.QuestionType,
@@ -926,11 +1256,15 @@ func decodePracticeBody[T any](t *testing.T, rec *httptest.ResponseRecorder, tar
 }
 
 func buildCandidates(count int) []QuestionCandidate {
+	return buildCandidatesInBank(1, 1, count)
+}
+
+func buildCandidatesInBank(bankID int64, startQuestionID int64, count int) []QuestionCandidate {
 	items := make([]QuestionCandidate, 0, count)
 	for index := 1; index <= count; index++ {
-		id := int64(index)
+		id := startQuestionID + int64(index-1)
 		items = append(items, QuestionCandidate{
-			BankID:            1,
+			BankID:            bankID,
 			QuestionID:        id,
 			QuestionVersionID: id + 1000,
 			QuestionType:      "single_choice",

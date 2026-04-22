@@ -674,6 +674,11 @@ paths:
             type: string
             enum: [active, finished]
         - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
           name: flow_mode
           schema:
             type: string
@@ -782,6 +787,11 @@ paths:
             enum: [wrong, mastered, confused]
         - in: query
           name: bank_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: course_id
           schema:
             type: integer
             format: int64
@@ -1836,14 +1846,15 @@ components:
           format: date-time
     PracticeSessionInput:
       type: object
-      required: [bank_ids]
+      required: [source_mode, bank_ids]
       properties:
         practice_mode:
           type: string
           enum: [random, sequential]
         source_mode:
           type: string
-          enum: [single_bank, multi_bank]
+          enum: [single_bank, multi_bank, course, question_list]
+          description: source_mode=course 时需要传 course_id；bank_ids 可为空数组
         flow_mode:
           type: string
           enum: [fixed_count, continuous]
@@ -1851,11 +1862,13 @@ components:
           type: integer
           format: int64
           nullable: true
+          description: source_mode=course 时必填
         bank_ids:
           type: array
           items:
             type: integer
             format: int64
+          description: source_mode=course 时可为空数组
         exclude_mastered:
           type: boolean
         question_count:
@@ -1933,6 +1946,10 @@ components:
           type: string
         source_mode:
           type: string
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
         flow_mode:
           type: string
         bank_scope:
@@ -1971,6 +1988,10 @@ components:
           type: string
         source_mode:
           type: string
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
         flow_mode:
           type: string
         bank_ids:

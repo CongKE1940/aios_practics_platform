@@ -88,6 +88,7 @@ func (handler *Handler) listSessions(ctx *gin.Context) {
 		Page:         parseInt(ctx.Query("page")),
 		PageSize:     parseInt(ctx.Query("page_size")),
 	}
+	filter.CourseID = int64PtrFromQuery(ctx.Query("course_id"))
 	result, err := handler.service.ListSessions(ctx.Request.Context(), scope, filter)
 	if err != nil {
 		writePracticeError(ctx, err)
@@ -213,6 +214,7 @@ func (handler *Handler) listStates(ctx *gin.Context) {
 	if bankID, ok := parseOptionalInt64(ctx.Query("bank_id")); ok {
 		filter.BankID = bankID
 	}
+	filter.CourseID = int64PtrFromQuery(ctx.Query("course_id"))
 	result, err := handler.service.ListStateDetails(ctx.Request.Context(), scope, filter)
 	if err != nil {
 		writePracticeError(ctx, err)
@@ -293,12 +295,20 @@ func parseInt(value string) int {
 }
 
 func parseOptionalInt64(value string) (*int64, bool) {
-	if strings.TrimSpace(value) == "" {
+	parsed := int64PtrFromQuery(value)
+	if parsed == nil {
 		return nil, false
+	}
+	return parsed, true
+}
+
+func int64PtrFromQuery(value string) *int64 {
+	if strings.TrimSpace(value) == "" {
+		return nil
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed <= 0 {
-		return nil, false
+		return nil
 	}
-	return &parsed, true
+	return &parsed
 }
