@@ -67,6 +67,17 @@ type ClassPracticeStudentItem struct {
 	LastPracticedAt       *time.Time `json:"last_practiced_at,omitempty"`
 }
 
+type CourseOptionItem struct {
+	CourseID   int64  `json:"course_id"`
+	CourseName string `json:"course_name"`
+}
+
+type ClassCourseOption struct {
+	ClassID   int64              `json:"class_id"`
+	ClassName string             `json:"class_name"`
+	Courses   []CourseOptionItem `json:"courses"`
+}
+
 type PageResult[T any] struct {
 	Items    []T `json:"items"`
 	Page     int `json:"page"`
@@ -79,11 +90,16 @@ type ClassPracticeSummaryResult struct {
 	Students PageResult[ClassPracticeStudentItem] `json:"students"`
 }
 
+type ClassCourseOptionsResult struct {
+	Items []ClassCourseOption `json:"items"`
+}
+
 type Repository interface {
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
 	GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error)
 	ListClassPracticeStudents(ctx context.Context, query ClassPracticeSummaryQuery) (PageResult[ClassPracticeStudentItem], error)
+	ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

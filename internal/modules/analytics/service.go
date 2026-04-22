@@ -74,6 +74,19 @@ func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope
 	}, nil
 }
 
+func (service *Service) ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return nil, ErrForbidden
+	}
+
+	switch scope.UserType {
+	case "teacher", "sys_admin", "school_admin":
+		return service.repo.ListClassCourseOptions(ctx, scope)
+	default:
+		return nil, ErrForbidden
+	}
+}
+
 func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (time.Time, time.Time, error) {
 	end := now
 	if endAt != nil {

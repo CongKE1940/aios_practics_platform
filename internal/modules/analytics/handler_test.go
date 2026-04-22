@@ -173,6 +173,111 @@ func TestHandler_RejectsMissingClassOrCourseID(t *testing.T) {
 	}
 }
 
+func TestHandler_ListClassCourseOptionsForTeacher(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.options = []ClassCourseOption{
+		{
+			ClassID:   101,
+			ClassName: "一班",
+			Courses: []CourseOptionItem{
+				{CourseID: 12, CourseName: "数学"},
+				{CourseID: 13, CourseName: "语文"},
+			},
+		},
+	}
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/class-course-options", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[ClassCourseOptionsResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if len(body.Data.Items) != 1 {
+		t.Fatalf("items count = %d", len(body.Data.Items))
+	}
+	if body.Data.Items[0].ClassID != 101 || body.Data.Items[0].ClassName != "一班" {
+		t.Fatalf("first item = %+v", body.Data.Items[0])
+	}
+	if len(body.Data.Items[0].Courses) != 2 {
+		t.Fatalf("courses count = %d", len(body.Data.Items[0].Courses))
+	}
+	if body.Data.Items[0].Courses[0].CourseName != "数学" {
+		t.Fatalf("first course = %+v", body.Data.Items[0].Courses[0])
+	}
+}
+
+func TestHandler_ListClassCourseOptionsForAdmin(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.options = []ClassCourseOption{
+		{
+			ClassID:   101,
+			ClassName: "一班",
+			Courses: []CourseOptionItem{
+				{CourseID: 12, CourseName: "数学"},
+			},
+		},
+	}
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      1,
+			UserType:    "sys_admin",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/class-course-options", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[ClassCourseOptionsResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if len(body.Data.Items) != 1 || len(body.Data.Items[0].Courses) != 1 {
+		t.Fatalf("items = %+v", body.Data.Items)
+	}
+	if body.Data.Items[0].Courses[0].CourseName != "数学" {
+		t.Fatalf("first course = %+v", body.Data.Items[0].Courses[0])
+	}
+	if repo.lastScope.UserType != "sys_admin" {
+		t.Fatalf("last scope = %+v", repo.lastScope)
+	}
+}
+
+func TestHandler_ListClassCourseOptionsRejectsMissingPermission(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	router := newAnalyticsTestRouter(newMemoryAnalyticsRepository(), fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"practice:use"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/class-course-options", nil, "token")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestService_RejectsTimeRangeLongerThan366Days(t *testing.T) {
 	repo := newMemoryAnalyticsRepository()
 	service := NewService(repo)
@@ -193,6 +298,23 @@ func TestService_RejectsTimeRangeLongerThan366Days(t *testing.T) {
 		PageSize: 20,
 	})
 	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestService_ListClassCourseOptionsRejectsUnsupportedUserType(t *testing.T) {
+	repo := newMemoryAnalyticsRepository()
+	service := NewService(repo)
+
+	_, err := service.ListClassCourseOptions(context.Background(), Scope{
+		TenantID: 1,
+		UserID:   7,
+		UserType: "student",
+		Permissions: []string{
+			"analytics:view",
+		},
+	})
+	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -316,6 +438,8 @@ type memoryAnalyticsRepository struct {
 	summary           ClassPracticeSummary
 	students          []ClassPracticeStudentItem
 	lastQuery         ClassPracticeSummaryQuery
+	options           []ClassCourseOption
+	lastScope         Scope
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
@@ -338,6 +462,11 @@ func (repo *memoryAnalyticsRepository) GetClassPracticeSummary(_ context.Context
 func (repo *memoryAnalyticsRepository) ListClassPracticeStudents(_ context.Context, query ClassPracticeSummaryQuery) (PageResult[ClassPracticeStudentItem], error) {
 	repo.lastQuery = query
 	return pageOf(repo.students, query.Page, query.PageSize), nil
+}
+
+func (repo *memoryAnalyticsRepository) ListClassCourseOptions(_ context.Context, scope Scope) ([]ClassCourseOption, error) {
+	repo.lastScope = scope
+	return append([]ClassCourseOption{}, repo.options...), nil
 }
 
 func performAnalyticsRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {

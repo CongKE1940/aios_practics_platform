@@ -29,6 +29,7 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/class-practice-summary", handler.getClassPracticeSummary)
+	router.GET("/analytics/class-course-options", handler.listClassCourseOptions)
 }
 
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -47,6 +48,19 @@ func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) listClassCourseOptions(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	items, err := handler.service.ListClassCourseOptions(ctx.Request.Context(), scope)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(ClassCourseOptionsResult{Items: items}, requestID(ctx)))
 }
 
 func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
