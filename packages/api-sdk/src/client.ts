@@ -83,6 +83,14 @@ export interface ApiClient {
   listImportJobs(query?: ImportJobListQuery): Promise<PageResult<ImportJob>>;
   getImportJob(id: number): Promise<ImportJob>;
   listImportJobRows(id: number, query?: ImportJobRowListQuery): Promise<PageResult<ImportJobRow>>;
+  createPracticeSession(body: PracticeSessionInput): Promise<PracticeSessionDetail>;
+  getPracticeSession(id: number): Promise<PracticeSessionDetail>;
+  nextPracticeQuestion(id: number): Promise<NextPracticeQuestionResult>;
+  submitPracticeAnswer(id: number, body: PracticeAnswerInput): Promise<PracticeAnswerResult>;
+  finishPracticeSession(id: number): Promise<PracticeSessionSummary>;
+  markPracticeQuestionMastered(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
+  markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
+  listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
   updateRole(id: number, body: RoleInput): Promise<RoleItem>;
@@ -337,6 +345,76 @@ export interface ImportJobRow {
   created_at?: string;
 }
 
+export interface PracticeSessionQuestion {
+  session_question_id: number;
+  session_id: number;
+  question_id: number;
+  question_version_id: number;
+  display_order: number;
+  question_type: string;
+  content: QuestionContentInput | Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  round_no: number;
+  answered?: boolean;
+  is_correct?: boolean | null;
+}
+
+export interface PracticeSessionDetail {
+  id: number;
+  tenant_id: number;
+  user_id: number;
+  practice_mode: string;
+  source_mode: string;
+  flow_mode: string;
+  bank_scope: Record<string, unknown>;
+  bank_ids: number[];
+  exclude_mastered: boolean;
+  question_count?: number;
+  random_seed: number;
+  round_no: number;
+  status: string;
+  questions: PracticeSessionQuestion[];
+}
+
+export interface NextPracticeQuestionResult {
+  question: PracticeSessionQuestion;
+  round_no: number;
+}
+
+export interface PracticeAnswerResult {
+  is_correct: boolean;
+  correct_answer: Record<string, unknown>;
+  analysis?: Record<string, unknown>;
+  state: UserQuestionState;
+}
+
+export interface PracticeSessionSummary {
+  id: number;
+  status: string;
+  answered_count: number;
+  correct_count: number;
+  wrong_count: number;
+}
+
+export interface UserQuestionState {
+  id: number;
+  tenant_id: number;
+  user_id: number;
+  question_id: number;
+  question_version_id: number;
+  practice_correct_count: number;
+  practice_wrong_count: number;
+  exam_wrong_count: number;
+  is_mastered: boolean;
+  is_confused: boolean;
+  mastered_at?: string | null;
+  confused_at?: string | null;
+  last_wrong_at?: string | null;
+  last_answer?: Record<string, unknown>;
+  last_result?: string | null;
+  updated_at?: string;
+}
+
 export interface RoleItem {
   id: number;
   tenant_id: number;
@@ -452,6 +530,26 @@ export interface ImportJobInput {
   file_asset_id?: number | null;
   file_url: string;
   content: string;
+}
+
+export interface PracticeSessionInput {
+  practice_mode?: string;
+  source_mode?: string;
+  flow_mode?: string;
+  course_id?: number | null;
+  bank_ids: number[];
+  exclude_mastered?: boolean;
+  question_count?: number;
+  random_seed?: number;
+}
+
+export interface PracticeAnswerInput {
+  session_question_id: number;
+  answer: Record<string, unknown>;
+}
+
+export interface QuestionStateInput {
+  value: boolean;
 }
 
 export interface RoleInput {
@@ -574,6 +672,13 @@ export interface ImportJobRowListQuery {
   page_size?: number;
 }
 
+export interface UserQuestionStateListQuery {
+  state_type?: string;
+  bank_id?: number;
+  page?: number;
+  page_size?: number;
+}
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const fetcher = options.fetch ?? globalThis.fetch;
   if (!fetcher) {
@@ -682,6 +787,21 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     getImportJob: (id) => request(fetcher, options, `/import/jobs/${id}`, { method: "GET" }),
     listImportJobRows: (id, query) =>
       request(fetcher, options, buildPath(`/import/jobs/${id}/rows`, query), { method: "GET" }),
+    createPracticeSession: (body) =>
+      request(fetcher, options, "/practice/sessions", { method: "POST", body: JSON.stringify(body) }),
+    getPracticeSession: (id) => request(fetcher, options, `/practice/sessions/${id}`, { method: "GET" }),
+    nextPracticeQuestion: (id) =>
+      request(fetcher, options, `/practice/sessions/${id}/next-question`, { method: "POST" }),
+    submitPracticeAnswer: (id, body) =>
+      request(fetcher, options, `/practice/sessions/${id}/answer`, { method: "POST", body: JSON.stringify(body) }),
+    finishPracticeSession: (id) =>
+      request(fetcher, options, `/practice/sessions/${id}/finish`, { method: "POST" }),
+    markPracticeQuestionMastered: (id, body) =>
+      request(fetcher, options, `/practice/questions/${id}/mark-mastered`, { method: "POST", body: JSON.stringify(body) }),
+    markPracticeQuestionConfused: (id, body) =>
+      request(fetcher, options, `/practice/questions/${id}/mark-confused`, { method: "POST", body: JSON.stringify(body) }),
+    listUserQuestionStates: (query) =>
+      request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),
     createRole: (body) => request(fetcher, options, "/roles", { method: "POST", body: JSON.stringify(body) }),
     updateRole: (id, body) =>

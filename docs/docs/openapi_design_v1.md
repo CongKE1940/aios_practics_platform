@@ -1318,10 +1318,10 @@ QuestionAnswer:
 {
   "practice_mode": "random",
   "source_mode": "multi_bank",
-  "course_id": 10,
-  "bank_ids": [1, 2, 3],
+  "flow_mode": "fixed_count",
+  "bank_ids": [1, 2],
   "exclude_mastered": true,
-  "question_count": 20
+  "question_count": 10
 }
 ```
 
@@ -1331,22 +1331,29 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "session_id": 501,
+    "id": 501,
+    "practice_mode": "random",
+    "source_mode": "multi_bank",
+    "flow_mode": "fixed_count",
+    "status": "active",
     "questions": [
       {
         "session_question_id": 9001,
+        "session_id": 501,
         "question_id": 1001,
         "question_version_id": 3001,
         "display_order": 1,
+        "question_type": "single_choice",
         "content": {
           "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
           "options": [
-            {"key": "B", "content_type": "text", "text": "2", "assets": []},
             {"key": "A", "content_type": "text", "text": "1", "assets": []}
+            {"key": "B", "content_type": "text", "text": "2", "assets": []}
           ],
           "option_order_randomizable": true,
           "ext": {}
-        }
+        },
+        "round_no": 1
       }
     ]
   },
@@ -1357,6 +1364,8 @@ QuestionAnswer:
 ### 说明
 - 支持顺序练题 / 随机练题
 - 支持单题库 / 多题库
+- 支持 `fixed_count` 与 `continuous`
+- 定量练习未传题量时默认 10 题
 - 熟题可从练题中排除，这来自原始需求。
 
 ---
@@ -1365,9 +1374,48 @@ QuestionAnswer:
 
 ### GET `/api/v1/practice/sessions/{id}`
 
+返回会话基础信息与已抽取题目。
+
 ---
 
-## 11.3 提交练题答案
+## 11.3 获取下一题
+
+### POST `/api/v1/practice/sessions/{id}/next-question`
+
+主要用于连续刷题。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "question": {
+      "session_question_id": 9002,
+      "session_id": 501,
+      "question_id": 1002,
+      "question_version_id": 3002,
+      "display_order": 2,
+      "question_type": "single_choice",
+      "content": {
+        "stem": {"content_type": "text", "text": "第二题", "assets": []},
+        "options": [
+          {"key": "A", "content_type": "text", "text": "1", "assets": []},
+          {"key": "B", "content_type": "text", "text": "2", "assets": []}
+        ],
+        "option_order_randomizable": true,
+        "ext": {}
+      },
+      "round_no": 1
+    },
+    "round_no": 1
+  }
+}
+```
+
+---
+
+## 11.4 提交练题答案
 
 ### POST `/api/v1/practice/sessions/{id}/answer`
 
@@ -1388,8 +1436,18 @@ QuestionAnswer:
   "message": "ok",
   "data": {
     "is_correct": true,
+    "correct_answer": {
+      "judge_mode": "by_option_key",
+      "correct_keys": ["B"]
+    },
     "analysis": {
       "text": "基础算术"
+    },
+    "state": {
+      "practice_correct_count": 1,
+      "practice_wrong_count": 0,
+      "is_mastered": false,
+      "is_confused": false
     }
   },
   "request_id": "req_8"
@@ -1403,42 +1461,62 @@ QuestionAnswer:
 
 ---
 
-## 11.4 标记熟题
+## 11.5 结束练题会话
+
+### POST `/api/v1/practice/sessions/{id}/finish`
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "id": 501,
+    "status": "finished",
+    "answered_count": 8,
+    "correct_count": 6,
+    "wrong_count": 2
+  }
+}
+```
+
+---
+
+## 11.6 标记熟题
 
 ### POST `/api/v1/practice/questions/{id}/mark-mastered`
 
 ### Request Body
 ```json
 {
-  "question_id": 1001,
   "value": true
 }
 ```
 
 ---
 
-## 11.5 标记疑惑题
+## 11.7 标记疑惑题
 
 ### POST `/api/v1/practice/questions/{id}/mark-confused`
 
 ### Request Body
 ```json
 {
-  "question_id": 1001,
   "value": true
 }
 ```
 
 ---
 
-## 11.6 用户题目状态列表
+## 11.8 用户题目状态列表
 
 ### GET `/api/v1/user-question-states`
 
 ### Query
 - `state_type`: `wrong` / `mastered` / `confused`
-- `course_id`
 - `bank_id`
+- `page`
+- `page_size`
 
 ---
 

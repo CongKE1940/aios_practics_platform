@@ -667,8 +667,10 @@ paths:
     post:
       tags: [Practice]
       summary: 创建练题会话
+      requestBody:
+        $ref: '#/components/requestBodies/PracticeSessionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/PracticeSessionOk' }
   /practice/sessions/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -676,37 +678,78 @@ paths:
       tags: [Practice]
       summary: 练题会话详情
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/PracticeSessionOk' }
+  /practice/sessions/{id}/next-question:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 获取下一题
+      responses:
+        '200': { $ref: '#/components/responses/PracticeNextQuestionOk' }
   /practice/sessions/{id}/answer:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Practice]
       summary: 提交练题答案
+      requestBody:
+        $ref: '#/components/requestBodies/PracticeAnswerBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/PracticeAnswerOk' }
+  /practice/sessions/{id}/finish:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 结束练题会话
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionSummaryOk' }
   /practice/questions/{id}/mark-mastered:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Practice]
       summary: 标记熟题
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionStateBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/UserQuestionStateOk' }
   /practice/questions/{id}/mark-confused:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Practice]
       summary: 标记疑惑题
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionStateBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/UserQuestionStateOk' }
   /user-question-states:
     get:
       tags: [Practice]
       summary: 用户题目状态列表
+      parameters:
+        - in: query
+          name: state_type
+          schema:
+            type: string
+            enum: [wrong, mastered, confused]
+        - in: query
+          name: bank_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/UserQuestionStatePageOk' }
   /exams:
     get:
       tags: [Exam]
@@ -1066,6 +1109,42 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ImportJobRowPageResponse'
+    PracticeSessionOk:
+      description: 练题会话详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionResponse'
+    PracticeNextQuestionOk:
+      description: 下一题结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeNextQuestionResponse'
+    PracticeAnswerOk:
+      description: 练题答题结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeAnswerResponse'
+    PracticeSessionSummaryOk:
+      description: 练题会话结束摘要
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionSummaryResponse'
+    UserQuestionStateOk:
+      description: 用户题目状态
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserQuestionStateResponse'
+    UserQuestionStatePageOk:
+      description: 用户题目状态分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserQuestionStatePageResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -1157,6 +1236,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ImportJobInput'
+    PracticeSessionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionInput'
+    PracticeAnswerBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeAnswerInput'
+    QuestionStateBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionStateInput'
   schemas:
     BaseResponse:
       type: object
@@ -1674,6 +1771,210 @@ components:
         created_at:
           type: string
           format: date-time
+    PracticeSessionInput:
+      type: object
+      required: [bank_ids]
+      properties:
+        practice_mode:
+          type: string
+          enum: [random, sequential]
+        source_mode:
+          type: string
+          enum: [single_bank, multi_bank]
+        flow_mode:
+          type: string
+          enum: [fixed_count, continuous]
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        exclude_mastered:
+          type: boolean
+        question_count:
+          type: integer
+        random_seed:
+          type: integer
+          format: int64
+    PracticeSessionQuestion:
+      type: object
+      required: [session_question_id, session_id, question_id, question_version_id, display_order, question_type, content, round_no]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        session_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        round_no:
+          type: integer
+        answered:
+          type: boolean
+        is_correct:
+          type: boolean
+          nullable: true
+    PracticeSessionDetail:
+      type: object
+      required: [id, tenant_id, user_id, practice_mode, source_mode, flow_mode, bank_scope, bank_ids, exclude_mastered, random_seed, round_no, status, questions]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        practice_mode:
+          type: string
+        source_mode:
+          type: string
+        flow_mode:
+          type: string
+        bank_scope:
+          type: object
+          additionalProperties: true
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        exclude_mastered:
+          type: boolean
+        question_count:
+          type: integer
+        random_seed:
+          type: integer
+          format: int64
+        round_no:
+          type: integer
+        status:
+          type: string
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PracticeSessionQuestion'
+    PracticeAnswerInput:
+      type: object
+      required: [session_question_id, answer]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        answer:
+          type: object
+          additionalProperties: true
+    QuestionStateInput:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+    UserQuestionState:
+      type: object
+      required: [id, tenant_id, user_id, question_id, question_version_id, practice_correct_count, practice_wrong_count, exam_wrong_count, is_mastered, is_confused]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        practice_correct_count:
+          type: integer
+        practice_wrong_count:
+          type: integer
+        exam_wrong_count:
+          type: integer
+        is_mastered:
+          type: boolean
+        is_confused:
+          type: boolean
+        mastered_at:
+          type: string
+          format: date-time
+          nullable: true
+        confused_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_wrong_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_answer:
+          type: object
+          additionalProperties: true
+        last_result:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+    PracticeAnswerResult:
+      type: object
+      required: [is_correct, correct_answer, state]
+      properties:
+        is_correct:
+          type: boolean
+        correct_answer:
+          type: object
+          additionalProperties: true
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        state:
+          $ref: '#/components/schemas/UserQuestionState'
+    NextPracticeQuestionResult:
+      type: object
+      required: [question, round_no]
+      properties:
+        question:
+          $ref: '#/components/schemas/PracticeSessionQuestion'
+        round_no:
+          type: integer
+    PracticeSessionSummary:
+      type: object
+      required: [id, status, answered_count, correct_count, wrong_count]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
     QuestionBankResponse:
       type: object
       properties:
@@ -1811,6 +2112,83 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/ImportJobRow'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    PracticeSessionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeSessionDetail'
+        request_id:
+          type: string
+    PracticeNextQuestionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/NextPracticeQuestionResult'
+        request_id:
+          type: string
+    PracticeAnswerResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeAnswerResult'
+        request_id:
+          type: string
+    PracticeSessionSummaryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeSessionSummary'
+        request_id:
+          type: string
+    UserQuestionStateResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/UserQuestionState'
+        request_id:
+          type: string
+    UserQuestionStatePageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserQuestionState'
             page:
               type: integer
             page_size:

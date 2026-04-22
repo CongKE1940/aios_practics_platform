@@ -97,6 +97,7 @@ var userMenus = []menuDef{
 		path: "/app",
 		children: []menuDef{
 			{id: 21, name: "我的课程", path: "/app/courses", requiredPermissions: []string{"practice:use"}},
+			{id: 22, name: "练题中心", path: "/app/practice", requiredPermissions: []string{"practice:use"}},
 		},
 	},
 }

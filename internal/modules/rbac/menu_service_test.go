@@ -52,3 +52,17 @@ func TestBuildMenusIncludesImportCenterEntry(t *testing.T) {
 		t.Fatalf("child[0].Name = %q", menus[0].Children[0].Name)
 	}
 }
+
+func TestBuildUserMenusIncludesPracticeCenter(t *testing.T) {
+	menus := BuildMenus("user", []string{"practice:use"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	if len(menus[0].Children) != 2 {
+		t.Fatalf("len(children) = %d", len(menus[0].Children))
+	}
+	if menus[0].Children[1].Path != "/app/practice" {
+		t.Fatalf("practice path = %q", menus[0].Children[1].Path)
+	}
+}

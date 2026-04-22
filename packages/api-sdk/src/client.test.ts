@@ -946,6 +946,133 @@ describe("createApiClient", () => {
     expect(String(fetchMock.mock.calls[4][0])).toContain("/import/jobs/1/rows?status=failed");
   });
 
+  it("manages practice sessions and question states", async () => {
+    const sessionData = {
+      id: 501,
+      tenant_id: 1,
+      user_id: 7,
+      practice_mode: "random",
+      source_mode: "single_bank",
+      flow_mode: "fixed_count",
+      bank_scope: {},
+      bank_ids: [1],
+      exclude_mastered: true,
+      question_count: 10,
+      random_seed: 20260422,
+      round_no: 1,
+      status: "active",
+      questions: [
+        {
+          session_question_id: 9001,
+          session_id: 501,
+          question_id: 1001,
+          question_version_id: 3001,
+          display_order: 1,
+          question_type: "single_choice",
+          content: {
+            stem: { content_type: "text", text: "1+1等于几？", assets: [] },
+            options: [
+              { key: "A", content_type: "text", text: "1", assets: [] },
+              { key: "B", content_type: "text", text: "2", assets: [] }
+            ]
+          },
+          round_no: 1,
+          answered: false
+        }
+      ]
+    };
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: sessionData }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: sessionData }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              question: { ...sessionData.questions[0], session_question_id: 9002, display_order: 2 },
+              round_no: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              is_correct: true,
+              correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+              analysis: { text: "基础算术" },
+              state: {
+                id: 1,
+                tenant_id: 1,
+                user_id: 7,
+                question_id: 1001,
+                question_version_id: 3001,
+                practice_correct_count: 1,
+                practice_wrong_count: 0,
+                exam_wrong_count: 0,
+                is_mastered: false,
+                is_confused: false
+              }
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 501, status: "finished", answered_count: 1, correct_count: 1, wrong_count: 0 } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 1, tenant_id: 1, user_id: 7, question_id: 1001, question_version_id: 3001, practice_correct_count: 1, practice_wrong_count: 0, exam_wrong_count: 0, is_mastered: true, is_confused: false } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 1, tenant_id: 1, user_id: 7, question_id: 1001, question_version_id: 3001, practice_correct_count: 1, practice_wrong_count: 0, exam_wrong_count: 0, is_mastered: true, is_confused: true } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { items: [], page: 1, page_size: 20, total: 0 } }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await client.createPracticeSession({
+      practice_mode: "random",
+      source_mode: "single_bank",
+      flow_mode: "fixed_count",
+      bank_ids: [1],
+      exclude_mastered: true,
+      question_count: 10
+    });
+    await client.getPracticeSession(501);
+    await client.nextPracticeQuestion(501);
+    await client.submitPracticeAnswer(501, {
+      session_question_id: 9001,
+      answer: { selected_keys: ["B"] }
+    });
+    await client.finishPracticeSession(501);
+    await client.markPracticeQuestionMastered(1001, { value: true });
+    await client.markPracticeQuestionConfused(1001, { value: true });
+    await client.listUserQuestionStates({ state_type: "wrong" });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/practice/sessions");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        practice_mode: "random",
+        source_mode: "single_bank",
+        flow_mode: "fixed_count",
+        bank_ids: [1],
+        exclude_mastered: true,
+        question_count: 10
+      })
+    );
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/practice/sessions/501/next-question");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/practice/sessions/501/answer");
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/practice/sessions/501/finish");
+    expect(String(fetchMock.mock.calls[5][0])).toContain("/practice/questions/1001/mark-mastered");
+    expect(String(fetchMock.mock.calls[6][0])).toContain("/practice/questions/1001/mark-confused");
+    expect(String(fetchMock.mock.calls[7][0])).toContain("/user-question-states?state_type=wrong");
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
