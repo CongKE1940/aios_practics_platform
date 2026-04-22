@@ -1083,6 +1083,13 @@ paths:
       summary: 班级表现分析
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /analytics/class-course-options:
+    get:
+      tags: [Analytics]
+      summary: 班级课程级联选项
+      operationId: listClassCourseOptions
+      responses:
+        '200': { $ref: '#/components/responses/ClassCourseOptionsOk' }
   /analytics/class-practice-summary:
     get:
       tags: [Analytics]
@@ -1263,6 +1270,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserQuestionStatePageResponse'
+    ClassCourseOptionsOk:
+      description: 班级课程级联选项
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassCourseOptionsResponse'
     ClassPracticeSummaryOk:
       description: 班级课程练题概览和学生明细
       content:
@@ -2225,6 +2238,36 @@ components:
           type: integer
         wrong_count:
           type: integer
+    CourseOptionItem:
+      type: object
+      required: [course_id, course_name]
+      properties:
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+    ClassCourseOption:
+      type: object
+      required: [class_id, class_name, courses]
+      properties:
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        courses:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseOptionItem'
+    ClassCourseOptionsResult:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassCourseOption'
     ClassPracticeSummary:
       type: object
       required: [class_id, class_name, course_id, course_name, student_count, participated_student_count, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
@@ -2577,5 +2620,16 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/ClassPracticeSummaryResult'
+        request_id:
+          type: string
+    ClassCourseOptionsResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ClassCourseOptionsResult'
         request_id:
           type: string

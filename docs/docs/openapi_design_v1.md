@@ -2202,6 +2202,45 @@ QuestionAnswer:
 
 ## 16.5 老师侧班级课程练题概览
 
+### GET `/api/v1/analytics/class-course-options`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，仅返回当前老师当前任课的班级课程树。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，返回当前 token 租户范围内有效任课关系对应的班级课程树。
+
+### 作用
+- 用于老师侧班级学习页的单个级联选择器。
+- 前端先选班级，再在同一个控件中选择课程，最终仍以 `class_id + course_id` 查询练题概览。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "class_id": 301,
+        "class_name": "七年级一班",
+        "courses": [
+          {
+            "course_id": 10,
+            "course_name": "数学"
+          },
+          {
+            "course_id": 11,
+            "course_name": "语文"
+          }
+        ]
+      }
+    ]
+  },
+  "request_id": "req_analytics_class_options_1"
+}
+```
+
 ### GET `/api/v1/analytics/class-practice-summary`
 
 ### 权限
@@ -2271,6 +2310,7 @@ QuestionAnswer:
 - `answered_count`、`correct_count`、`wrong_count` 按答题时间统计。
 - `wrong_question_count` 和 `confused_question_count` 仅统计当前课程下有效题库与有效题目。
 - 阶段 2F 暂不新增统计表，直接基于现有练题会话、答题记录和用户题目状态实时聚合。
+- 用户端当前通过 `GET /api/v1/analytics/class-course-options` 先拉取班级课程树，再选择具体课程后调用本接口。
 
 ---
 
