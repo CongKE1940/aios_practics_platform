@@ -2362,7 +2362,6 @@ components:
           additionalProperties: true
         last_result:
           type: string
-          nullable: true
         updated_at:
           type: string
           format: date-time
@@ -2617,6 +2616,14 @@ components:
           nullable: true
         last_result:
           type: string
+        last_session_id:
+          type: integer
+          format: int64
+          nullable: true
+        last_session_question_id:
+          type: integer
+          format: int64
+          nullable: true
     StudentPracticeDetailResult:
       type: object
       required: [student_summary, active_tab, sessions, wrong_questions, confused_questions]

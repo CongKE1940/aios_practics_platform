@@ -533,6 +533,8 @@ export interface StudentPracticeQuestionItem {
   is_confused: boolean;
   confused_at?: string | null;
   last_result: string;
+  last_session_id?: number | null;
+  last_session_question_id?: number | null;
 }
 
 export interface StudentPracticeDetailResult {

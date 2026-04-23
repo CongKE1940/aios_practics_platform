@@ -564,6 +564,11 @@ func TestMySQLRepositoryListStudentPracticeWrongQuestions(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"question_id", "question_version_id", "question_type", "stem", "practice_wrong_count", "last_wrong_at", "is_confused", "confused_at", "last_result",
 		}).AddRow(int64(501), int64(3001), "single_choice", "1+1=?", 2, time.Date(2026, 4, 20, 8, 0, 0, 0, time.UTC), false, nil, "wrong"))
+	mock.ExpectQuery(`(?s)SELECT\s+pa\.question_id,\s+psq\.session_id,\s+pa\.session_question_id.*FROM practice_answers pa.*JOIN practice_session_questions psq ON psq\.id = pa\.session_question_id.*JOIN \(\s*SELECT pa2\.question_id, MAX\(pa2\.id\) AS max_id.*ps2\.tenant_id = \?.*ps2\.user_id = \?.*ps2\.course_id = \?.*pa2\.question_id IN \(\?\).*GROUP BY pa2\.question_id.*\)\s+latest ON latest\.max_id = pa\.id`).
+		WithArgs(int64(7), int64(7001), int64(12), int64(501)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "session_id", "session_question_id",
+		}).AddRow(int64(501), int64(9009), int64(70009)))
 
 	result, err := repo.ListStudentWrongQuestions(context.Background(), StudentPracticeDetailQuery{
 		TenantID:      7,
@@ -587,6 +592,12 @@ func TestMySQLRepositoryListStudentPracticeWrongQuestions(t *testing.T) {
 	}
 	if result.Items[0].IsConfused {
 		t.Fatalf("is_confused = true, want false")
+	}
+	if result.Items[0].LastSessionID == nil || *result.Items[0].LastSessionID != 9009 {
+		t.Fatalf("last_session_id = %+v", result.Items[0].LastSessionID)
+	}
+	if result.Items[0].LastSessionQuestionID == nil || *result.Items[0].LastSessionQuestionID != 70009 {
+		t.Fatalf("last_session_question_id = %+v", result.Items[0].LastSessionQuestionID)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet() error = %v", err)
@@ -614,6 +625,11 @@ func TestMySQLRepositoryListStudentPracticeConfusedQuestions(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"question_id", "question_version_id", "question_type", "stem", "practice_wrong_count", "last_wrong_at", "is_confused", "confused_at", "last_result",
 		}).AddRow(int64(601), int64(3002), "short_answer", "解释公式", 0, nil, true, confusedAt, "wrong"))
+	mock.ExpectQuery(`(?s)SELECT\s+pa\.question_id,\s+psq\.session_id,\s+pa\.session_question_id.*FROM practice_answers pa.*JOIN practice_session_questions psq ON psq\.id = pa\.session_question_id.*JOIN \(\s*SELECT pa2\.question_id, MAX\(pa2\.id\) AS max_id.*ps2\.tenant_id = \?.*ps2\.user_id = \?.*ps2\.course_id = \?.*pa2\.question_id IN \(\?\).*GROUP BY pa2\.question_id.*\)\s+latest ON latest\.max_id = pa\.id`).
+		WithArgs(int64(7), int64(7001), int64(12), int64(601)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "session_id", "session_question_id",
+		}).AddRow(int64(601), int64(9011), int64(70011)))
 
 	result, err := repo.ListStudentConfusedQuestions(context.Background(), StudentPracticeDetailQuery{
 		TenantID:      7,
@@ -637,6 +653,12 @@ func TestMySQLRepositoryListStudentPracticeConfusedQuestions(t *testing.T) {
 	}
 	if result.Items[0].ConfusedAt == nil || !result.Items[0].ConfusedAt.Equal(confusedAt) {
 		t.Fatalf("confused_at = %+v", result.Items[0].ConfusedAt)
+	}
+	if result.Items[0].LastSessionID == nil || *result.Items[0].LastSessionID != 9011 {
+		t.Fatalf("last_session_id = %+v", result.Items[0].LastSessionID)
+	}
+	if result.Items[0].LastSessionQuestionID == nil || *result.Items[0].LastSessionQuestionID != 70011 {
+		t.Fatalf("last_session_question_id = %+v", result.Items[0].LastSessionQuestionID)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet() error = %v", err)

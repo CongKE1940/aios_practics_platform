@@ -143,15 +143,17 @@ type StudentPracticeSessionItem struct {
 }
 
 type StudentPracticeQuestionItem struct {
-	QuestionID         int64      `json:"question_id"`
-	QuestionVersionID  int64      `json:"question_version_id"`
-	QuestionType       string     `json:"question_type"`
-	Stem               string     `json:"stem"`
-	PracticeWrongCount int        `json:"practice_wrong_count"`
-	LastWrongAt        *time.Time `json:"last_wrong_at,omitempty"`
-	IsConfused         bool       `json:"is_confused"`
-	ConfusedAt         *time.Time `json:"confused_at,omitempty"`
-	LastResult         string     `json:"last_result"`
+	QuestionID            int64      `json:"question_id"`
+	QuestionVersionID     int64      `json:"question_version_id"`
+	QuestionType          string     `json:"question_type"`
+	Stem                  string     `json:"stem"`
+	PracticeWrongCount    int        `json:"practice_wrong_count"`
+	LastWrongAt           *time.Time `json:"last_wrong_at,omitempty"`
+	IsConfused            bool       `json:"is_confused"`
+	ConfusedAt            *time.Time `json:"confused_at,omitempty"`
+	LastResult            string     `json:"last_result"`
+	LastSessionID         *int64     `json:"last_session_id,omitempty"`
+	LastSessionQuestionID *int64     `json:"last_session_question_id,omitempty"`
 }
 
 type StudentPracticeDetailResult struct {

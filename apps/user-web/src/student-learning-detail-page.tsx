@@ -151,9 +151,21 @@ export function StudentLearningDetailPage({ api, path, onNavigate }: StudentLear
               onOpenSession={(sessionID) => onNavigate(buildStudentSessionDetailPath({ ...parsed, session_id: sessionID }))}
             />
           ) : parsed.tab === "wrong" ? (
-            <QuestionList items={result.wrong_questions.items} emptyText="暂无错题。" />
+            <QuestionList
+              items={result.wrong_questions.items}
+              emptyText="暂无错题。"
+              onOpenQuestion={(sessionID, sessionQuestionID) =>
+                onNavigate(buildStudentSessionQuestionDetailPath({ ...parsed, session_id: sessionID, session_question_id: sessionQuestionID }))
+              }
+            />
           ) : (
-            <QuestionList items={result.confused_questions.items} emptyText="暂无疑惑题。" />
+            <QuestionList
+              items={result.confused_questions.items}
+              emptyText="暂无疑惑题。"
+              onOpenQuestion={(sessionID, sessionQuestionID) =>
+                onNavigate(buildStudentSessionQuestionDetailPath({ ...parsed, session_id: sessionID, session_question_id: sessionQuestionID }))
+              }
+            />
           )}
         </section>
       ) : null}
@@ -285,6 +297,30 @@ function buildStudentSessionDetailPath(params: {
   return `/app/class-learning/student/session?${search.toString()}`;
 }
 
+function buildStudentSessionQuestionDetailPath(params: {
+  class_id: number;
+  course_id: number;
+  student_user_id: number;
+  session_id: number;
+  session_question_id: number;
+  start_at?: string;
+  end_at?: string;
+}): string {
+  const search = new URLSearchParams();
+  search.set("class_id", String(params.class_id));
+  search.set("course_id", String(params.course_id));
+  search.set("student_user_id", String(params.student_user_id));
+  search.set("session_id", String(params.session_id));
+  search.set("session_question_id", String(params.session_question_id));
+  if (params.start_at) {
+    search.set("start_at", params.start_at);
+  }
+  if (params.end_at) {
+    search.set("end_at", params.end_at);
+  }
+  return `/app/class-learning/student/session/question?${search.toString()}`;
+}
+
 function SessionList({
   items,
   onOpenSession
@@ -315,7 +351,15 @@ function SessionList({
   );
 }
 
-function QuestionList({ items, emptyText }: { items: StudentPracticeQuestionItem[]; emptyText: string }) {
+function QuestionList({
+  items,
+  emptyText,
+  onOpenQuestion
+}: {
+  items: StudentPracticeQuestionItem[];
+  emptyText: string;
+  onOpenQuestion(sessionID: number, sessionQuestionID: number): void;
+}) {
   if (items.length === 0) {
     return <p>{emptyText}</p>;
   }
@@ -328,6 +372,11 @@ function QuestionList({ items, emptyText }: { items: StudentPracticeQuestionItem
           <p>题型：{item.question_type}</p>
           <p>错题次数：{item.practice_wrong_count}</p>
           <p>last_result：{item.last_result}</p>
+          {hasSessionQuestionRef(item) ? (
+            <button type="button" onClick={() => onOpenQuestion(item.last_session_id, item.last_session_question_id)}>
+              查看题目详情
+            </button>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -339,4 +388,10 @@ function formatPercent(value: number): string {
     return "0%";
   }
   return `${Math.round(value * 100)}%`;
+}
+
+function hasSessionQuestionRef(
+  item: StudentPracticeQuestionItem
+): item is StudentPracticeQuestionItem & { last_session_id: number; last_session_question_id: number } {
+  return typeof item.last_session_id === "number" && typeof item.last_session_question_id === "number";
 }

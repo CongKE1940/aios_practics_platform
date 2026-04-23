@@ -2338,6 +2338,7 @@ QuestionAnswer:
 - `student_summary` 返回该学生在当前班级课程下的总览指标。
 - `sessions`、`wrong_questions`、`confused_questions` 均采用分页结构，前端根据 `tab` 选择其中一个分页列表展示。
 - `active_tab` 用于回显当前激活标签页，便于前端和后端在切换时保持一致。
+- `wrong_questions` 和 `confused_questions` 每个题目项可返回 `last_session_id`、`last_session_question_id`，用于前端直接下钻到单题详情页。
 - `teacher` 访问时，后端应复用班级课程任课关系校验，避免越权查看同班其他课程或其他班级学生数据。
 - `sys_admin` 和 `school_admin` 仍需受租户边界限制，不得跨租户读取学生数据。
 
@@ -2380,7 +2381,9 @@ QuestionAnswer:
           "last_wrong_at": "2026-04-22T09:15:00+08:00",
           "is_confused": false,
           "confused_at": null,
-          "last_result": "wrong"
+          "last_result": "wrong",
+          "last_session_id": 9001,
+          "last_session_question_id": 70001
         }
       ],
       "page": 1,

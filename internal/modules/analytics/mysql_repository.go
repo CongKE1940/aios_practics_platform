@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -920,6 +922,9 @@ LIMIT ? OFFSET ?
 	if err := rows.Err(); err != nil {
 		return PageResult[StudentPracticeQuestionItem]{}, err
 	}
+	if err := repo.fillLatestSessionRefsForQuestions(ctx, query, items); err != nil {
+		return PageResult[StudentPracticeQuestionItem]{}, err
+	}
 
 	return PageResult[StudentPracticeQuestionItem]{
 		Items:    items,
@@ -927,6 +932,90 @@ LIMIT ? OFFSET ?
 		PageSize: pageSize,
 		Total:    total,
 	}, nil
+}
+
+func (repo *MySQLRepository) fillLatestSessionRefsForQuestions(ctx context.Context, query StudentPracticeDetailQuery, items []StudentPracticeQuestionItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	questionIDs := make([]int64, 0, len(items))
+	seen := make(map[int64]struct{}, len(items))
+	for _, item := range items {
+		if _, ok := seen[item.QuestionID]; ok {
+			continue
+		}
+		seen[item.QuestionID] = struct{}{}
+		questionIDs = append(questionIDs, item.QuestionID)
+	}
+	if len(questionIDs) == 0 {
+		return nil
+	}
+
+	placeholders := questionIDPlaceholders(len(questionIDs))
+
+	innerArgs := make([]any, 0, 3+len(questionIDs))
+	innerArgs = append(innerArgs, query.TenantID, query.StudentUserID, query.CourseID)
+	for _, questionID := range questionIDs {
+		innerArgs = append(innerArgs, questionID)
+	}
+
+	rowQuery := fmt.Sprintf(`
+SELECT
+  pa.question_id,
+  psq.session_id,
+  pa.session_question_id
+FROM practice_answers pa
+JOIN practice_session_questions psq ON psq.id = pa.session_question_id
+JOIN (
+  SELECT pa2.question_id, MAX(pa2.id) AS max_id
+  FROM practice_answers pa2
+  JOIN practice_session_questions psq2 ON psq2.id = pa2.session_question_id
+  JOIN practice_sessions ps2 ON ps2.id = psq2.session_id
+  WHERE ps2.tenant_id = ? AND ps2.user_id = ? AND ps2.course_id = ?
+    AND pa2.question_id IN (%s)
+  GROUP BY pa2.question_id
+) latest ON latest.max_id = pa.id
+`, placeholders)
+
+	rows, err := repo.db.QueryContext(ctx, rowQuery, innerArgs...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type sessionRef struct {
+		sessionID         int64
+		sessionQuestionID int64
+	}
+	refsByQuestionID := make(map[int64]sessionRef, len(questionIDs))
+	for rows.Next() {
+		var (
+			questionID        int64
+			sessionID         int64
+			sessionQuestionID int64
+		)
+		if err := rows.Scan(&questionID, &sessionID, &sessionQuestionID); err != nil {
+			return err
+		}
+		refsByQuestionID[questionID] = sessionRef{
+			sessionID:         sessionID,
+			sessionQuestionID: sessionQuestionID,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for index := range items {
+		ref, ok := refsByQuestionID[items[index].QuestionID]
+		if !ok {
+			continue
+		}
+		items[index].LastSessionID = &ref.sessionID
+		items[index].LastSessionQuestionID = &ref.sessionQuestionID
+	}
+	return nil
 }
 
 func (repo *MySQLRepository) getClassCourseBaseSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error) {
@@ -1310,4 +1399,15 @@ func mapFromAny(value any) map[string]any {
 		return map[string]any{}
 	}
 	return typed
+}
+
+func questionIDPlaceholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	parts := make([]string, count)
+	for index := range parts {
+		parts[index] = "?"
+	}
+	return strings.Join(parts, ",")
 }

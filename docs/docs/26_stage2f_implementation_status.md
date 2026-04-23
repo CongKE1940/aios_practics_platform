@@ -23,6 +23,7 @@
 - `apps/user-web`：新增 `StudentLearningDetailPage`，支持从班级学习页继续下钻到学生详情，并通过标签页切换练题记录、错题和疑惑题。
 - `apps/user-web`：新增 `StudentPracticeSessionDetailPage`，支持从学生详情页 `sessions` 标签下钻单次练题详情并保留返回上下文。
 - `apps/user-web`：新增 `StudentPracticeSessionQuestionDetailPage`，支持从单次练题详情页继续下钻单题完整详情并保留返回上下文。
+- `apps/user-web`：错题与疑惑题列表新增“查看题目详情”入口，可直接下钻到单题完整详情页。
 - `apps/user-web`：补齐登录页、动态菜单、退出登录、`401` 统一失效回退、本地会话恢复，以及 `localStorage` 脏 session 的结构校验与自动清理。
 - `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary`、`GET /analytics/student-practice-detail`、`GET /analytics/student-practice-session-detail`、`GET /analytics/student-practice-session-question-detail` 正式契约。
 - `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览、学生学习详情、单次练题详情与单题完整详情接口说明。
@@ -44,6 +45,7 @@
 12. 单次练题详情通过 `GET /api/v1/analytics/student-practice-session-detail` 精确定位 `class_id + course_id + student_user_id + session_id`，并返回会话汇总与题目明细。
 13. 单次练题详情题目数据优先读取练题时快照，学生答案按每题最新作答去重，正确率由 `correct_count / answered_count` 计算。
 14. 单题完整详情通过 `GET /api/v1/analytics/student-practice-session-question-detail` 精确定位 `class_id + course_id + student_user_id + session_id + session_question_id`，不允许跨会话取题。
+15. 学生详情页 `wrong` / `confused` 标签返回题目最近一次练题定位字段，前端可直接跳转到单题完整详情页。
 
 ## 3. 当前限制
 

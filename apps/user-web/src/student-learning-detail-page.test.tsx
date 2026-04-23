@@ -61,7 +61,9 @@ function createDetailResult(overrides?: Partial<StudentPracticeDetailResult>): S
           last_wrong_at: "2026-04-22T10:05:00+08:00",
           is_confused: false,
           confused_at: null,
-          last_result: "B"
+          last_result: "B",
+          last_session_id: 9001,
+          last_session_question_id: 70001
         }
       ],
       page: 1,
@@ -190,6 +192,37 @@ describe("StudentLearningDetailPage", () => {
     expect(nextUrl.searchParams.get("end_at")).toBe("2026-04-22T23:59:59+08:00");
     expect(screen.getByText("1+1等于几？")).toBeTruthy();
     expect(screen.getByText("题型：single_choice")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "查看题目详情" })).toBeTruthy();
+  });
+
+  it("navigates to question detail page from wrong tab", async () => {
+    const api: StudentLearningDetailApi = {
+      getStudentPracticeDetail: vi.fn(async () => createDetailResult({ active_tab: "wrong" }))
+    };
+    const onNavigate = vi.fn();
+
+    render(
+      <StudentLearningDetailPage
+        api={api}
+        path="/app/class-learning/student?class_id=301&course_id=10&student_user_id=701&tab=wrong&start_at=2026-04-01T00:00:00%2B08:00&end_at=2026-04-22T23:59:59%2B08:00"
+        onNavigate={onNavigate}
+      />
+    );
+
+    await waitFor(() => expect(api.getStudentPracticeDetail).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "查看题目详情" }));
+
+    const nextPath = onNavigate.mock.calls[0][0];
+    const nextURL = new URL(nextPath, "http://localhost");
+    expect(nextURL.pathname).toBe("/app/class-learning/student/session/question");
+    expect(nextURL.searchParams.get("class_id")).toBe("301");
+    expect(nextURL.searchParams.get("course_id")).toBe("10");
+    expect(nextURL.searchParams.get("student_user_id")).toBe("701");
+    expect(nextURL.searchParams.get("session_id")).toBe("9001");
+    expect(nextURL.searchParams.get("session_question_id")).toBe("70001");
+    expect(nextURL.searchParams.get("start_at")).toBe("2026-04-01T00:00:00+08:00");
+    expect(nextURL.searchParams.get("end_at")).toBe("2026-04-22T23:59:59+08:00");
   });
 
   it("shows invalid params and does not call api", async () => {
