@@ -32,6 +32,9 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/exams/:id", handler.getExam)
 	router.PUT("/exams/:id", handler.updateExam)
 	router.POST("/exams/:id/publish", handler.publishExam)
+	router.POST("/exams/:id/attempts", handler.startAttempt)
+	router.GET("/exam-attempts/:id", handler.getAttempt)
+	router.POST("/exam-attempts/:id/answers", handler.saveAttemptAnswer)
 }
 
 func (handler *Handler) listExams(ctx *gin.Context) {
@@ -127,6 +130,59 @@ func (handler *Handler) publishExam(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
+func (handler *Handler) startAttempt(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.StartAttempt(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) getAttempt(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.GetAttempt(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) saveAttemptAnswer(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
+	if !ok {
+		return
+	}
+	var input SaveAttemptAnswerInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.SaveAttemptAnswer(ctx.Request.Context(), scope, id, input)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
 func (handler *Handler) ready(ctx *gin.Context) bool {
 	if handler == nil || handler.service == nil || handler.parser == nil {
 		ctx.JSON(http.StatusInternalServerError, response.Failure(50000, "服务异常", requestID(ctx)))
@@ -136,6 +192,18 @@ func (handler *Handler) ready(ctx *gin.Context) bool {
 }
 
 func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
+	scope, ok := handler.authorizeNoPermission(ctx)
+	if !ok {
+		return Scope{}, false
+	}
+	if !containsPermission(scope.Permissions, "exam:publish") {
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
+		return Scope{}, false
+	}
+	return scope, true
+}
+
+func (handler *Handler) authorizeNoPermission(ctx *gin.Context) (Scope, bool) {
 	token := bearerToken(ctx.GetHeader("Authorization"))
 	if token == "" {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
@@ -144,10 +212,6 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 	claims, err := handler.parser.ParseToken(ctx.Request.Context(), token, auth.TokenTypeAccess)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
-		return Scope{}, false
-	}
-	if !containsPermission(claims.Permissions, "exam:publish") {
-		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}
 	return Scope{
@@ -160,6 +224,15 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 
 func (handler *Handler) authorizeWithID(ctx *gin.Context) (Scope, int64, bool) {
 	scope, ok := handler.authorize(ctx)
+	return handler.parseID(ctx, scope, ok)
+}
+
+func (handler *Handler) authorizeWithIDNoPermission(ctx *gin.Context) (Scope, int64, bool) {
+	scope, ok := handler.authorizeNoPermission(ctx)
+	return handler.parseID(ctx, scope, ok)
+}
+
+func (handler *Handler) parseID(ctx *gin.Context, scope Scope, ok bool) (Scope, int64, bool) {
 	if !ok {
 		return Scope{}, 0, false
 	}

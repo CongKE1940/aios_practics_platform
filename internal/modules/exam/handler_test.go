@@ -443,6 +443,85 @@ func TestHandler_PublishPublishedExamReturnsForbidden(t *testing.T) {
 	}
 }
 
+func TestHandler_StartAttemptReturnsExistingAttempt(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created := mustCreatePublishedFixedExam(t, repo)
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserID:    10001,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	first := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(created.ID, 10)+"/attempts", nil, "token")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, body = %s", first.Code, first.Body.String())
+	}
+	second := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(created.ID, 10)+"/attempts", nil, "token")
+	if second.Code != http.StatusOK {
+		t.Fatalf("second status = %d, body = %s", second.Code, second.Body.String())
+	}
+
+	var firstPayload examEnvelope[ExamAttemptDetail]
+	var secondPayload examEnvelope[ExamAttemptDetail]
+	decodeExamBody(t, first, &firstPayload)
+	decodeExamBody(t, second, &secondPayload)
+	if firstPayload.Data.Attempt.ID == 0 || firstPayload.Data.Attempt.ID != secondPayload.Data.Attempt.ID {
+		t.Fatalf("attempt ids = %d/%d", firstPayload.Data.Attempt.ID, secondPayload.Data.Attempt.ID)
+	}
+}
+
+func TestHandler_SaveAttemptAnswerIsIdempotent(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created := mustCreatePublishedFixedExam(t, repo)
+	scope := Scope{TenantID: 1, UserID: 10001}
+	attempt, err := repo.StartAttempt(context.Background(), scope, created.ID)
+	if err != nil {
+		t.Fatalf("StartAttempt() error = %v", err)
+	}
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserID:    10001,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+	body := map[string]any{
+		"display_order": 1,
+		"answer":        map[string]any{"selected_keys": []string{"A"}},
+	}
+	first := performExamJSONRequest(router, http.MethodPost, "/api/v1/exam-attempts/"+strconv.FormatInt(attempt.Attempt.ID, 10)+"/answers", body)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, body = %s", first.Code, first.Body.String())
+	}
+	body["answer"] = map[string]any{"selected_keys": []string{"B"}}
+	second := performExamJSONRequest(router, http.MethodPost, "/api/v1/exam-attempts/"+strconv.FormatInt(attempt.Attempt.ID, 10)+"/answers", body)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second status = %d, body = %s", second.Code, second.Body.String())
+	}
+
+	stored, err := repo.GetAttempt(context.Background(), scope, attempt.Attempt.ID)
+	if err != nil {
+		t.Fatalf("GetAttempt() error = %v", err)
+	}
+	if len(stored.Answers) != 1 || stored.Answers[0].Answer["selected_keys"] == nil {
+		t.Fatalf("answers = %+v", stored.Answers)
+	}
+}
+
 func TestHandler_ListExamsRequiresAuthorization(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -459,6 +538,30 @@ func TestHandler_ListExamsRequiresAuthorization(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
+}
+
+func mustCreatePublishedFixedExam(t *testing.T, repo *memoryExamRepository) ExamDetail {
+	t.Helper()
+	created, err := repo.CreateExam(context.Background(), Scope{TenantID: 1, UserID: 7}, ExamInput{
+		Name:            "已发布考试",
+		ExamMode:        ExamModeFixed,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 1001},
+		},
+		FixedQuestions: []ExamFixedQuestionInput{
+			{QuestionID: 91, QuestionVersionID: 191, Score: 10, DisplayOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
+	}
+	current := repo.items[created.ID]
+	current.Status = ExamStatusPublished
+	repo.items[created.ID] = current
+	return current
 }
 
 type examEnvelope[T any] struct {
@@ -483,14 +586,20 @@ func (parser fakeExamTokenParser) ParseToken(_ context.Context, token string, to
 }
 
 type memoryExamRepository struct {
-	nextID int64
-	items  map[int64]ExamDetail
+	nextID        int64
+	nextAttemptID int64
+	items         map[int64]ExamDetail
+	attempts      map[int64]ExamAttemptDetail
+	examAttempts  map[int64]int64
 }
 
 func newMemoryExamRepository() *memoryExamRepository {
 	return &memoryExamRepository{
-		nextID: 1,
-		items:  map[int64]ExamDetail{},
+		nextID:        1,
+		nextAttemptID: 1,
+		items:         map[int64]ExamDetail{},
+		attempts:      map[int64]ExamAttemptDetail{},
+		examAttempts:  map[int64]int64{},
 	}
 }
 
@@ -605,6 +714,91 @@ func (repo *memoryExamRepository) PublishExam(_ context.Context, scope Scope, id
 	current.Status = ExamStatusPublished
 	repo.items[id] = current
 	return current, nil
+}
+
+func (repo *memoryExamRepository) StartAttempt(_ context.Context, scope Scope, examID int64) (ExamAttemptDetail, error) {
+	if attemptID, ok := repo.examAttempts[examID]; ok {
+		return repo.GetAttempt(context.Background(), scope, attemptID)
+	}
+	exam, ok := repo.items[examID]
+	if !ok || exam.TenantID != scope.TenantID || exam.Status != ExamStatusPublished {
+		return ExamAttemptDetail{}, ErrNotFound
+	}
+	now := time.Date(2026, 4, 23, 9, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	detail := ExamAttemptDetail{
+		Attempt: ExamAttempt{
+			ID:        repo.nextAttemptID,
+			ExamID:    examID,
+			PaperID:   1,
+			TenantID:  scope.TenantID,
+			UserID:    scope.UserID,
+			StartAt:   &now,
+			Status:    ExamAttemptStatusInProgress,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		Questions: make([]ExamAttemptQuestion, 0, len(exam.FixedQuestions)),
+	}
+	for _, question := range exam.FixedQuestions {
+		detail.Questions = append(detail.Questions, ExamAttemptQuestion{
+			QuestionID:        question.QuestionID,
+			QuestionVersionID: question.QuestionVersionID,
+			DisplayOrder:      question.DisplayOrder,
+			Score:             question.Score,
+		})
+	}
+	repo.attempts[detail.Attempt.ID] = detail
+	repo.examAttempts[examID] = detail.Attempt.ID
+	repo.nextAttemptID++
+	return detail, nil
+}
+
+func (repo *memoryExamRepository) GetAttempt(_ context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error) {
+	detail, ok := repo.attempts[attemptID]
+	if !ok || detail.Attempt.TenantID != scope.TenantID || detail.Attempt.UserID != scope.UserID {
+		return ExamAttemptDetail{}, ErrNotFound
+	}
+	return detail, nil
+}
+
+func (repo *memoryExamRepository) SaveAttemptAnswer(_ context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error) {
+	detail, ok := repo.attempts[attemptID]
+	if !ok || detail.Attempt.TenantID != scope.TenantID || detail.Attempt.UserID != scope.UserID {
+		return ExamAttemptAnswer{}, ErrNotFound
+	}
+	if detail.Attempt.Status != ExamAttemptStatusInProgress {
+		return ExamAttemptAnswer{}, ErrForbidden
+	}
+	var matched ExamAttemptQuestion
+	for _, question := range detail.Questions {
+		if question.DisplayOrder == input.DisplayOrder {
+			matched = question
+			break
+		}
+	}
+	if matched.QuestionID == 0 {
+		return ExamAttemptAnswer{}, ErrNotFound
+	}
+	answer := ExamAttemptAnswer{
+		AttemptID:         attemptID,
+		QuestionID:        matched.QuestionID,
+		QuestionVersionID: matched.QuestionVersionID,
+		DisplayOrder:      input.DisplayOrder,
+		Answer:            input.Answer,
+	}
+	replaced := false
+	for index := range detail.Answers {
+		if detail.Answers[index].DisplayOrder == input.DisplayOrder {
+			detail.Answers[index] = answer
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		detail.Answers = append(detail.Answers, answer)
+	}
+	repo.attempts[attemptID] = detail
+	return answer, nil
 }
 
 func performExamJSONRequest(router http.Handler, method string, path string, body any) *httptest.ResponseRecorder {

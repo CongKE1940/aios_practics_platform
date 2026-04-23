@@ -17,6 +17,8 @@ const (
 	ExamStatusDraft     = "draft"
 	ExamStatusPublished = "published"
 
+	ExamAttemptStatusInProgress = "in_progress"
+
 	ExamModeFixed  = "fixed"
 	ExamModeRandom = "random_assembly"
 
@@ -114,6 +116,49 @@ type ExamInput struct {
 	PaperRules      []ExamPaperRule          `json:"paper_rules"`
 }
 
+type ExamAttempt struct {
+	ID              int64      `json:"id"`
+	ExamID          int64      `json:"exam_id"`
+	PaperID         int64      `json:"paper_id"`
+	TenantID        int64      `json:"tenant_id"`
+	UserID          int64      `json:"user_id"`
+	StartAt         *time.Time `json:"start_at,omitempty"`
+	SubmitAt        *time.Time `json:"submit_at,omitempty"`
+	Status          string     `json:"status"`
+	ObjectiveScore  float64    `json:"objective_score"`
+	SubjectiveScore float64    `json:"subjective_score"`
+	FinalScore      float64    `json:"final_score"`
+	CreatedAt       time.Time  `json:"created_at,omitempty"`
+	UpdatedAt       time.Time  `json:"updated_at,omitempty"`
+}
+
+type ExamAttemptQuestion struct {
+	QuestionID        int64   `json:"question_id"`
+	QuestionVersionID int64   `json:"question_version_id"`
+	DisplayOrder      int     `json:"display_order"`
+	Score             float64 `json:"score"`
+}
+
+type ExamAttemptAnswer struct {
+	AttemptID         int64          `json:"attempt_id"`
+	QuestionID        int64          `json:"question_id"`
+	QuestionVersionID int64          `json:"question_version_id"`
+	DisplayOrder      int            `json:"display_order"`
+	Answer            map[string]any `json:"answer"`
+	Score             float64        `json:"score"`
+}
+
+type ExamAttemptDetail struct {
+	Attempt   ExamAttempt           `json:"attempt"`
+	Questions []ExamAttemptQuestion `json:"questions"`
+	Answers   []ExamAttemptAnswer   `json:"answers"`
+}
+
+type SaveAttemptAnswerInput struct {
+	DisplayOrder int            `json:"display_order"`
+	Answer       map[string]any `json:"answer"`
+}
+
 type ExamListFilter struct {
 	Page     int
 	PageSize int
@@ -132,6 +177,9 @@ type Repository interface {
 	GetExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
 	UpdateExam(ctx context.Context, scope Scope, id int64, input ExamInput) (ExamDetail, error)
 	PublishExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
+	StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error)
+	GetAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error)
+	SaveAttemptAnswer(ctx context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

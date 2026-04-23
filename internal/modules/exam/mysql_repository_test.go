@@ -456,6 +456,48 @@ WHERE q.tenant_id = ? AND q.deleted_at IS NULL AND q.status = 'active' AND q.cur
 	}
 }
 
+func TestMySQLRepositorySaveAttemptAnswerUpsertsByDisplayOrder(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	expectAttemptByID(mock, 801, 9, 10001, 701, now, ExamAttemptStatusInProgress)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT question_id, question_version_id, order_no, score
+FROM exam_paper_questions
+WHERE paper_id = ? AND order_no = ?
+LIMIT 1
+`)).
+		WithArgs(int64(701), 1).
+		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score"}).
+			AddRow(int64(101), int64(1001), 1, "2.00"))
+	mock.ExpectExec(regexp.QuoteMeta(`
+INSERT INTO exam_attempt_answers (attempt_id, question_id, question_version_id, display_order, answer_json)
+VALUES (?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id = VALUES(question_version_id), answer_json = VALUES(answer_json)
+`)).
+		WithArgs(int64(801), int64(101), int64(1001), 1, `{"selected_keys":["A"]}`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	result, err := repo.SaveAttemptAnswer(context.Background(), Scope{TenantID: 9, UserID: 10001}, 801, SaveAttemptAnswerInput{
+		DisplayOrder: 1,
+		Answer:       map[string]any{"selected_keys": []string{"A"}},
+	})
+	if err != nil {
+		t.Fatalf("SaveAttemptAnswer() error = %v", err)
+	}
+	if result.QuestionID != 101 || result.DisplayOrder != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryListExamsReturnsExplicitErrorWhenDBMissing(t *testing.T) {
 	var repo *MySQLRepository
 
@@ -555,4 +597,16 @@ ORDER BY display_order ASC, id ASC
 `)).
 		WithArgs(examID).
 		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"}))
+}
+
+func expectAttemptByID(mock sqlmock.Sqlmock, attemptID int64, tenantID int64, userID int64, paperID int64, now time.Time, status string) {
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT id, exam_id, paper_id, tenant_id, user_id, start_at, submit_at, status, objective_score, subjective_score, final_score, created_at, updated_at
+FROM exam_attempts
+WHERE id = ? AND tenant_id = ? AND user_id = ?
+LIMIT 1
+`)).
+		WithArgs(attemptID, tenantID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at"}).
+			AddRow(attemptID, int64(301), paperID, tenantID, userID, now, nil, status, "0.00", "0.00", "0.00", now, now))
 }

@@ -82,6 +82,36 @@ func (service *Service) PublishExam(ctx context.Context, scope Scope, id int64) 
 	return service.repo.PublishExam(ctx, scope, id)
 }
 
+func (service *Service) StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamAttemptDetail{}, ErrRepositoryUnavailable
+	}
+	if examID <= 0 || scope.UserID <= 0 || scope.TenantID <= 0 {
+		return ExamAttemptDetail{}, ErrInvalidInput
+	}
+	return service.repo.StartAttempt(ctx, scope, examID)
+}
+
+func (service *Service) GetAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamAttemptDetail{}, ErrRepositoryUnavailable
+	}
+	if attemptID <= 0 || scope.UserID <= 0 || scope.TenantID <= 0 {
+		return ExamAttemptDetail{}, ErrInvalidInput
+	}
+	return service.repo.GetAttempt(ctx, scope, attemptID)
+}
+
+func (service *Service) SaveAttemptAnswer(ctx context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error) {
+	if service == nil || service.repo == nil {
+		return ExamAttemptAnswer{}, ErrRepositoryUnavailable
+	}
+	if attemptID <= 0 || scope.UserID <= 0 || scope.TenantID <= 0 || input.DisplayOrder <= 0 || len(input.Answer) == 0 {
+		return ExamAttemptAnswer{}, ErrInvalidInput
+	}
+	return service.repo.SaveAttemptAnswer(ctx, scope, attemptID, input)
+}
+
 func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.ExamMode = strings.TrimSpace(strings.ToLower(input.ExamMode))

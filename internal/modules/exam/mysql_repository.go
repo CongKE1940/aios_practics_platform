@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type MySQLRepository struct {
@@ -275,6 +276,91 @@ VALUES (?, ?, ?, ?)
 	return repo.GetExam(ctx, scope, id)
 }
 
+func (repo *MySQLRepository) StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamAttemptDetail{}, ErrRepositoryUnavailable
+	}
+	if existing, ok, err := repo.getAttemptByExamUser(ctx, scope, examID); err != nil {
+		return ExamAttemptDetail{}, err
+	} else if ok {
+		return repo.GetAttempt(ctx, scope, existing.ID)
+	}
+	paperID, err := repo.getPublishedPaperID(ctx, scope, examID)
+	if err != nil {
+		return ExamAttemptDetail{}, err
+	}
+	startAt := time.Now().UTC()
+	const query = `
+INSERT INTO exam_attempts (exam_id, paper_id, tenant_id, user_id, start_at, status)
+VALUES (?, ?, ?, ?, ?, ?)
+`
+	result, err := repo.db.ExecContext(ctx, query, examID, paperID, scope.TenantID, scope.UserID, startAt, ExamAttemptStatusInProgress)
+	if err != nil {
+		return ExamAttemptDetail{}, err
+	}
+	attemptID, err := result.LastInsertId()
+	if err != nil {
+		return ExamAttemptDetail{}, err
+	}
+	return repo.GetAttempt(ctx, scope, attemptID)
+}
+
+func (repo *MySQLRepository) GetAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamAttemptDetail{}, ErrRepositoryUnavailable
+	}
+	attempt, err := repo.getAttemptByID(ctx, scope, attemptID)
+	if err != nil {
+		return ExamAttemptDetail{}, err
+	}
+	questions, err := repo.listAttemptQuestions(ctx, attempt.PaperID)
+	if err != nil {
+		return ExamAttemptDetail{}, err
+	}
+	answers, err := repo.listAttemptAnswers(ctx, attempt.ID)
+	if err != nil {
+		return ExamAttemptDetail{}, err
+	}
+	return ExamAttemptDetail{Attempt: attempt, Questions: questions, Answers: answers}, nil
+}
+
+func (repo *MySQLRepository) SaveAttemptAnswer(ctx context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error) {
+	if repo == nil || repo.db == nil {
+		return ExamAttemptAnswer{}, ErrRepositoryUnavailable
+	}
+	attempt, err := repo.getAttemptByID(ctx, scope, attemptID)
+	if err != nil {
+		return ExamAttemptAnswer{}, err
+	}
+	if attempt.Status != ExamAttemptStatusInProgress {
+		return ExamAttemptAnswer{}, ErrForbidden
+	}
+	question, err := repo.getPaperQuestionByDisplayOrder(ctx, attempt.PaperID, input.DisplayOrder)
+	if err != nil {
+		return ExamAttemptAnswer{}, err
+	}
+	answerJSON, err := encodeAnswer(input.Answer)
+	if err != nil {
+		return ExamAttemptAnswer{}, err
+	}
+	const query = `
+INSERT INTO exam_attempt_answers (attempt_id, question_id, question_version_id, display_order, answer_json)
+VALUES (?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id = VALUES(question_version_id), answer_json = VALUES(answer_json)
+`
+	if _, err := repo.db.ExecContext(ctx, query, attemptID, question.QuestionID, question.QuestionVersionID, input.DisplayOrder, answerJSON); err != nil {
+		return ExamAttemptAnswer{}, err
+	}
+	return ExamAttemptAnswer{
+		AttemptID:         attemptID,
+		QuestionID:        question.QuestionID,
+		QuestionVersionID: question.QuestionVersionID,
+		DisplayOrder:      input.DisplayOrder,
+		Answer:            input.Answer,
+		Score:             0,
+	}, nil
+}
+
 func (repo *MySQLRepository) replaceTargets(ctx context.Context, tx *sql.Tx, examID int64, targets []ExamTargetInput) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM exam_targets WHERE exam_id = ?`, examID); err != nil {
 		return err
@@ -498,6 +584,150 @@ ORDER BY display_order ASC, id ASC
 	return items, nil
 }
 
+func (repo *MySQLRepository) getAttemptByExamUser(ctx context.Context, scope Scope, examID int64) (ExamAttempt, bool, error) {
+	const query = `
+SELECT id, exam_id, paper_id, tenant_id, user_id, start_at, submit_at, status, objective_score, subjective_score, final_score, created_at, updated_at
+FROM exam_attempts
+WHERE exam_id = ? AND tenant_id = ? AND user_id = ?
+LIMIT 1
+`
+	row := repo.db.QueryRowContext(ctx, query, examID, scope.TenantID, scope.UserID)
+	item, err := scanAttempt(row)
+	if err == sql.ErrNoRows {
+		return ExamAttempt{}, false, nil
+	}
+	if err != nil {
+		return ExamAttempt{}, false, err
+	}
+	return item, true, nil
+}
+
+func (repo *MySQLRepository) getAttemptByID(ctx context.Context, scope Scope, attemptID int64) (ExamAttempt, error) {
+	const query = `
+SELECT id, exam_id, paper_id, tenant_id, user_id, start_at, submit_at, status, objective_score, subjective_score, final_score, created_at, updated_at
+FROM exam_attempts
+WHERE id = ? AND tenant_id = ? AND user_id = ?
+LIMIT 1
+`
+	row := repo.db.QueryRowContext(ctx, query, attemptID, scope.TenantID, scope.UserID)
+	item, err := scanAttempt(row)
+	if err != nil {
+		return ExamAttempt{}, wrapExamNotFound(err)
+	}
+	return item, nil
+}
+
+func (repo *MySQLRepository) getPublishedPaperID(ctx context.Context, scope Scope, examID int64) (int64, error) {
+	const query = `
+SELECT ep.id
+FROM exams e
+JOIN exam_papers ep ON ep.exam_id = e.id
+WHERE e.id = ? AND e.tenant_id = ? AND e.status = ?
+AND (
+  EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    WHERE et.exam_id = e.id AND et.target_type = 'user' AND et.target_id = ?
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.class_id = et.target_id
+    WHERE et.exam_id = e.id AND et.target_type = 'class' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.course_id = et.target_id
+    JOIN student_class_memberships scm ON scm.class_id = tcca.class_id
+    WHERE et.exam_id = e.id AND et.target_type = 'course' AND tcca.tenant_id = e.tenant_id AND tcca.is_current = 1 AND tcca.status = 'active' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+)
+ORDER BY ep.id DESC
+LIMIT 1
+`
+	var paperID int64
+	if err := repo.db.QueryRowContext(ctx, query, examID, scope.TenantID, ExamStatusPublished, scope.UserID, scope.UserID, scope.UserID).Scan(&paperID); err != nil {
+		return 0, wrapExamNotFound(err)
+	}
+	return paperID, nil
+}
+
+func (repo *MySQLRepository) listAttemptQuestions(ctx context.Context, paperID int64) ([]ExamAttemptQuestion, error) {
+	const query = `
+SELECT question_id, question_version_id, order_no, score
+FROM exam_paper_questions
+WHERE paper_id = ?
+ORDER BY order_no ASC
+`
+	rows, err := repo.db.QueryContext(ctx, query, paperID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamAttemptQuestion, 0)
+	for rows.Next() {
+		var item ExamAttemptQuestion
+		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &item.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (repo *MySQLRepository) listAttemptAnswers(ctx context.Context, attemptID int64) ([]ExamAttemptAnswer, error) {
+	const query = `
+SELECT attempt_id, question_id, question_version_id, display_order, answer_json, score
+FROM exam_attempt_answers
+WHERE attempt_id = ?
+ORDER BY display_order ASC
+`
+	rows, err := repo.db.QueryContext(ctx, query, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamAttemptAnswer, 0)
+	for rows.Next() {
+		var item ExamAttemptAnswer
+		var answerJSON string
+		if err := rows.Scan(&item.AttemptID, &item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &answerJSON, &item.Score); err != nil {
+			return nil, err
+		}
+		answer, err := decodeAnswer(answerJSON)
+		if err != nil {
+			return nil, err
+		}
+		item.Answer = answer
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (repo *MySQLRepository) getPaperQuestionByDisplayOrder(ctx context.Context, paperID int64, displayOrder int) (ExamAttemptQuestion, error) {
+	const query = `
+SELECT question_id, question_version_id, order_no, score
+FROM exam_paper_questions
+WHERE paper_id = ? AND order_no = ?
+LIMIT 1
+`
+	row := repo.db.QueryRowContext(ctx, query, paperID, displayOrder)
+	var item ExamAttemptQuestion
+	if err := row.Scan(&item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &item.Score); err != nil {
+		return ExamAttemptQuestion{}, wrapExamNotFound(err)
+	}
+	return item, nil
+}
+
 func scanExam(rows *sql.Rows) (Exam, error) {
 	return scanExamScanner(rows)
 }
@@ -548,6 +778,37 @@ func scanExamDetailScanner(scanner interface{ Scan(dest ...any) error }) (Exam, 
 		return Exam{}, sql.NullString{}, err
 	}
 	return item, ruleJSON, nil
+}
+
+func scanAttempt(scanner interface{ Scan(dest ...any) error }) (ExamAttempt, error) {
+	var item ExamAttempt
+	var startAt sql.NullTime
+	var submitAt sql.NullTime
+	err := scanner.Scan(
+		&item.ID,
+		&item.ExamID,
+		&item.PaperID,
+		&item.TenantID,
+		&item.UserID,
+		&startAt,
+		&submitAt,
+		&item.Status,
+		&item.ObjectiveScore,
+		&item.SubjectiveScore,
+		&item.FinalScore,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		return ExamAttempt{}, err
+	}
+	if startAt.Valid {
+		item.StartAt = &startAt.Time
+	}
+	if submitAt.Valid {
+		item.SubmitAt = &submitAt.Time
+	}
+	return item, nil
 }
 
 func wrapExamNotFound(err error) error {
@@ -611,6 +872,25 @@ func decodePaperRules(raw sql.NullString) ([]ExamPaperRule, error) {
 		return nil, err
 	}
 	return rules, nil
+}
+
+func encodeAnswer(answer map[string]any) (string, error) {
+	raw, err := json.Marshal(answer)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func decodeAnswer(raw string) (map[string]any, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]any{}, nil
+	}
+	var answer map[string]any
+	if err := json.Unmarshal([]byte(raw), &answer); err != nil {
+		return nil, err
+	}
+	return answer, nil
 }
 
 func jsonOrNull(value any) any {
