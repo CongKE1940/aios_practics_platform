@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type {
-  StudentPracticeSessionDetailQuery,
-  StudentPracticeSessionDetailResult,
+  StudentPracticeSessionQuestionDetailQuery,
+  StudentPracticeSessionQuestionDetailResult,
   StudentPracticeSessionQuestionItem
 } from "@aios/api-sdk";
 
-export interface StudentPracticeSessionDetailApi {
-  getStudentPracticeSessionDetail(query: StudentPracticeSessionDetailQuery): Promise<StudentPracticeSessionDetailResult>;
+export interface StudentPracticeSessionQuestionDetailApi {
+  getStudentPracticeSessionQuestionDetail(
+    query: StudentPracticeSessionQuestionDetailQuery
+  ): Promise<StudentPracticeSessionQuestionDetailResult>;
 }
 
-interface StudentPracticeSessionDetailPageProps {
-  api: StudentPracticeSessionDetailApi;
+interface StudentPracticeSessionQuestionDetailPageProps {
+  api: StudentPracticeSessionQuestionDetailApi;
   path: string;
   onNavigate(path: string): void;
 }
 
-type ParsedStudentPracticeSessionDetailPath =
+type ParsedStudentPracticeSessionQuestionDetailPath =
   | {
       ok: false;
     }
@@ -26,17 +28,22 @@ type ParsedStudentPracticeSessionDetailPath =
       course_id: number;
       student_user_id: number;
       session_id: number;
+      session_question_id: number;
       start_at?: string;
       end_at?: string;
-      query: StudentPracticeSessionDetailQuery;
+      query: StudentPracticeSessionQuestionDetailQuery;
       fetchKey: string;
     };
 
-export function StudentPracticeSessionDetailPage({ api, path, onNavigate }: StudentPracticeSessionDetailPageProps) {
-  const parsed = useMemo(() => parseStudentPracticeSessionDetailPath(path), [path]);
+export function StudentPracticeSessionQuestionDetailPage({
+  api,
+  path,
+  onNavigate
+}: StudentPracticeSessionQuestionDetailPageProps) {
+  const parsed = useMemo(() => parseStudentPracticeSessionQuestionDetailPath(path), [path]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [result, setResult] = useState<StudentPracticeSessionDetailResult | null>(null);
+  const [result, setResult] = useState<StudentPracticeSessionQuestionDetailResult | null>(null);
 
   useEffect(() => {
     if (!parsed.ok) {
@@ -48,10 +55,10 @@ export function StudentPracticeSessionDetailPage({ api, path, onNavigate }: Stud
 
     let active = true;
     setLoading(true);
-    setMessage("正在加载练习详情...");
+    setMessage("正在加载题目详情...");
 
     void api
-      .getStudentPracticeSessionDetail(parsed.query)
+      .getStudentPracticeSessionQuestionDetail(parsed.query)
       .then((data) => {
         if (!active) {
           return;
@@ -64,7 +71,7 @@ export function StudentPracticeSessionDetailPage({ api, path, onNavigate }: Stud
           return;
         }
         setResult(null);
-        setMessage("练习详情加载失败，请稍后重试。");
+        setMessage("题目详情加载失败，请稍后重试。");
       })
       .finally(() => {
         if (!active) {
@@ -80,79 +87,61 @@ export function StudentPracticeSessionDetailPage({ api, path, onNavigate }: Stud
 
   if (!parsed.ok) {
     return (
-      <section aria-label="学生单次练题详情页">
-        <h2>单次练题详情</h2>
-        <p>练习详情参数无效。</p>
+      <section aria-label="学生单题详情页">
+        <h2>单题详情</h2>
+        <p>题目详情参数无效。</p>
       </section>
     );
   }
 
   const student = result?.student_summary;
   const session = result?.session;
-  const questions = result?.questions ?? [];
+  const question = result?.question_detail;
 
   return (
-    <section aria-label="学生单次练题详情页">
-      <button type="button" onClick={() => onNavigate(buildStudentDetailPath(parsed))}>
+    <section aria-label="学生单题详情页">
+      <button type="button" onClick={() => onNavigate(buildSessionDetailPath(parsed))}>
         返回
       </button>
 
-      <h2>{student ? `${student.student_name} 本次练习` : "单次练题详情"}</h2>
+      <h2>{student && question ? `${student.student_name} 第 ${question.display_order} 题` : "单题详情"}</h2>
 
       {student && session ? (
-        <section aria-label="练习概览">
+        <section aria-label="题目概览">
           <p>学号：{student.student_no ?? "-"}</p>
           <p>
             班级/课程：{student.class_name} / {student.course_name}
           </p>
-          <p>状态：{session.status}</p>
+          <p>练习状态：{session.status}</p>
           <p>
-            题量：{session.total_count}，已答：{session.answered_count}，正确：{session.correct_count}，错误：
+            本次练习题量：{session.total_count}，已答：{session.answered_count}，正确：{session.correct_count}，错误：
             {session.wrong_count}
           </p>
-          <p>正确率：{formatPercent(session.accuracy)}</p>
-          <p>开始时间：{session.started_at ?? "-"}</p>
-          <p>结束时间：{session.finished_at ?? "-"}</p>
+          <p>本次练习正确率：{formatPercent(session.accuracy)}</p>
         </section>
       ) : null}
 
       {loading ? <p>正在刷新...</p> : null}
       {message ? <p>{message}</p> : null}
 
-      {result ? (
-        <section aria-label="题目明细">
-          {questions.length === 0 ? (
-            <p>本次练习暂无题目。</p>
-          ) : (
-            <ul>
-              {questions.map((item) => (
-                <li key={item.session_question_id}>
-                  <p>
-                    第 {item.display_order} 题（{item.question_type}）
-                  </p>
-                  <p>题干：{extractStem(item.content)}</p>
-                  <p>学生答案：{formatObject(item.student_answer)}</p>
-                  <p>正确答案：{formatObject(item.correct_answer)}</p>
-                  <p>结果：{formatResult(item)}</p>
-                  <p>作答时间：{item.answered_at ?? "-"}</p>
-                  <p>解析：{extractAnalysis(item.analysis)}</p>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate(buildStudentSessionQuestionDetailPath(parsed, item.session_question_id))}
-                  >
-                    查看题目详情
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+      {question ? (
+        <section aria-label="题目内容">
+          <p>
+            第 {question.display_order} 题（{question.question_type}）
+          </p>
+          <p>题干：{extractStem(question.content)}</p>
+          <p>学生答案：{formatObject(question.student_answer)}</p>
+          <p>正确答案：{formatObject(question.correct_answer)}</p>
+          <p>结果：{formatResult(question)}</p>
+          <p>作答时间：{question.answered_at ?? "-"}</p>
+          <p>解析：{extractAnalysis(question.analysis)}</p>
         </section>
       ) : null}
     </section>
   );
 }
 
-function parseStudentPracticeSessionDetailPath(path: string): ParsedStudentPracticeSessionDetailPath {
+function parseStudentPracticeSessionQuestionDetailPath(path: string): ParsedStudentPracticeSessionQuestionDetailPath {
   let url: URL;
   try {
     url = new URL(path, "http://localhost");
@@ -164,19 +153,21 @@ function parseStudentPracticeSessionDetailPath(path: string): ParsedStudentPract
   const course_id = parsePositiveInt(url.searchParams.get("course_id"));
   const student_user_id = parsePositiveInt(url.searchParams.get("student_user_id"));
   const session_id = parsePositiveInt(url.searchParams.get("session_id"));
-  if (!class_id || !course_id || !student_user_id || !session_id) {
+  const session_question_id = parsePositiveInt(url.searchParams.get("session_question_id"));
+  if (!class_id || !course_id || !student_user_id || !session_id || !session_question_id) {
     return { ok: false };
   }
 
   const start_at = url.searchParams.get("start_at") || undefined;
   const end_at = url.searchParams.get("end_at") || undefined;
-  const query: StudentPracticeSessionDetailQuery = {
+  const query: StudentPracticeSessionQuestionDetailQuery = {
     class_id,
     course_id,
     student_user_id,
-    session_id
+    session_id,
+    session_question_id
   };
-  const fetchKey = [class_id, course_id, student_user_id, session_id].join("|");
+  const fetchKey = [class_id, course_id, student_user_id, session_id, session_question_id].join("|");
 
   return {
     ok: true,
@@ -184,6 +175,7 @@ function parseStudentPracticeSessionDetailPath(path: string): ParsedStudentPract
     course_id,
     student_user_id,
     session_id,
+    session_question_id,
     start_at,
     end_at,
     query,
@@ -191,38 +183,19 @@ function parseStudentPracticeSessionDetailPath(path: string): ParsedStudentPract
   };
 }
 
-function buildStudentDetailPath(parsed: Extract<ParsedStudentPracticeSessionDetailPath, { ok: true }>): string {
-  const search = new URLSearchParams();
-  search.set("class_id", String(parsed.class_id));
-  search.set("course_id", String(parsed.course_id));
-  search.set("student_user_id", String(parsed.student_user_id));
-  search.set("tab", "sessions");
-  if (parsed.start_at) {
-    search.set("start_at", parsed.start_at);
-  }
-  if (parsed.end_at) {
-    search.set("end_at", parsed.end_at);
-  }
-  return `/app/class-learning/student?${search.toString()}`;
-}
-
-function buildStudentSessionQuestionDetailPath(
-  parsed: Extract<ParsedStudentPracticeSessionDetailPath, { ok: true }>,
-  sessionQuestionID: number
-): string {
+function buildSessionDetailPath(parsed: Extract<ParsedStudentPracticeSessionQuestionDetailPath, { ok: true }>): string {
   const search = new URLSearchParams();
   search.set("class_id", String(parsed.class_id));
   search.set("course_id", String(parsed.course_id));
   search.set("student_user_id", String(parsed.student_user_id));
   search.set("session_id", String(parsed.session_id));
-  search.set("session_question_id", String(sessionQuestionID));
   if (parsed.start_at) {
     search.set("start_at", parsed.start_at);
   }
   if (parsed.end_at) {
     search.set("end_at", parsed.end_at);
   }
-  return `/app/class-learning/student/session/question?${search.toString()}`;
+  return `/app/class-learning/student/session?${search.toString()}`;
 }
 
 function parsePositiveInt(value: string | null): number | null {

@@ -803,3 +803,172 @@ func TestMySQLRepositoryGetStudentPracticeSessionDetailReturnsNotFoundWhenSessio
 		t.Fatalf("ExpectationsWereMet() error = %v", err)
 	}
 }
+
+func TestMySQLRepositoryGetStudentPracticeSessionQuestionDetailSuccess(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startedAt := time.Date(2026, 4, 23, 2, 0, 0, 0, time.UTC)
+	finishedAt := time.Date(2026, 4, 23, 2, 30, 0, 0, time.UTC)
+	answeredAt1 := time.Date(2026, 4, 23, 2, 5, 0, 0, time.UTC)
+	answeredAt2 := time.Date(2026, 4, 23, 2, 6, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`(?s)SELECT\s+u\.id AS student_user_id,.*ps\.bank_scope_json.*FROM practice_sessions ps.*student_class_memberships scm.*WHERE ps\.tenant_id = \?.*ps\.id = \?.*ps\.user_id = \?.*ps\.course_id = \?.*LIMIT 1`).
+		WithArgs(int64(101), int64(7), int64(9001), int64(7001), int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"student_user_id",
+			"student_name",
+			"student_no",
+			"class_id",
+			"class_name",
+			"course_id",
+			"course_name",
+			"session_id",
+			"started_at",
+			"finished_at",
+			"status",
+			"practice_mode",
+			"source_mode",
+			"bank_scope_json",
+		}).AddRow(
+			int64(7001), "张三", "S001", int64(101), "一班", int64(12), "数学",
+			int64(9001), startedAt, finishedAt, "finished", "random", "course", `{"flow_mode":"fixed_count"}`,
+		))
+
+	mock.ExpectQuery(`(?s)SELECT\s+psq\.id AS session_question_id,.*LEFT JOIN\s+\(.*SELECT pa1\.session_question_id, pa1\.user_id, pa1\.answer_json, pa1\.is_correct, pa1\.answered_at.*SELECT session_question_id, user_id, MAX\(id\) AS max_id.*GROUP BY session_question_id, user_id.*\)\s+pa ON pa\.session_question_id = psq\.id\s+AND pa\.user_id = \?.*WHERE psq\.session_id = \?.*ORDER BY psq\.display_order ASC, psq\.id ASC`).
+		WithArgs(int64(7001), int64(9001)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"session_question_id",
+			"question_id",
+			"question_version_id",
+			"display_order",
+			"question_type",
+			"presented_options_json",
+			"content_json",
+			"answer_json",
+			"analysis_json",
+			"student_answer_json",
+			"is_correct",
+			"answered_at",
+		}).
+			AddRow(
+				int64(70001), int64(1001), int64(3001), 1, "single_choice",
+				`{"question_type":"single_choice","content":{"stem":{"text":"快照题干1"}},"answer":{"selected_options":["B"]},"analysis":{"text":"快照解析1"}}`,
+				`{"stem":{"text":"版本题干1"}}`,
+				`{"selected_options":["A"]}`,
+				`{"text":"版本解析1"}`,
+				`{"selected_options":["B"]}`,
+				true,
+				answeredAt1,
+			).
+			AddRow(
+				int64(70002), int64(1002), int64(3002), 2, "short_answer",
+				nil,
+				`{"stem":{"text":"版本题干2"}}`,
+				`{"text":"42"}`,
+				`{"text":"版本解析2"}`,
+				`{"text":"41"}`,
+				false,
+				answeredAt2,
+			))
+
+	result, err := repo.GetStudentPracticeSessionQuestionDetail(context.Background(), StudentPracticeSessionQuestionDetailQuery{
+		TenantID:          7,
+		ClassID:           101,
+		CourseID:          12,
+		StudentUserID:     7001,
+		SessionID:         9001,
+		SessionQuestionID: 70002,
+	})
+	if err != nil {
+		t.Fatalf("GetStudentPracticeSessionQuestionDetail() error = %v", err)
+	}
+	if result.StudentSummary.StudentName != "张三" {
+		t.Fatalf("student summary = %+v", result.StudentSummary)
+	}
+	if result.Session.SessionID != 9001 || result.Session.TotalCount != 2 || result.Session.AnsweredCount != 2 {
+		t.Fatalf("session = %+v", result.Session)
+	}
+	if result.QuestionDetail.SessionQuestionID != 70002 || result.QuestionDetail.DisplayOrder != 2 {
+		t.Fatalf("question detail = %+v", result.QuestionDetail)
+	}
+	if result.QuestionDetail.IsCorrect == nil || *result.QuestionDetail.IsCorrect {
+		t.Fatalf("is_correct = %+v", result.QuestionDetail.IsCorrect)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryGetStudentPracticeSessionQuestionDetailReturnsNotFoundWhenQuestionMismatch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+
+	mock.ExpectQuery(`(?s)SELECT\s+u\.id AS student_user_id,.*ps\.bank_scope_json.*FROM practice_sessions ps.*student_class_memberships scm.*WHERE ps\.tenant_id = \?.*ps\.id = \?.*ps\.user_id = \?.*ps\.course_id = \?.*LIMIT 1`).
+		WithArgs(int64(101), int64(7), int64(9001), int64(7001), int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"student_user_id",
+			"student_name",
+			"student_no",
+			"class_id",
+			"class_name",
+			"course_id",
+			"course_name",
+			"session_id",
+			"started_at",
+			"finished_at",
+			"status",
+			"practice_mode",
+			"source_mode",
+			"bank_scope_json",
+		}).AddRow(
+			int64(7001), "张三", "S001", int64(101), "一班", int64(12), "数学",
+			int64(9001), nil, nil, "finished", "random", "course", `{"flow_mode":"fixed_count"}`,
+		))
+
+	mock.ExpectQuery(`(?s)SELECT\s+psq\.id AS session_question_id,.*LEFT JOIN\s+\(.*SELECT pa1\.session_question_id, pa1\.user_id, pa1\.answer_json, pa1\.is_correct, pa1\.answered_at.*SELECT session_question_id, user_id, MAX\(id\) AS max_id.*GROUP BY session_question_id, user_id.*\)\s+pa ON pa\.session_question_id = psq\.id\s+AND pa\.user_id = \?.*WHERE psq\.session_id = \?.*ORDER BY psq\.display_order ASC, psq\.id ASC`).
+		WithArgs(int64(7001), int64(9001)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"session_question_id",
+			"question_id",
+			"question_version_id",
+			"display_order",
+			"question_type",
+			"presented_options_json",
+			"content_json",
+			"answer_json",
+			"analysis_json",
+			"student_answer_json",
+			"is_correct",
+			"answered_at",
+		}).AddRow(
+			int64(70001), int64(1001), int64(3001), 1, "single_choice",
+			nil, `{"stem":{"text":"版本题干1"}}`, `{"selected_options":["A"]}`, `{"text":"版本解析1"}`,
+			nil, nil, nil,
+		))
+
+	_, err = repo.GetStudentPracticeSessionQuestionDetail(context.Background(), StudentPracticeSessionQuestionDetailQuery{
+		TenantID:          7,
+		ClassID:           101,
+		CourseID:          12,
+		StudentUserID:     7001,
+		SessionID:         9001,
+		SessionQuestionID: 70009,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("error = %v, want %v", err, ErrNotFound)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}

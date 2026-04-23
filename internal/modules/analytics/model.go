@@ -216,6 +216,21 @@ type StudentPracticeSessionDetailResult struct {
 	Questions      []StudentPracticeSessionQuestionItem `json:"questions"`
 }
 
+type StudentPracticeSessionQuestionDetailQuery struct {
+	TenantID          int64
+	ClassID           int64
+	CourseID          int64
+	StudentUserID     int64
+	SessionID         int64
+	SessionQuestionID int64
+}
+
+type StudentPracticeSessionQuestionDetailResult struct {
+	StudentSummary StudentPracticeSessionStudentSummary `json:"student_summary"`
+	Session        StudentPracticeSessionSummary        `json:"session"`
+	QuestionDetail StudentPracticeSessionQuestionItem   `json:"question_detail"`
+}
+
 type Repository interface {
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
@@ -228,6 +243,7 @@ type Repository interface {
 	ListStudentWrongQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
 	ListStudentConfusedQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
 	GetStudentPracticeSessionDetail(ctx context.Context, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error)
+	GetStudentPracticeSessionQuestionDetail(ctx context.Context, query StudentPracticeSessionQuestionDetailQuery) (StudentPracticeSessionQuestionDetailResult, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

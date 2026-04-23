@@ -32,6 +32,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/class-course-options", handler.listClassCourseOptions)
 	router.GET("/analytics/student-practice-detail", handler.getStudentPracticeDetail)
 	router.GET("/analytics/student-practice-session-detail", handler.getStudentPracticeSessionDetail)
+	router.GET("/analytics/student-practice-session-question-detail", handler.getStudentPracticeSessionQuestionDetail)
 }
 
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -94,6 +95,24 @@ func (handler *Handler) getStudentPracticeSessionDetail(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.GetStudentPracticeSessionDetail(ctx.Request.Context(), scope, query)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) getStudentPracticeSessionQuestionDetail(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	query, ok := parseStudentPracticeSessionQuestionDetailQuery(ctx)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.GetStudentPracticeSessionQuestionDetail(ctx.Request.Context(), scope, query)
 	if err != nil {
 		writeAnalyticsError(ctx, err)
 		return
@@ -206,6 +225,36 @@ func parseStudentPracticeSessionDetailQuery(ctx *gin.Context) (StudentPracticeSe
 		CourseID:      courseID,
 		StudentUserID: studentUserID,
 		SessionID:     sessionID,
+	}, true
+}
+
+func parseStudentPracticeSessionQuestionDetailQuery(ctx *gin.Context) (StudentPracticeSessionQuestionDetailQuery, bool) {
+	classID, ok := parsePositiveInt64(ctx.Query("class_id"))
+	if !ok {
+		return StudentPracticeSessionQuestionDetailQuery{}, false
+	}
+	courseID, ok := parsePositiveInt64(ctx.Query("course_id"))
+	if !ok {
+		return StudentPracticeSessionQuestionDetailQuery{}, false
+	}
+	studentUserID, ok := parsePositiveInt64(ctx.Query("student_user_id"))
+	if !ok {
+		return StudentPracticeSessionQuestionDetailQuery{}, false
+	}
+	sessionID, ok := parsePositiveInt64(ctx.Query("session_id"))
+	if !ok {
+		return StudentPracticeSessionQuestionDetailQuery{}, false
+	}
+	sessionQuestionID, ok := parsePositiveInt64(ctx.Query("session_question_id"))
+	if !ok {
+		return StudentPracticeSessionQuestionDetailQuery{}, false
+	}
+	return StudentPracticeSessionQuestionDetailQuery{
+		ClassID:           classID,
+		CourseID:          courseID,
+		StudentUserID:     studentUserID,
+		SessionID:         sessionID,
+		SessionQuestionID: sessionQuestionID,
 	}, true
 }
 

@@ -1244,6 +1244,49 @@ paths:
           description: 练题会话 ID。
       responses:
         '200': { $ref: '#/components/responses/StudentPracticeSessionDetailOk' }
+  /analytics/student-practice-session-question-detail:
+    get:
+      tags: [Analytics]
+      summary: 老师侧单题完整详情
+      operationId: getStudentPracticeSessionQuestionDetail
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: student_user_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 学生用户 ID。
+        - in: query
+          name: session_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 练题会话 ID。
+        - in: query
+          name: session_question_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 会话题目 ID。
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeSessionQuestionDetailOk' }
   /audit-logs:
     get:
       tags: [Audit]
@@ -1397,6 +1440,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentPracticeSessionDetailResponse'
+    StudentPracticeSessionQuestionDetailOk:
+      description: 老师侧单题完整详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionDetailResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -2745,6 +2794,27 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/StudentPracticeSessionDetailResult'
+        request_id:
+          type: string
+    StudentPracticeSessionQuestionDetailResult:
+      type: object
+      required: [student_summary, session, question_detail]
+      properties:
+        student_summary:
+          $ref: '#/components/schemas/StudentPracticeSessionStudentSummary'
+        session:
+          $ref: '#/components/schemas/StudentPracticeSessionSummary'
+        question_detail:
+          $ref: '#/components/schemas/StudentPracticeSessionQuestionItem'
+    StudentPracticeSessionQuestionDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeSessionQuestionDetailResult'
         request_id:
           type: string
     QuestionBankResponse:

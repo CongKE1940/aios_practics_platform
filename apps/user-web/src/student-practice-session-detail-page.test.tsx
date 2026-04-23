@@ -169,4 +169,34 @@ describe("StudentPracticeSessionDetailPage", () => {
       expect(screen.getByText("练习详情加载失败，请稍后重试。")).toBeTruthy();
     });
   });
+
+  it("navigates to question detail page and keeps context", async () => {
+    const api: StudentPracticeSessionDetailApi = {
+      getStudentPracticeSessionDetail: vi.fn(async () => createSessionDetailResult())
+    };
+    const onNavigate = vi.fn();
+
+    render(
+      <StudentPracticeSessionDetailPage
+        api={api}
+        path="/app/class-learning/student/session?class_id=301&course_id=10&student_user_id=701&session_id=9001&start_at=2026-04-01T00:00:00%2B08:00&end_at=2026-04-22T23:59:59%2B08:00"
+        onNavigate={onNavigate}
+      />
+    );
+
+    await waitFor(() => expect(api.getStudentPracticeSessionDetail).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "查看题目详情" }));
+
+    const nextPath = onNavigate.mock.calls[0][0];
+    const nextURL = new URL(nextPath, "http://localhost");
+    expect(nextURL.pathname).toBe("/app/class-learning/student/session/question");
+    expect(nextURL.searchParams.get("class_id")).toBe("301");
+    expect(nextURL.searchParams.get("course_id")).toBe("10");
+    expect(nextURL.searchParams.get("student_user_id")).toBe("701");
+    expect(nextURL.searchParams.get("session_id")).toBe("9001");
+    expect(nextURL.searchParams.get("session_question_id")).toBe("70001");
+    expect(nextURL.searchParams.get("start_at")).toBe("2026-04-01T00:00:00+08:00");
+    expect(nextURL.searchParams.get("end_at")).toBe("2026-04-22T23:59:59+08:00");
+  });
 });

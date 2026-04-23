@@ -14,6 +14,7 @@
 - `internal/modules/analytics`：新增 `GET /analytics/class-course-options`，按当前老师任课范围或租户范围返回班级课程树。
 - `internal/modules/analytics`：新增 `GET /analytics/student-practice-detail`，支持老师查看当前班级课程下单个学生的练题记录、错题和疑惑题。
 - `internal/modules/analytics`：新增 `GET /analytics/student-practice-session-detail`，支持老师继续下钻单次练题详情，返回会话汇总与题目明细。
+- `internal/modules/analytics`：新增 `GET /analytics/student-practice-session-question-detail`，支持老师查看单次练题中的单题完整详情。
 - `internal/modules/analytics`：单次练题详情仓储按 `session_question_id + user_id` 取最新作答，题目按 `display_order` 升序，优先使用 `presented_options_json` 快照还原题目内容。
 - `cmd/server`：将 analytics handler 注册到 `/api/v1`。
 - `internal/modules/rbac`：用户端菜单新增“班级学习”，权限为 `analytics:view`。
@@ -21,9 +22,10 @@
 - `apps/user-web`：`ClassLearningPage` 升级为单个班级课程级联选择器，支持日期范围查询，展示汇总指标与学生明细。
 - `apps/user-web`：新增 `StudentLearningDetailPage`，支持从班级学习页继续下钻到学生详情，并通过标签页切换练题记录、错题和疑惑题。
 - `apps/user-web`：新增 `StudentPracticeSessionDetailPage`，支持从学生详情页 `sessions` 标签下钻单次练题详情并保留返回上下文。
+- `apps/user-web`：新增 `StudentPracticeSessionQuestionDetailPage`，支持从单次练题详情页继续下钻单题完整详情并保留返回上下文。
 - `apps/user-web`：补齐登录页、动态菜单、退出登录、`401` 统一失效回退、本地会话恢复，以及 `localStorage` 脏 session 的结构校验与自动清理。
-- `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary`、`GET /analytics/student-practice-detail`、`GET /analytics/student-practice-session-detail` 正式契约。
-- `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览、学生学习详情与单次练题详情接口说明。
+- `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary`、`GET /analytics/student-practice-detail`、`GET /analytics/student-practice-session-detail`、`GET /analytics/student-practice-session-question-detail` 正式契约。
+- `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览、学生学习详情、单次练题详情与单题完整详情接口说明。
 - `docs/README.md`：把阶段 2F 状态文档纳入阅读顺序和目录说明。
 
 ## 2. 已落地的业务口径
@@ -41,6 +43,7 @@
 11. 学生详情页通过 `GET /api/v1/analytics/student-practice-detail` 复用班级课程与当前学生归属口径，支持 `sessions`、`wrong`、`confused` 三个标签页。
 12. 单次练题详情通过 `GET /api/v1/analytics/student-practice-session-detail` 精确定位 `class_id + course_id + student_user_id + session_id`，并返回会话汇总与题目明细。
 13. 单次练题详情题目数据优先读取练题时快照，学生答案按每题最新作答去重，正确率由 `correct_count / answered_count` 计算。
+14. 单题完整详情通过 `GET /api/v1/analytics/student-practice-session-question-detail` 精确定位 `class_id + course_id + student_user_id + session_id + session_question_id`，不允许跨会话取题。
 
 ## 3. 当前限制
 
@@ -48,7 +51,7 @@
 2. 班级课程选择当前为基础级联按钮树，尚未接入更完整的搜索式选择器或组织树样式控件。
 3. 统计实时聚合，尚未引入物化统计表或异步汇总任务。
 4. 学校管理员的数据范围当前按 token 租户处理，后续可继续细化到学校/年级范围。
-5. 当前尚未支持从单次练题详情继续下钻到完整题目详情、老师讲评或导出能力。
+5. 当前已支持从单次练题详情继续下钻到完整题目详情，但仍未支持老师讲评、导出与题目轨迹时间线。
 
 ## 4. 已执行验证
 

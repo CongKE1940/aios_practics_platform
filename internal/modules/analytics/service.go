@@ -243,6 +243,59 @@ func (service *Service) GetStudentPracticeSessionDetail(ctx context.Context, sco
 	return result, nil
 }
 
+func (service *Service) GetStudentPracticeSessionQuestionDetail(ctx context.Context, scope Scope, query StudentPracticeSessionQuestionDetailQuery) (StudentPracticeSessionQuestionDetailResult, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return StudentPracticeSessionQuestionDetailResult{}, ErrForbidden
+	}
+	if query.ClassID <= 0 || query.CourseID <= 0 || query.StudentUserID <= 0 || query.SessionID <= 0 || query.SessionQuestionID <= 0 {
+		return StudentPracticeSessionQuestionDetailResult{}, ErrInvalidInput
+	}
+
+	query.TenantID = scope.TenantID
+
+	switch scope.UserType {
+	case "sys_admin", "school_admin":
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeSessionQuestionDetailResult{}, err
+		}
+		if !exists {
+			return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
+		}
+	case "teacher":
+		allowed, err := service.repo.TeacherCanViewClassCourse(ctx, query.TenantID, scope.UserID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeSessionQuestionDetailResult{}, err
+		}
+		if !allowed {
+			return StudentPracticeSessionQuestionDetailResult{}, ErrForbidden
+		}
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeSessionQuestionDetailResult{}, err
+		}
+		if !exists {
+			return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
+		}
+	default:
+		return StudentPracticeSessionQuestionDetailResult{}, ErrForbidden
+	}
+
+	belongs, err := service.repo.StudentBelongsToClass(ctx, query.TenantID, query.ClassID, query.StudentUserID)
+	if err != nil {
+		return StudentPracticeSessionQuestionDetailResult{}, err
+	}
+	if !belongs {
+		return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
+	}
+
+	result, err := service.repo.GetStudentPracticeSessionQuestionDetail(ctx, query)
+	if err != nil {
+		return StudentPracticeSessionQuestionDetailResult{}, err
+	}
+	return result, nil
+}
+
 func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (time.Time, time.Time, error) {
 	end := now
 	if endAt != nil {

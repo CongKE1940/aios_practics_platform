@@ -12,6 +12,10 @@ import {
   StudentPracticeSessionDetailPage,
   type StudentPracticeSessionDetailApi
 } from "./student-practice-session-detail-page";
+import {
+  StudentPracticeSessionQuestionDetailPage,
+  type StudentPracticeSessionQuestionDetailApi
+} from "./student-practice-session-question-detail-page";
 import { PracticePanel, type PracticePanelApi } from "./practice-panel";
 import {
   PracticeHistoryPage,
@@ -27,7 +31,8 @@ interface UserAppProps {
     PracticeReviewApi &
     Partial<ClassLearningApi> &
     Partial<StudentLearningDetailApi> &
-    Partial<StudentPracticeSessionDetailApi>;
+    Partial<StudentPracticeSessionDetailApi> &
+    Partial<StudentPracticeSessionQuestionDetailApi>;
   sessionStore?: UserSessionStore;
 }
 
@@ -55,7 +60,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         PracticeReviewApi &
         Partial<ClassLearningApi> &
         Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi>)
+        Partial<StudentPracticeSessionDetailApi> &
+        Partial<StudentPracticeSessionQuestionDetailApi>)
     | undefined
   >(() => {
     if (practiceApi) {
@@ -88,6 +94,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     };
   }, [authApi, store]);
 
+  const isStudentSessionQuestionRoute = selectedRoute.startsWith("/app/class-learning/student/session/question");
   const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
 
   async function handleLogin(form: LoginRequest) {
@@ -166,7 +173,18 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         ) : (
           <>
             {selectedRoute === "/app/courses" ? <h2>我的课程</h2> : null}
-            {isStudentSessionRoute ? (
+            {isStudentSessionQuestionRoute ? (
+              currentPracticeApi && isStudentPracticeSessionQuestionDetailApi(currentPracticeApi) ? (
+                <StudentPracticeSessionQuestionDetailPage
+                  api={currentPracticeApi}
+                  path={selectedPath}
+                  onNavigate={setSelectedPath}
+                />
+              ) : (
+                <p>当前单题详情功能暂不可用。</p>
+              )
+            ) : null}
+            {!isStudentSessionQuestionRoute && isStudentSessionRoute ? (
               currentPracticeApi && isStudentPracticeSessionDetailApi(currentPracticeApi) ? (
                 <StudentPracticeSessionDetailPage
                   api={currentPracticeApi}
@@ -263,14 +281,16 @@ function isClassLearningApi(
         PracticeReviewApi &
         Partial<ClassLearningApi> &
         Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi>)
+        Partial<StudentPracticeSessionDetailApi> &
+        Partial<StudentPracticeSessionQuestionDetailApi>)
     | undefined
 ): api is
   | (PracticePanelApi &
       PracticeReviewApi &
       ClassLearningApi &
       Partial<StudentLearningDetailApi> &
-      Partial<StudentPracticeSessionDetailApi>) {
+      Partial<StudentPracticeSessionDetailApi> &
+      Partial<StudentPracticeSessionQuestionDetailApi>) {
   return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
 }
 
@@ -280,14 +300,16 @@ function isStudentLearningDetailApi(
         PracticeReviewApi &
         Partial<ClassLearningApi> &
         Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi>)
+        Partial<StudentPracticeSessionDetailApi> &
+        Partial<StudentPracticeSessionQuestionDetailApi>)
     | undefined
 ): api is
   | (PracticePanelApi &
       PracticeReviewApi &
       Partial<ClassLearningApi> &
       StudentLearningDetailApi &
-      Partial<StudentPracticeSessionDetailApi>) {
+      Partial<StudentPracticeSessionDetailApi> &
+      Partial<StudentPracticeSessionQuestionDetailApi>) {
   return typeof api?.getStudentPracticeDetail === "function";
 }
 
@@ -297,7 +319,8 @@ function isStudentPracticeSessionDetailApi(
         PracticeReviewApi &
         Partial<ClassLearningApi> &
         Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi>)
+        Partial<StudentPracticeSessionDetailApi> &
+        Partial<StudentPracticeSessionQuestionDetailApi>)
     | undefined
 ): api is
   | (PracticePanelApi &
@@ -306,6 +329,25 @@ function isStudentPracticeSessionDetailApi(
       Partial<StudentLearningDetailApi> &
       StudentPracticeSessionDetailApi) {
   return typeof api?.getStudentPracticeSessionDetail === "function";
+}
+
+function isStudentPracticeSessionQuestionDetailApi(
+  api:
+    | (PracticePanelApi &
+        PracticeReviewApi &
+        Partial<ClassLearningApi> &
+        Partial<StudentLearningDetailApi> &
+        Partial<StudentPracticeSessionDetailApi> &
+        Partial<StudentPracticeSessionQuestionDetailApi>)
+    | undefined
+): api is
+  | (PracticePanelApi &
+      PracticeReviewApi &
+      Partial<ClassLearningApi> &
+      Partial<StudentLearningDetailApi> &
+      Partial<StudentPracticeSessionDetailApi> &
+      StudentPracticeSessionQuestionDetailApi) {
+  return typeof api?.getStudentPracticeSessionQuestionDetail === "function";
 }
 
 function wrapUnauthorizedApi<T extends object>(api: T, onUnauthorized: () => void): T {

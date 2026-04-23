@@ -98,6 +98,9 @@ export interface ApiClient {
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
   getStudentPracticeDetail(query: StudentPracticeDetailQuery): Promise<StudentPracticeDetailResult>;
   getStudentPracticeSessionDetail(query: StudentPracticeSessionDetailQuery): Promise<StudentPracticeSessionDetailResult>;
+  getStudentPracticeSessionQuestionDetail(
+    query: StudentPracticeSessionQuestionDetailQuery
+  ): Promise<StudentPracticeSessionQuestionDetailResult>;
   listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
@@ -593,6 +596,20 @@ export interface StudentPracticeSessionDetailResult {
   questions: StudentPracticeSessionQuestionItem[];
 }
 
+export interface StudentPracticeSessionQuestionDetailQuery {
+  class_id: number;
+  course_id: number;
+  student_user_id: number;
+  session_id: number;
+  session_question_id: number;
+}
+
+export interface StudentPracticeSessionQuestionDetailResult {
+  student_summary: StudentPracticeSessionStudentSummary;
+  session: StudentPracticeSessionSummary;
+  question_detail: StudentPracticeSessionQuestionItem;
+}
+
 export interface ClassPracticeStudentItem {
   student_id: number;
   student_name: string;
@@ -1059,6 +1076,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, buildPath("/analytics/student-practice-detail", query), { method: "GET" }),
     getStudentPracticeSessionDetail: (query) =>
       request(fetcher, options, buildPath("/analytics/student-practice-session-detail", query), { method: "GET" }),
+    getStudentPracticeSessionQuestionDetail: (query) =>
+      request(fetcher, options, buildPath("/analytics/student-practice-session-question-detail", query), {
+        method: "GET"
+      }),
     listClassCourseOptions: () =>
       request(fetcher, options, "/analytics/class-course-options", { method: "GET" }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),

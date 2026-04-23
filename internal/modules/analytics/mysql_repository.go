@@ -783,6 +783,31 @@ ORDER BY psq.display_order ASC, psq.id ASC
 	return result, nil
 }
 
+func (repo *MySQLRepository) GetStudentPracticeSessionQuestionDetail(ctx context.Context, query StudentPracticeSessionQuestionDetailQuery) (StudentPracticeSessionQuestionDetailResult, error) {
+	sessionResult, err := repo.GetStudentPracticeSessionDetail(ctx, StudentPracticeSessionDetailQuery{
+		TenantID:      query.TenantID,
+		ClassID:       query.ClassID,
+		CourseID:      query.CourseID,
+		StudentUserID: query.StudentUserID,
+		SessionID:     query.SessionID,
+	})
+	if err != nil {
+		return StudentPracticeSessionQuestionDetailResult{}, err
+	}
+
+	for _, question := range sessionResult.Questions {
+		if question.SessionQuestionID != query.SessionQuestionID {
+			continue
+		}
+		return StudentPracticeSessionQuestionDetailResult{
+			StudentSummary: sessionResult.StudentSummary,
+			Session:        sessionResult.Session,
+			QuestionDetail: question,
+		}, nil
+	}
+	return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
+}
+
 func (repo *MySQLRepository) listStudentPracticeQuestions(ctx context.Context, query StudentPracticeDetailQuery, stateFilter string, stateTimeColumn string, orderBy string) (PageResult[StudentPracticeQuestionItem], error) {
 	page := normalizePage(query.Page)
 	pageSize := normalizePageSize(query.PageSize)

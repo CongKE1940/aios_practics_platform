@@ -2486,6 +2486,90 @@ QuestionAnswer:
 
 ---
 
+## 16.8 老师侧单题完整详情
+
+### GET `/api/v1/analytics/student-practice-session-question-detail`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能查看当前任课班级课程下学生该次练题中的题目详情。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围查看。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `session_id`：必填，练题会话 ID。
+- `session_question_id`：必填，会话题目 ID。
+
+### 说明
+- 本接口在单次练题详情基础上，精确定位到指定 `session_question_id`。
+- 若 `session_question_id` 不属于目标 `session_id`，返回 `404`。
+- `question_detail` 题面、标准答案、解析优先读取练题快照，避免历史漂移。
+- 学生答案按 `session_question_id + user_id` 最新一条作答返回。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "student_summary": {
+      "student_user_id": 501,
+      "student_name": "张三",
+      "student_no": "S2026001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学"
+    },
+    "session": {
+      "session_id": 9001,
+      "started_at": "2026-04-23T10:00:00+08:00",
+      "finished_at": "2026-04-23T10:20:00+08:00",
+      "status": "finished",
+      "practice_mode": "random",
+      "source_mode": "course",
+      "flow_mode": "fixed_count",
+      "total_count": 2,
+      "answered_count": 2,
+      "correct_count": 1,
+      "wrong_count": 1,
+      "accuracy": 0.5
+    },
+    "question_detail": {
+      "session_question_id": 70001,
+      "question_id": 1001,
+      "question_version_id": 3001,
+      "display_order": 1,
+      "question_type": "single_choice",
+      "content": {
+        "stem": {
+          "type": "text",
+          "text": "1+1 等于几？"
+        }
+      },
+      "student_answer": {
+        "selected_options": ["B"]
+      },
+      "correct_answer": {
+        "selected_options": ["B"]
+      },
+      "is_answered": true,
+      "is_correct": true,
+      "answered_at": "2026-04-23T10:02:00+08:00",
+      "analysis": {
+        "text": "基础加法。"
+      }
+    }
+  },
+  "request_id": "req_analytics_student_session_question_1"
+}
+```
+
+---
+
 ## 17. 审计接口（可选开放）
 
 ## 17.1 审计日志列表

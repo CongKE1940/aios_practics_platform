@@ -543,6 +543,81 @@ describe("UserApp", () => {
     });
   });
 
+  it("renders student session question detail page when route is /app/class-learning/student/session/question", async () => {
+    render(
+      <UserApp
+        authApi={createAuthApiMock()}
+        practiceApi={{
+          ...createPracticeApiMock(),
+          getStudentPracticeSessionQuestionDetail: async () => ({
+            student_summary: {
+              student_user_id: 7,
+              student_name: "李同学",
+              student_no: "stu_007",
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学"
+            },
+            session: {
+              session_id: 9001,
+              started_at: "2026-04-22T10:00:00+08:00",
+              finished_at: "2026-04-22T10:20:00+08:00",
+              status: "finished",
+              practice_mode: "random",
+              source_mode: "course",
+              flow_mode: "fixed_count",
+              total_count: 2,
+              answered_count: 2,
+              correct_count: 1,
+              wrong_count: 1,
+              accuracy: 0.5
+            },
+            question_detail: {
+              session_question_id: 70001,
+              question_id: 1001,
+              question_version_id: 3001,
+              display_order: 1,
+              question_type: "single_choice",
+              content: {
+                stem: {
+                  text: "1+1等于几？"
+                }
+              },
+              student_answer: {
+                selected_options: ["B"]
+              },
+              correct_answer: {
+                selected_options: ["B"]
+              },
+              is_answered: true,
+              is_correct: true,
+              answered_at: "2026-04-22T10:02:00+08:00",
+              analysis: {
+                text: "基础加法。"
+              }
+            }
+          })
+        }}
+        sessionStore={createSessionStore(
+          createSession([
+            {
+              id: 29,
+              name: "单题详情",
+              path: "/app/class-learning/student/session/question?class_id=301&course_id=10&student_user_id=7&session_id=9001&session_question_id=70001",
+              children: []
+            }
+          ])
+        )}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "李同学 第 1 题" })).toBeTruthy();
+      expect(screen.getByText("题干：1+1等于几？")).toBeTruthy();
+    });
+  });
+
   it("keeps legacy class learning callers from crashing when course options are unavailable", async () => {
     render(
       <UserApp

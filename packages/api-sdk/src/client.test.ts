@@ -1519,6 +1519,90 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("GET");
   });
 
+  it("queries student practice session question detail analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            student_summary: {
+              student_user_id: 501,
+              student_name: "张三",
+              student_no: "S2026001",
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学"
+            },
+            session: {
+              session_id: 9001,
+              started_at: "2026-04-22T09:00:00+08:00",
+              finished_at: "2026-04-22T09:20:00+08:00",
+              status: "finished",
+              practice_mode: "random",
+              source_mode: "course",
+              flow_mode: "fixed_count",
+              total_count: 2,
+              answered_count: 2,
+              correct_count: 1,
+              wrong_count: 1,
+              accuracy: 0.5
+            },
+            question_detail: {
+              session_question_id: 70002,
+              question_id: 1002,
+              question_version_id: 3002,
+              display_order: 2,
+              question_type: "single_choice",
+              content: {
+                stem: { type: "text", text: "2+2等于几？" }
+              },
+              student_answer: {
+                selected_options: ["A"]
+              },
+              correct_answer: {
+                selected_options: ["B"]
+              },
+              is_answered: true,
+              is_correct: false,
+              answered_at: "2026-04-22T09:06:00+08:00",
+              analysis: {
+                text: "基础加法"
+              }
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getStudentPracticeSessionQuestionDetail({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      session_id: 9001,
+      session_question_id: 70002
+    });
+
+    expect(result.student_summary.student_user_id).toBe(501);
+    expect(result.session.session_id).toBe(9001);
+    expect(result.question_detail.session_question_id).toBe(70002);
+    expect(result.question_detail.is_correct).toBe(false);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/student-practice-session-question-detail?class_id=301&course_id=10&student_user_id=501&session_id=9001&session_question_id=70002"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
