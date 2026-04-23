@@ -2351,6 +2351,7 @@ QuestionAnswer:
 ### 作用
 - 用于老师侧从成绩列表点进单个学生，查看这场考试的完整答卷。
 - 返回学生信息、考试得分摘要，以及按题展开的题干、标准答案、学生答案、判题结果和得分。
+- 对主观题还会额外返回 `judge_source`、`review_comment`、`reviewer_user_id`、`reviewed_at`，用于显示是否待批阅、由谁批阅以及批注内容。
 
 ### Response
 ```json
@@ -2397,11 +2398,106 @@ QuestionAnswer:
         },
         "is_answered": true,
         "is_correct": true,
-        "answer_score": 10
+        "answer_score": 10,
+        "judge_source": "auto"
+      },
+      {
+        "question_id": 1002,
+        "question_version_id": 3002,
+        "display_order": 2,
+        "question_type": "essay",
+        "score": 20,
+        "content": {
+          "stem": {"text": "请简述分数通分的基本步骤。"}
+        },
+        "correct_answer": {
+          "reference_points": ["先求最小公倍数", "统一分母", "再比较或运算"]
+        },
+        "student_answer": {
+          "text": "先找公分母，再把分数改写成同分母分数。"
+        },
+        "is_answered": true,
+        "is_correct": null,
+        "answer_score": 12,
+        "judge_source": "manual",
+        "review_comment": "步骤基本正确，但缺少最小公倍数的表述。",
+        "reviewer_user_id": 701,
+        "reviewed_at": "2026-04-24T10:02:00+08:00"
       }
     ]
   },
   "request_id": "req_exam_attempt_review_1"
+}
+```
+
+---
+
+### PUT `/api/v1/analytics/exam-attempt-question-review`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Body
+- `attempt_id`：必填，考试作答记录 ID。
+- `display_order`：必填，题目在本次答卷中的顺序号。
+- `score`：必填，老师为该题补录的得分，必须大于等于 `0` 且不超过该题满分。
+- `review_comment`：必填，老师批阅说明。服务端会去除首尾空白，去除后不能为空。
+
+### 说明
+- 仅允许对 `attempt_status=submitted` 或 `attempt_status=timeout_submitted` 的答卷执行批阅。
+- 仅允许对 `short_answer`、`essay` 这两类主观题补评分；客观题仍由交卷时自动判分。
+- 保存后服务端会回写题目批阅人、批语、批阅时间，并重算整份答卷的 `subjective_score` 与 `final_score`。
+- 同一题重复批阅时执行覆盖更新，以最后一次保存结果为准。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "attempt_id": 8001,
+      "exam_id": 901,
+      "exam_name": "期中测验",
+      "student_user_id": 7001,
+      "student_name": "张三",
+      "student_no": "S001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "attempt_status": "submitted",
+      "started_at": "2026-04-24T09:01:00+08:00",
+      "submit_at": "2026-04-24T09:48:00+08:00",
+      "objective_score": 86,
+      "subjective_score": 12,
+      "final_score": 98
+    },
+    "question": {
+      "question_id": 1002,
+      "question_version_id": 3002,
+      "display_order": 2,
+      "question_type": "essay",
+      "score": 20,
+      "content": {
+        "stem": {"text": "请简述分数通分的基本步骤。"}
+      },
+      "correct_answer": {
+        "reference_points": ["先求最小公倍数", "统一分母", "再比较或运算"]
+      },
+      "student_answer": {
+        "text": "先找公分母，再把分数改写成同分母分数。"
+      },
+      "is_answered": true,
+      "is_correct": null,
+      "answer_score": 12,
+      "judge_source": "manual",
+      "review_comment": "步骤基本正确，但缺少最小公倍数的表述。",
+      "reviewer_user_id": 701,
+      "reviewed_at": "2026-04-24T10:02:00+08:00"
+    }
+  },
+  "request_id": "req_exam_attempt_question_review_1"
 }
 ```
 

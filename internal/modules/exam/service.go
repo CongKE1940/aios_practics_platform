@@ -219,6 +219,15 @@ func judgeExamAnswer(correctAnswer map[string]any, submitted map[string]any) (bo
 	}
 }
 
+func isManualReviewQuestionType(questionType string) bool {
+	switch strings.ToLower(strings.TrimSpace(questionType)) {
+	case "short_answer", "essay":
+		return true
+	default:
+		return false
+	}
+}
+
 func asExamStringSlice(value any) []string {
 	switch typed := value.(type) {
 	case []string:

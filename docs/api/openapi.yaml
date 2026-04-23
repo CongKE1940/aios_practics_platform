@@ -1146,6 +1146,19 @@ paths:
           description: 考试作答记录 ID。
       responses:
         '200': { $ref: '#/components/responses/ExamAttemptReviewOk' }
+  /analytics/exam-attempt-question-review:
+    put:
+      tags: [Analytics]
+      summary: 老师侧主观题批阅与补评分
+      operationId: reviewExamAttemptQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExamAttemptQuestionReviewBody'
+      responses:
+        '200': { $ref: '#/components/responses/ExamAttemptQuestionReviewOk' }
   /analytics/wrong-questions:
     get:
       tags: [Analytics]
@@ -1524,6 +1537,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamAttemptReviewResponse'
+    ExamAttemptQuestionReviewOk:
+      description: 老师侧主观题批阅与补评分结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptQuestionReviewResponse'
     StudentPracticeDetailOk:
       description: 老师侧学生学习详情
       content:
@@ -3176,6 +3195,20 @@ components:
         answer_score:
           type: number
           format: double
+        judge_source:
+          type: string
+          nullable: true
+        review_comment:
+          type: string
+          nullable: true
+        reviewer_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
     ExamAttemptReviewResult:
       type: object
       required: [summary, questions]
@@ -3186,6 +3219,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ExamAttemptReviewQuestionItem'
+    ExamAttemptQuestionReviewBody:
+      type: object
+      required: [attempt_id, display_order, score, review_comment]
+      properties:
+        attempt_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        score:
+          type: number
+          format: double
+        review_comment:
+          type: string
+    ExamAttemptQuestionReviewResult:
+      type: object
+      required: [summary, question]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExamAttemptReviewSummary'
+        question:
+          $ref: '#/components/schemas/ExamAttemptReviewQuestionItem'
     StudentPracticeSummary:
       type: object
       required: [student_user_id, student_name, class_id, class_name, course_id, course_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
@@ -3830,6 +3885,17 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/ExamAttemptReviewResult'
+        request_id:
+          type: string
+    ExamAttemptQuestionReviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptQuestionReviewResult'
         request_id:
           type: string
     ClassCourseOptionsResponse:

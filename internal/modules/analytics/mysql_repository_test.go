@@ -68,7 +68,11 @@ SELECT
   qv.answer_json,
   eaa.answer_json,
   eaa.is_correct,
-  eaa.score
+  eaa.score,
+  eaa.judge_source,
+  eaa.review_comment,
+  eaa.reviewer_user_id,
+  eaa.reviewed_at
 FROM exam_attempts ea
 JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id
 JOIN questions q ON q.id = epq.question_id
@@ -80,7 +84,7 @@ ORDER BY epq.order_no ASC
 		WithArgs(int64(8001), int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"question_id", "question_version_id", "order_no", "question_type", "score",
-			"content_json", "answer_json", "student_answer_json", "is_correct", "answer_score",
+			"content_json", "answer_json", "student_answer_json", "is_correct", "answer_score", "judge_source", "review_comment", "reviewer_user_id", "reviewed_at",
 		}).AddRow(
 			int64(1001),
 			int64(3001),
@@ -92,6 +96,10 @@ ORDER BY epq.order_no ASC
 			`{"selected_keys":["B"]}`,
 			true,
 			10.0,
+			"auto",
+			nil,
+			nil,
+			nil,
 		))
 
 	result, err := repo.GetExamAttemptReview(context.Background(), ExamAttemptReviewQuery{
@@ -112,6 +120,213 @@ ORDER BY epq.order_no ASC
 	}
 	if result.Questions[0].IsCorrect == nil || !*result.Questions[0].IsCorrect {
 		t.Fatalf("question is_correct = %+v", result.Questions[0].IsCorrect)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryUpsertExamAttemptQuestionReviewUpdatesSubjectiveScoreAndReturnsResult(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	submitAt := time.Date(2026, 4, 24, 9, 48, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  ea.id AS attempt_id,
+  e.id AS exam_id,
+  e.name AS exam_name,
+  u.id AS student_user_id,
+  u.display_name AS student_name,
+  sp.student_no,
+  c.id AS class_id,
+  c.name AS class_name,
+  ea.status,
+  ea.start_at,
+  ea.submit_at,
+  ea.objective_score,
+  ea.subjective_score,
+  ea.final_score
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
+LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
+LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
+  AND scm.is_current = 1 AND scm.status = 'active'
+LEFT JOIN classes c ON c.id = scm.class_id AND c.tenant_id = scm.tenant_id
+WHERE ea.id = ? AND ea.tenant_id = ?
+LIMIT 1
+`)).
+		WithArgs(int64(8001), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"attempt_id", "exam_id", "exam_name", "student_user_id", "student_name", "student_no", "class_id", "class_name",
+			"status", "start_at", "submit_at", "objective_score", "subjective_score", "final_score",
+		}).AddRow(
+			int64(8001), int64(901), "期中测验", int64(501), "张三", "S001", int64(301), "七年级一班",
+			"submitted", time.Date(2026, 4, 24, 9, 1, 0, 0, time.UTC), submitAt, 60.0, 0.0, 60.0,
+		))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  epq.question_id,
+  epq.question_version_id,
+  epq.order_no,
+  q.question_type,
+  epq.score,
+  qv.content_json,
+  qv.answer_json,
+  eaa.answer_json,
+  eaa.is_correct,
+  eaa.score,
+  eaa.judge_source,
+  eaa.review_comment,
+  eaa.reviewer_user_id,
+  eaa.reviewed_at
+FROM exam_attempts ea
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN exam_attempt_answers eaa ON eaa.attempt_id = ea.id AND eaa.display_order = epq.order_no
+WHERE ea.id = ? AND ea.tenant_id = ?
+ORDER BY epq.order_no ASC
+`)).
+		WithArgs(int64(8001), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "question_version_id", "order_no", "question_type", "score",
+			"content_json", "answer_json", "student_answer_json", "is_correct", "answer_score", "judge_source", "review_comment", "reviewer_user_id", "reviewed_at",
+		}).AddRow(
+			int64(1002),
+			int64(3002),
+			2,
+			"short_answer",
+			10.0,
+			`{"stem":{"text":"解释勾股定理。"}}`,
+			`{"text":"直角三角形两直角边平方和等于斜边平方。"}`,
+			`{"text":"直角三角形两直角边平方和等于斜边平方。"}`,
+			nil,
+			0.0,
+			"manual",
+			nil,
+			nil,
+			nil,
+		))
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+UPDATE exam_attempt_answers
+SET is_correct = ?, score = ?, judged_at = ?, judge_source = 'manual', reviewer_user_id = ?, review_comment = ?, reviewed_at = ?
+WHERE attempt_id = ? AND display_order = ?
+`)).
+		WithArgs(nil, "8.00", sqlmock.AnyArg(), int64(7), "概念正确，但表述不够完整。", sqlmock.AnyArg(), int64(8001), 2).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`(?s)UPDATE exam_attempts ea\s+JOIN \(\s*SELECT\s+ea_inner\.id AS attempt_id,.*short_answer', 'essay'.*WHERE ea_inner\.id = \? AND ea_inner\.tenant_id = \?.*GROUP BY ea_inner\.id\s*\)\s+scores ON scores\.attempt_id = ea\.id\s+SET ea\.subjective_score = scores\.subjective_score,\s+ea\.final_score = ea\.objective_score \+ scores\.subjective_score\s+WHERE ea\.id = \? AND ea\.tenant_id = \?`).
+		WithArgs(int64(8001), int64(9), int64(8001), int64(9)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  ea.id AS attempt_id,
+  e.id AS exam_id,
+  e.name AS exam_name,
+  u.id AS student_user_id,
+  u.display_name AS student_name,
+  sp.student_no,
+  c.id AS class_id,
+  c.name AS class_name,
+  ea.status,
+  ea.start_at,
+  ea.submit_at,
+  ea.objective_score,
+  ea.subjective_score,
+  ea.final_score
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
+LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
+LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
+  AND scm.is_current = 1 AND scm.status = 'active'
+LEFT JOIN classes c ON c.id = scm.class_id AND c.tenant_id = scm.tenant_id
+WHERE ea.id = ? AND ea.tenant_id = ?
+LIMIT 1
+`)).
+		WithArgs(int64(8001), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"attempt_id", "exam_id", "exam_name", "student_user_id", "student_name", "student_no", "class_id", "class_name",
+			"status", "start_at", "submit_at", "objective_score", "subjective_score", "final_score",
+		}).AddRow(
+			int64(8001), int64(901), "期中测验", int64(501), "张三", "S001", int64(301), "七年级一班",
+			"submitted", time.Date(2026, 4, 24, 9, 1, 0, 0, time.UTC), submitAt, 60.0, 8.0, 68.0,
+		))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  epq.question_id,
+  epq.question_version_id,
+  epq.order_no,
+  q.question_type,
+  epq.score,
+  qv.content_json,
+  qv.answer_json,
+  eaa.answer_json,
+  eaa.is_correct,
+  eaa.score,
+  eaa.judge_source,
+  eaa.review_comment,
+  eaa.reviewer_user_id,
+  eaa.reviewed_at
+FROM exam_attempts ea
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN exam_attempt_answers eaa ON eaa.attempt_id = ea.id AND eaa.display_order = epq.order_no
+WHERE ea.id = ? AND ea.tenant_id = ?
+ORDER BY epq.order_no ASC
+`)).
+		WithArgs(int64(8001), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "question_version_id", "order_no", "question_type", "score",
+			"content_json", "answer_json", "student_answer_json", "is_correct", "answer_score", "judge_source", "review_comment", "reviewer_user_id", "reviewed_at",
+		}).AddRow(
+			int64(1002),
+			int64(3002),
+			2,
+			"short_answer",
+			10.0,
+			`{"stem":{"text":"解释勾股定理。"}}`,
+			`{"text":"直角三角形两直角边平方和等于斜边平方。"}`,
+			`{"text":"直角三角形两直角边平方和等于斜边平方。"}`,
+			nil,
+			8.0,
+			"manual",
+			"概念正确，但表述不够完整。",
+			int64(7),
+			submitAt,
+		))
+
+	result, err := repo.UpsertExamAttemptQuestionReview(context.Background(), UpsertExamAttemptQuestionReviewCommand{
+		TenantID:       9,
+		AttemptID:      8001,
+		DisplayOrder:   2,
+		ReviewerUserID: 7,
+		Score:          8,
+		ReviewComment:  "概念正确，但表述不够完整。",
+	})
+	if err != nil {
+		t.Fatalf("UpsertExamAttemptQuestionReview() error = %v", err)
+	}
+	if result.Summary.FinalScore != 68 {
+		t.Fatalf("summary = %+v", result.Summary)
+	}
+	if result.Question.DisplayOrder != 2 || result.Question.ReviewerUserID == nil || *result.Question.ReviewerUserID != 7 {
+		t.Fatalf("question = %+v", result.Question)
+	}
+	if result.Question.ReviewComment == nil || *result.Question.ReviewComment != "概念正确，但表述不够完整。" {
+		t.Fatalf("question review_comment = %+v", result.Question.ReviewComment)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet() error = %v", err)

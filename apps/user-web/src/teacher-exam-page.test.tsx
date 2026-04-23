@@ -334,6 +334,136 @@ describe("TeacherExamPage", () => {
     });
   });
 
+  it("supports manual scoring for subjective exam question", async () => {
+    const getExamOverview = vi.fn(async (): Promise<ExamOverviewResult> => ({
+      summary: {
+        exam_id: 1,
+        exam_name: "期中测验",
+        exam_mode: "fixed",
+        status: "published",
+        duration_minutes: 60,
+        total_score: 100,
+        student_count: 1,
+        participated_student_count: 1,
+        submitted_count: 1,
+        in_progress_count: 0,
+        absent_count: 0,
+        average_score: 60,
+        highest_score: 60,
+        lowest_score: 60
+      },
+      students: {
+        items: [
+          {
+            student_user_id: 501,
+            student_name: "张三",
+            student_no: "S001",
+            class_name: "七年级一班",
+            attempt_id: 8001,
+            attempt_status: "submitted",
+            final_score: 60,
+            objective_score: 60
+          }
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1
+      }
+    }));
+    const getExamAttemptReview = vi.fn(async (): Promise<ExamAttemptReviewResult> => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        student_no: "S001",
+        class_name: "七年级一班",
+        attempt_status: "submitted",
+        objective_score: 60,
+        subjective_score: 0,
+        final_score: 60
+      },
+      questions: [
+        {
+          question_id: 1002,
+          question_version_id: 3002,
+          display_order: 2,
+          question_type: "short_answer",
+          score: 10,
+          content: { stem: { text: "解释勾股定理。" } },
+          correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+          student_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+          is_answered: true,
+          answer_score: 0,
+          judge_source: "manual"
+        }
+      ]
+    }));
+    const reviewExamAttemptQuestion = vi.fn(async () => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        student_no: "S001",
+        class_name: "七年级一班",
+        attempt_status: "submitted",
+        objective_score: 60,
+        subjective_score: 8,
+        final_score: 68
+      },
+      question: {
+        question_id: 1002,
+        question_version_id: 3002,
+        display_order: 2,
+        question_type: "short_answer",
+        score: 10,
+        content: { stem: { text: "解释勾股定理。" } },
+        correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+        student_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+        is_answered: true,
+        answer_score: 8,
+        judge_source: "manual",
+        review_comment: "概念正确，但表述不够完整。",
+        reviewer_user_id: 7
+      }
+    }));
+    const api = createExamApiMock({ getExamOverview, getExamAttemptReview, reviewExamAttemptQuestion });
+
+    render(<TeacherExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看详情" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看答卷" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看答卷" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("主观题得分")).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("主观题得分"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("批阅评语"), { target: { value: "概念正确，但表述不够完整。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存批阅" }));
+
+    await waitFor(() => {
+      expect(reviewExamAttemptQuestion).toHaveBeenCalledWith({
+        attempt_id: 8001,
+        display_order: 2,
+        score: 8,
+        review_comment: "概念正确，但表述不够完整。"
+      });
+      expect(screen.getByText("得分：8 / 10")).toBeTruthy();
+      expect(screen.getByText("主观题：8")).toBeTruthy();
+      expect(screen.getByText("总分：68")).toBeTruthy();
+    });
+  });
+
   it("loads draft detail into edit form and updates exam", async () => {
     const getExam = vi.fn(async (id: number) =>
       createExamDetail({
@@ -524,6 +654,31 @@ function createExamApiMock(overrides: Partial<TeacherExamApi> = {}): TeacherExam
         final_score: 0
       },
       questions: []
+    }),
+    reviewExamAttemptQuestion: async () => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        attempt_status: "submitted",
+        objective_score: 0,
+        subjective_score: 0,
+        final_score: 0
+      },
+      question: {
+        question_id: 1001,
+        question_version_id: 3001,
+        display_order: 1,
+        question_type: "short_answer",
+        score: 10,
+        content: {},
+        correct_answer: {},
+        is_answered: true,
+        answer_score: 0,
+        judge_source: "manual"
+      }
     }),
     ...overrides
   };

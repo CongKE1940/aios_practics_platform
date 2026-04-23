@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import type {
   Exam,
+  ExamAttemptQuestionReviewInput,
+  ExamAttemptQuestionReviewResult,
   ExamAttemptReviewResult,
   ExamDetail,
   ExamFixedQuestion,
@@ -20,6 +22,7 @@ export interface TeacherExamApi {
   publishExam(id: number): Promise<ExamDetail>;
   getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
   getExamAttemptReview(query: { attempt_id: number }): Promise<ExamAttemptReviewResult>;
+  reviewExamAttemptQuestion(body: ExamAttemptQuestionReviewInput): Promise<ExamAttemptQuestionReviewResult>;
 }
 
 interface TeacherExamPageProps {
@@ -47,6 +50,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [attemptReviewLoading, setAttemptReviewLoading] = useState(false);
+  const [attemptReviewSaving, setAttemptReviewSaving] = useState(false);
   const [overviewPage, setOverviewPage] = useState(1);
   const [reviewQuestionIndex, setReviewQuestionIndex] = useState(0);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
@@ -202,6 +206,37 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       setSelectedAttemptReview(result);
     } finally {
       setAttemptReviewLoading(false);
+    }
+  }
+
+  async function handleReviewQuestion(input: { display_order: number; score: number; review_comment?: string }) {
+    if (!selectedAttemptReview) {
+      return;
+    }
+    setAttemptReviewSaving(true);
+    try {
+      const result = await api.reviewExamAttemptQuestion({
+        attempt_id: selectedAttemptReview.summary.attempt_id,
+        display_order: input.display_order,
+        score: input.score,
+        review_comment: input.review_comment
+      });
+      setSelectedAttemptReview((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          summary: result.summary,
+          questions: current.questions.map((question) =>
+            question.display_order === result.question.display_order ? result.question : question
+          )
+        };
+      });
+      if (selectedExamId) {
+        await loadExamOverview(selectedExamId, overviewPage);
+      }
+    } finally {
+      setAttemptReviewSaving(false);
     }
   }
 
@@ -442,8 +477,9 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                   <p>学号：{selectedAttemptReview.summary.student_no ?? "-"}</p>
                   <p>班级：{selectedAttemptReview.summary.class_name ?? "-"}</p>
                   <p>状态：{formatAttemptStatus(selectedAttemptReview.summary.attempt_status)}</p>
-                  <p>得分：{formatScore(selectedAttemptReview.summary.final_score)}</p>
+                  <p>总分：{formatScore(selectedAttemptReview.summary.final_score)}</p>
                   <p>客观题：{formatScore(selectedAttemptReview.summary.objective_score)}</p>
+                  <p>主观题：{formatScore(selectedAttemptReview.summary.subjective_score)}</p>
                   {selectedAttemptReview.questions.length > 0 ? (
                     <>
                       {selectedAttemptReview.questions.length > 1 ? (
@@ -461,7 +497,9 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                         </nav>
                       ) : null}
                       <AttemptReviewQuestionDetail
+                        attemptReviewSaving={attemptReviewSaving}
                         question={selectedAttemptReview.questions[reviewQuestionIndex] ?? selectedAttemptReview.questions[0]}
+                        onReview={handleReviewQuestion}
                       />
                     </>
                   ) : (
@@ -556,10 +594,39 @@ function buildExamPayload(form: typeof defaultForm): ExamInput | string {
 }
 
 function AttemptReviewQuestionDetail({
-  question
+  question,
+  onReview,
+  attemptReviewSaving
 }: {
   question: ExamAttemptReviewResult["questions"][number];
+  onReview(input: { display_order: number; score: number; review_comment?: string }): Promise<void>;
+  attemptReviewSaving: boolean;
 }) {
+  const [scoreText, setScoreText] = useState(String(question.answer_score));
+  const [reviewComment, setReviewComment] = useState(question.review_comment ?? "");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setScoreText(String(question.answer_score));
+    setReviewComment(question.review_comment ?? "");
+    setMessage("");
+  }, [question]);
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const score = Number(scoreText);
+    if (!Number.isFinite(score) || score < 0 || score > question.score) {
+      setMessage("请输入有效分数。");
+      return;
+    }
+    await onReview({
+      display_order: question.display_order,
+      score,
+      review_comment: reviewComment
+    });
+    setMessage("批阅已保存。");
+  }
+
   return (
     <section aria-label="答卷按题查看">
       <p>
@@ -585,6 +652,27 @@ function AttemptReviewQuestionDetail({
       <p>
         得分：{formatScore(question.answer_score)} / {formatScore(question.score)}
       </p>
+      {isSubjectiveQuestion(question.question_type) ? (
+        <form onSubmit={(event) => void handleReviewSubmit(event)}>
+          <label htmlFor={`exam_review_score_${question.display_order}`}>主观题得分</label>
+          <input
+            id={`exam_review_score_${question.display_order}`}
+            inputMode="decimal"
+            value={scoreText}
+            onChange={(event) => setScoreText(event.target.value)}
+          />
+          <label htmlFor={`exam_review_comment_${question.display_order}`}>批阅评语</label>
+          <textarea
+            id={`exam_review_comment_${question.display_order}`}
+            value={reviewComment}
+            onChange={(event) => setReviewComment(event.target.value)}
+          />
+          <button type="submit" disabled={attemptReviewSaving}>
+            {attemptReviewSaving ? "保存中..." : "保存批阅"}
+          </button>
+          {message ? <p>{message}</p> : null}
+        </form>
+      ) : null}
     </section>
   );
 }
@@ -781,6 +869,9 @@ function formatAnswerText(answer?: Record<string, unknown>): string {
   if (!answer) {
     return "-";
   }
+  if (typeof answer.text === "string" && answer.text.trim() !== "") {
+    return answer.text;
+  }
   const selected = answer.selected_keys;
   if (Array.isArray(selected)) {
     return selected.join(",");
@@ -812,6 +903,18 @@ function formatReviewResult(question: ExamAttemptReviewResult["questions"][numbe
   if (!question.is_answered) {
     return "未作答";
   }
+  if (isSubjectiveQuestion(question.question_type)) {
+    if (question.answer_score >= question.score) {
+      return "已批阅";
+    }
+    if (question.answer_score > 0) {
+      return "部分得分";
+    }
+    if (question.reviewer_user_id || question.review_comment || question.reviewed_at) {
+      return "已批阅";
+    }
+    return "待批阅";
+  }
   if (question.is_correct === true) {
     return "正确";
   }
@@ -819,4 +922,8 @@ function formatReviewResult(question: ExamAttemptReviewResult["questions"][numbe
     return "错误";
   }
   return "已作答";
+}
+
+function isSubjectiveQuestion(questionType: string): boolean {
+  return questionType === "short_answer" || questionType === "essay";
 }

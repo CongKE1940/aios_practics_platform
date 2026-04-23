@@ -117,11 +117,29 @@ type ExamAttemptReviewQuestionItem struct {
 	IsAnswered        bool           `json:"is_answered"`
 	IsCorrect         *bool          `json:"is_correct,omitempty"`
 	AnswerScore       float64        `json:"answer_score"`
+	JudgeSource       string         `json:"judge_source,omitempty"`
+	ReviewComment     *string        `json:"review_comment,omitempty"`
+	ReviewerUserID    *int64         `json:"reviewer_user_id,omitempty"`
+	ReviewedAt        *time.Time     `json:"reviewed_at,omitempty"`
 }
 
 type ExamAttemptReviewResult struct {
 	Summary   ExamAttemptReviewSummary        `json:"summary"`
 	Questions []ExamAttemptReviewQuestionItem `json:"questions"`
+}
+
+type UpsertExamAttemptQuestionReviewCommand struct {
+	TenantID       int64
+	AttemptID      int64
+	DisplayOrder   int
+	ReviewerUserID int64
+	Score          float64
+	ReviewComment  string
+}
+
+type ExamAttemptQuestionReviewResult struct {
+	Summary  ExamAttemptReviewSummary      `json:"summary"`
+	Question ExamAttemptReviewQuestionItem `json:"question"`
 }
 
 type ClassPracticeSummary struct {
@@ -346,6 +364,7 @@ type Repository interface {
 	GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error)
 	ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error)
 	GetExamAttemptReview(ctx context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error)
+	UpsertExamAttemptQuestionReview(ctx context.Context, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error)
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
 	GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error)

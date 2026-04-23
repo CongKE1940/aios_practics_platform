@@ -248,6 +248,111 @@ func TestHandler_ExamAttemptReviewReturnsQuestionDetails(t *testing.T) {
 	}
 }
 
+func TestHandler_UpsertExamAttemptQuestionReviewReturnsUpdatedSummary(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.examAttemptReviewResult = ExamAttemptReviewResult{
+		Summary: ExamAttemptReviewSummary{
+			AttemptID:       8001,
+			ExamID:          901,
+			ExamName:        "期中测验",
+			StudentUserID:   501,
+			StudentName:     "张三",
+			AttemptStatus:   "submitted",
+			ObjectiveScore:  60,
+			SubjectiveScore: 8,
+			FinalScore:      68,
+		},
+		Questions: []ExamAttemptReviewQuestionItem{
+			{
+				QuestionID:        1002,
+				QuestionVersionID: 3002,
+				DisplayOrder:      2,
+				QuestionType:      "short_answer",
+				Score:             10,
+				Content:           map[string]any{"stem": map[string]any{"text": "解释勾股定理。"}},
+				StudentAnswer:     map[string]any{"text": "直角三角形两直角边平方和等于斜边平方。"},
+				IsAnswered:        true,
+				AnswerScore:       8,
+				JudgeSource:       "manual",
+				ReviewComment:     strPtr("概念正确，但表述不够完整。"),
+				ReviewerUserID:    int64Ptr(7),
+			},
+		},
+	}
+	repo.examAttemptQuestionReviewResult = ExamAttemptQuestionReviewResult{
+		Summary:  repo.examAttemptReviewResult.Summary,
+		Question: repo.examAttemptReviewResult.Questions[0],
+	}
+
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodPut, "/api/v1/analytics/exam-attempt-question-review", map[string]any{
+		"attempt_id":     8001,
+		"display_order":  2,
+		"score":          8,
+		"review_comment": "概念正确，但表述不够完整。",
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[ExamAttemptQuestionReviewResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if body.Data.Summary.FinalScore != 68 {
+		t.Fatalf("summary = %+v", body.Data.Summary)
+	}
+	if body.Data.Question.DisplayOrder != 2 || body.Data.Question.ReviewComment == nil || *body.Data.Question.ReviewComment != "概念正确，但表述不够完整。" {
+		t.Fatalf("question = %+v", body.Data.Question)
+	}
+	if repo.lastUpsertExamAttemptQuestionReview.AttemptID != 8001 || repo.lastUpsertExamAttemptQuestionReview.DisplayOrder != 2 {
+		t.Fatalf("command = %+v", repo.lastUpsertExamAttemptQuestionReview)
+	}
+}
+
+func TestService_UpsertExamAttemptQuestionReviewRejectsScoreOverQuestionFullScore(t *testing.T) {
+	repo := newMemoryAnalyticsRepository()
+	repo.examAttemptReviewResult = ExamAttemptReviewResult{
+		Summary: ExamAttemptReviewSummary{
+			AttemptID:      8001,
+			AttemptStatus:  "submitted",
+			ObjectiveScore: 60,
+			FinalScore:     60,
+		},
+		Questions: []ExamAttemptReviewQuestionItem{
+			{
+				DisplayOrder: 2,
+				QuestionType: "short_answer",
+				Score:        10,
+			},
+		},
+	}
+	service := NewService(repo)
+
+	_, err := service.UpsertExamAttemptQuestionReview(context.Background(), Scope{
+		TenantID:    1,
+		UserID:      7,
+		UserType:    "teacher",
+		Permissions: []string{"exam:publish"},
+	}, UpsertExamAttemptQuestionReviewCommand{
+		AttemptID:    8001,
+		DisplayOrder: 2,
+		Score:        11,
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestHandler_AdminCanViewTenantClassCourse(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -1702,6 +1807,8 @@ type memoryAnalyticsRepository struct {
 	lastExamOverviewQuery                           ExamOverviewQuery
 	examAttemptReviewResult                         ExamAttemptReviewResult
 	lastExamAttemptReviewQuery                      ExamAttemptReviewQuery
+	examAttemptQuestionReviewResult                 ExamAttemptQuestionReviewResult
+	lastUpsertExamAttemptQuestionReview             UpsertExamAttemptQuestionReviewCommand
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
@@ -1805,6 +1912,11 @@ func (repo *memoryAnalyticsRepository) ListExamOverviewStudents(_ context.Contex
 func (repo *memoryAnalyticsRepository) GetExamAttemptReview(_ context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {
 	repo.lastExamAttemptReviewQuery = query
 	return repo.examAttemptReviewResult, nil
+}
+
+func (repo *memoryAnalyticsRepository) UpsertExamAttemptQuestionReview(_ context.Context, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error) {
+	repo.lastUpsertExamAttemptQuestionReview = command
+	return repo.examAttemptQuestionReviewResult, nil
 }
 
 func performAnalyticsRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {

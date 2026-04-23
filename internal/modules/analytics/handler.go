@@ -30,6 +30,7 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/exam-overview", handler.getExamOverview)
 	router.GET("/analytics/exam-attempt-review", handler.getExamAttemptReview)
+	router.PUT("/analytics/exam-attempt-question-review", handler.putExamAttemptQuestionReview)
 	router.GET("/analytics/class-practice-summary", handler.getClassPracticeSummary)
 	router.GET("/analytics/class-course-options", handler.listClassCourseOptions)
 	router.GET("/analytics/student-practice-detail", handler.getStudentPracticeDetail)
@@ -67,6 +68,29 @@ func (handler *Handler) getExamAttemptReview(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.GetExamAttemptReview(ctx.Request.Context(), scope, query)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) putExamAttemptQuestionReview(ctx *gin.Context) {
+	scope, ok := handler.authorizeExamOverview(ctx)
+	if !ok {
+		return
+	}
+	var request upsertExamAttemptQuestionReviewRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.UpsertExamAttemptQuestionReview(ctx.Request.Context(), scope, UpsertExamAttemptQuestionReviewCommand{
+		AttemptID:     request.AttemptID,
+		DisplayOrder:  request.DisplayOrder,
+		Score:         request.Score,
+		ReviewComment: request.ReviewComment,
+	})
 	if err != nil {
 		writeAnalyticsError(ctx, err)
 		return
@@ -191,6 +215,13 @@ type upsertStudentPracticeSessionQuestionReviewRequest struct {
 	SessionID         int64  `json:"session_id"`
 	SessionQuestionID int64  `json:"session_question_id"`
 	ReviewComment     string `json:"review_comment"`
+}
+
+type upsertExamAttemptQuestionReviewRequest struct {
+	AttemptID     int64   `json:"attempt_id"`
+	DisplayOrder  int     `json:"display_order"`
+	Score         float64 `json:"score"`
+	ReviewComment string  `json:"review_comment"`
 }
 
 func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {

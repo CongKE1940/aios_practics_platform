@@ -1398,7 +1398,7 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("GET");
   });
 
-  it("queries exam attempt review analytics", async () => {
+    it("queries exam attempt review analytics", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
         JSON.stringify({
@@ -1452,9 +1452,73 @@ describe("createApiClient", () => {
     expect(result.questions[0].display_order).toBe(1);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain("/analytics/exam-attempt-review?attempt_id=8001");
-    expect(init?.method).toBe("GET");
-  });
+      expect(String(url)).toContain("/analytics/exam-attempt-review?attempt_id=8001");
+      expect(init?.method).toBe("GET");
+    });
+
+    it("reviews subjective exam attempt question", async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              summary: {
+                attempt_id: 8001,
+                exam_id: 9001,
+                exam_name: "期中测验",
+                student_user_id: 501,
+                student_name: "张三",
+                attempt_status: "submitted",
+                objective_score: 60,
+                subjective_score: 8,
+                final_score: 68
+              },
+              question: {
+                question_id: 1002,
+                question_version_id: 3002,
+                display_order: 2,
+                question_type: "short_answer",
+                score: 10,
+                content: { stem: { text: "解释勾股定理。" } },
+                correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+                student_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+                is_answered: true,
+                answer_score: 8,
+                judge_source: "manual",
+                review_comment: "概念正确，但表述不够完整。",
+                reviewer_user_id: 7
+              }
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      });
+      const client = createApiClient({ baseUrl: "http://localhost:8080/api/v1", accessToken: "token", fetch: fetchMock });
+
+      const result = await client.reviewExamAttemptQuestion({
+        attempt_id: 8001,
+        display_order: 2,
+        score: 8,
+        review_comment: "概念正确，但表述不够完整。"
+      });
+
+      expect(result.summary.final_score).toBe(68);
+      expect(result.question.answer_score).toBe(8);
+      expect(result.question.review_comment).toBe("概念正确，但表述不够完整。");
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain("/analytics/exam-attempt-question-review");
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          attempt_id: 8001,
+          display_order: 2,
+          score: 8,
+          review_comment: "概念正确，但表述不够完整。"
+        })
+      );
+    });
 
   it("queries student practice detail analytics", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {

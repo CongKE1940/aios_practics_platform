@@ -107,6 +107,7 @@ export interface ApiClient {
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
   getExamOverview(query: ExamOverviewQuery): Promise<ExamOverviewResult>;
   getExamAttemptReview(query: ExamAttemptReviewQuery): Promise<ExamAttemptReviewResult>;
+  reviewExamAttemptQuestion(body: ExamAttemptQuestionReviewInput): Promise<ExamAttemptQuestionReviewResult>;
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
   getStudentPracticeDetail(query: StudentPracticeDetailQuery): Promise<StudentPracticeDetailResult>;
   getStudentPracticeSessionDetail(query: StudentPracticeSessionDetailQuery): Promise<StudentPracticeSessionDetailResult>;
@@ -582,11 +583,27 @@ export interface ExamAttemptReviewQuestionItem {
   is_answered: boolean;
   is_correct?: boolean | null;
   answer_score: number;
+  judge_source?: string;
+  review_comment?: string | null;
+  reviewer_user_id?: number | null;
+  reviewed_at?: string | null;
 }
 
 export interface ExamAttemptReviewResult {
   summary: ExamAttemptReviewSummary;
   questions: ExamAttemptReviewQuestionItem[];
+}
+
+export interface ExamAttemptQuestionReviewInput {
+  attempt_id: number;
+  display_order: number;
+  score: number;
+  review_comment?: string;
+}
+
+export interface ExamAttemptQuestionReviewResult {
+  summary: ExamAttemptReviewSummary;
+  question: ExamAttemptReviewQuestionItem;
 }
 
 export type StudentPracticeDetailTab = "sessions" | "wrong" | "confused";
@@ -1323,6 +1340,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
     getExamAttemptReview: (query) =>
       request(fetcher, options, buildPath("/analytics/exam-attempt-review", query), { method: "GET" }),
+    reviewExamAttemptQuestion: (body) =>
+      request(fetcher, options, "/analytics/exam-attempt-question-review", {
+        method: "PUT",
+        body: JSON.stringify(body)
+      }),
     getClassPracticeSummary: (query) =>
       request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
     getStudentPracticeDetail: (query) =>

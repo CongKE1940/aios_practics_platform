@@ -290,7 +290,11 @@ SELECT
   qv.answer_json,
   eaa.answer_json,
   eaa.is_correct,
-  eaa.score
+  eaa.score,
+  eaa.judge_source,
+  eaa.review_comment,
+  eaa.reviewer_user_id,
+  eaa.reviewed_at
 FROM exam_attempts ea
 JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id
 JOIN questions q ON q.id = epq.question_id
@@ -321,6 +325,113 @@ ORDER BY epq.order_no ASC
 		Summary:   summary,
 		Questions: items,
 	}, nil
+}
+
+func (repo *MySQLRepository) UpsertExamAttemptQuestionReview(ctx context.Context, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error) {
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+	defer tx.Rollback()
+
+	current, err := repo.GetExamAttemptReview(ctx, ExamAttemptReviewQuery{
+		TenantID:  command.TenantID,
+		AttemptID: command.AttemptID,
+	})
+	if err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+
+	var question *ExamAttemptReviewQuestionItem
+	for index := range current.Questions {
+		if current.Questions[index].DisplayOrder == command.DisplayOrder {
+			question = &current.Questions[index]
+			break
+		}
+	}
+	if question == nil {
+		return ExamAttemptQuestionReviewResult{}, ErrNotFound
+	}
+
+	var isCorrect any
+	switch {
+	case command.Score == 0:
+		isCorrect = false
+	case command.Score >= question.Score:
+		isCorrect = true
+	default:
+		isCorrect = nil
+	}
+	reviewedAt := time.Now().UTC()
+
+	const updateAnswerQuery = `
+UPDATE exam_attempt_answers
+SET is_correct = ?, score = ?, judged_at = ?, judge_source = 'manual', reviewer_user_id = ?, review_comment = ?, reviewed_at = ?
+WHERE attempt_id = ? AND display_order = ?
+`
+	result, err := tx.ExecContext(
+		ctx,
+		updateAnswerQuery,
+		isCorrect,
+		formatAnalyticsScore(command.Score),
+		reviewedAt,
+		command.ReviewerUserID,
+		nullableString(command.ReviewComment),
+		reviewedAt,
+		command.AttemptID,
+		command.DisplayOrder,
+	)
+	if err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+	if rowsAffected == 0 {
+		return ExamAttemptQuestionReviewResult{}, ErrNotFound
+	}
+
+	const updateAttemptQuery = `
+UPDATE exam_attempts ea
+JOIN (
+  SELECT
+    ea_inner.id AS attempt_id,
+    COALESCE(SUM(CASE WHEN q.question_type IN ('short_answer', 'essay') THEN eaa.score ELSE 0 END), 0) AS subjective_score
+  FROM exam_attempts ea_inner
+  LEFT JOIN exam_attempt_answers eaa ON eaa.attempt_id = ea_inner.id
+  LEFT JOIN questions q ON q.id = eaa.question_id
+  WHERE ea_inner.id = ? AND ea_inner.tenant_id = ?
+  GROUP BY ea_inner.id
+) scores ON scores.attempt_id = ea.id
+SET ea.subjective_score = scores.subjective_score,
+    ea.final_score = ea.objective_score + scores.subjective_score
+WHERE ea.id = ? AND ea.tenant_id = ?
+`
+	if _, err := tx.ExecContext(ctx, updateAttemptQuery, command.AttemptID, command.TenantID, command.AttemptID, command.TenantID); err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+
+	updated, err := repo.GetExamAttemptReview(ctx, ExamAttemptReviewQuery{
+		TenantID:  command.TenantID,
+		AttemptID: command.AttemptID,
+	})
+	if err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+	for _, item := range updated.Questions {
+		if item.DisplayOrder == command.DisplayOrder {
+			return ExamAttemptQuestionReviewResult{
+				Summary:  updated.Summary,
+				Question: item,
+			}, nil
+		}
+	}
+	return ExamAttemptQuestionReviewResult{}, ErrNotFound
 }
 
 func (repo *MySQLRepository) ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error) {
@@ -1685,11 +1796,15 @@ func scanExamAttemptReviewSummary(scanner interface{ Scan(dest ...any) error }) 
 func scanExamAttemptReviewQuestion(scanner interface{ Scan(dest ...any) error }) (ExamAttemptReviewQuestionItem, error) {
 	var item ExamAttemptReviewQuestionItem
 	var (
-		contentJSON []byte
-		correctJSON []byte
-		studentJSON []byte
-		isCorrect   sql.NullBool
-		answerScore sql.NullFloat64
+		contentJSON    []byte
+		correctJSON    []byte
+		studentJSON    []byte
+		isCorrect      sql.NullBool
+		answerScore    sql.NullFloat64
+		judgeSource    sql.NullString
+		reviewComment  sql.NullString
+		reviewerUserID sql.NullInt64
+		reviewedAt     sql.NullTime
 	)
 	if err := scanner.Scan(
 		&item.QuestionID,
@@ -1702,6 +1817,10 @@ func scanExamAttemptReviewQuestion(scanner interface{ Scan(dest ...any) error })
 		&studentJSON,
 		&isCorrect,
 		&answerScore,
+		&judgeSource,
+		&reviewComment,
+		&reviewerUserID,
+		&reviewedAt,
 	); err != nil {
 		return ExamAttemptReviewQuestionItem{}, err
 	}
@@ -1727,6 +1846,18 @@ func scanExamAttemptReviewQuestion(scanner interface{ Scan(dest ...any) error })
 	}
 	if answerScore.Valid {
 		item.AnswerScore = answerScore.Float64
+	}
+	if judgeSource.Valid {
+		item.JudgeSource = judgeSource.String
+	}
+	if reviewComment.Valid {
+		item.ReviewComment = &reviewComment.String
+	}
+	if reviewerUserID.Valid {
+		item.ReviewerUserID = &reviewerUserID.Int64
+	}
+	if reviewedAt.Valid {
+		item.ReviewedAt = &reviewedAt.Time
 	}
 	return item, nil
 }
@@ -1916,4 +2047,15 @@ func questionIDPlaceholders(count int) string {
 		parts[index] = "?"
 	}
 	return strings.Join(parts, ",")
+}
+
+func formatAnalyticsScore(value float64) string {
+	return fmt.Sprintf("%.2f", value)
+}
+
+func nullableString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
 }

@@ -73,6 +73,51 @@ func (service *Service) GetExamAttemptReview(ctx context.Context, scope Scope, q
 	return service.repo.GetExamAttemptReview(ctx, query)
 }
 
+func (service *Service) UpsertExamAttemptQuestionReview(ctx context.Context, scope Scope, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error) {
+	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+		return ExamAttemptQuestionReviewResult{}, ErrForbidden
+	}
+	if command.AttemptID <= 0 || command.DisplayOrder <= 0 || command.Score < 0 {
+		return ExamAttemptQuestionReviewResult{}, ErrInvalidInput
+	}
+	switch scope.UserType {
+	case "teacher", "sys_admin", "school_admin":
+	default:
+		return ExamAttemptQuestionReviewResult{}, ErrForbidden
+	}
+
+	command.TenantID = scope.TenantID
+	command.ReviewerUserID = scope.UserID
+	command.ReviewComment = strings.TrimSpace(command.ReviewComment)
+
+	review, err := service.repo.GetExamAttemptReview(ctx, ExamAttemptReviewQuery{
+		TenantID:  command.TenantID,
+		AttemptID: command.AttemptID,
+	})
+	if err != nil {
+		return ExamAttemptQuestionReviewResult{}, err
+	}
+	if review.Summary.AttemptStatus != "submitted" && review.Summary.AttemptStatus != "timeout_submitted" {
+		return ExamAttemptQuestionReviewResult{}, ErrForbidden
+	}
+
+	var matched *ExamAttemptReviewQuestionItem
+	for index := range review.Questions {
+		if review.Questions[index].DisplayOrder == command.DisplayOrder {
+			matched = &review.Questions[index]
+			break
+		}
+	}
+	if matched == nil {
+		return ExamAttemptQuestionReviewResult{}, ErrNotFound
+	}
+	if !isExamSubjectiveQuestionType(matched.QuestionType) || command.Score > matched.Score {
+		return ExamAttemptQuestionReviewResult{}, ErrInvalidInput
+	}
+
+	return service.repo.UpsertExamAttemptQuestionReview(ctx, command)
+}
+
 func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope, query ClassPracticeSummaryQuery) (ClassPracticeSummaryResult, error) {
 	if !containsPermission(scope.Permissions, "analytics:view") {
 		return ClassPracticeSummaryResult{}, ErrForbidden
@@ -412,4 +457,13 @@ func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (ti
 		return time.Time{}, time.Time{}, ErrInvalidInput
 	}
 	return start, end, nil
+}
+
+func isExamSubjectiveQuestionType(questionType string) bool {
+	switch strings.ToLower(strings.TrimSpace(questionType)) {
+	case "short_answer", "essay":
+		return true
+	default:
+		return false
+	}
 }

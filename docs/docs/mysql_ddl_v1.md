@@ -999,17 +999,24 @@ CREATE TABLE exam_attempt_answers (
   score DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   judged_at DATETIME(3) NULL,
   judge_source VARCHAR(32) NOT NULL DEFAULT 'auto', -- auto/manual
+  reviewer_user_id BIGINT NULL,
+  review_comment TEXT NULL,
+  reviewed_at DATETIME(3) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   UNIQUE KEY uk_exam_attempt_answers_order (attempt_id, display_order),
   KEY idx_exam_attempt_answers_attempt (attempt_id),
   KEY idx_exam_attempt_answers_question (question_id),
+  KEY idx_exam_attempt_answers_reviewer (reviewer_user_id),
   CONSTRAINT fk_eaa_attempt FOREIGN KEY (attempt_id) REFERENCES exam_attempts(id),
   CONSTRAINT fk_eaa_question FOREIGN KEY (question_id) REFERENCES questions(id),
-  CONSTRAINT fk_eaa_question_version FOREIGN KEY (question_version_id) REFERENCES question_versions(id)
+  CONSTRAINT fk_eaa_question_version FOREIGN KEY (question_version_id) REFERENCES question_versions(id),
+  CONSTRAINT fk_eaa_reviewer_user FOREIGN KEY (reviewer_user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 > 由于需求明确支持考试时客观题随机组卷、选择题选项随机展示，因此 `presented_options_json` 必须保留。否则无法复盘用户看到的选项顺序。
+>
+> 当题目类型为 `short_answer` 或 `essay` 时，交卷后会先进入待人工批阅状态：`judge_source='manual'`、`is_correct=NULL`、`score=0`。老师补评分后再回写 `reviewer_user_id`、`review_comment`、`reviewed_at`，并同步重算本次考试 `subjective_score` 与 `final_score`。
 
 ---
 
@@ -1421,4 +1428,3 @@ SET FOREIGN_KEY_CHECKS = 1;
 ```
 
 > 本文档用于一期数据库结构设计基线。对于高并发统计、搜索、推荐、复杂报表，可在二期引入 ES、OLAP 或 CQRS 读模型，但一期不建议过早复杂化。
-

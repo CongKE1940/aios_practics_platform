@@ -441,6 +441,14 @@ func (repo *MySQLRepository) SubmitAttempt(ctx context.Context, scope Scope, att
 	totalScore := 0.0
 	resultAnswers := make([]ExamAttemptAnswer, 0, len(answers))
 	for _, answer := range answers {
+		if isManualReviewQuestionType(answer.QuestionType) {
+			if err := repo.markAttemptAnswerPendingReview(ctx, tx, attempt.ID, answer.Answer.DisplayOrder); err != nil {
+				return ExamAttemptResult{}, err
+			}
+			answer.Answer.Score = 0
+			resultAnswers = append(resultAnswers, answer.Answer)
+			continue
+		}
 		isCorrect, err := judgeExamAnswer(answer.CorrectAnswer, answer.Answer.Answer)
 		if err != nil {
 			return ExamAttemptResult{}, err
@@ -901,15 +909,17 @@ type attemptAnswerForSubmit struct {
 	Answer        ExamAttemptAnswer
 	QuestionScore float64
 	CorrectAnswer map[string]any
+	QuestionType  string
 }
 
 func (repo *MySQLRepository) listAttemptAnswersForSubmit(ctx context.Context, attemptID int64) ([]attemptAnswerForSubmit, error) {
 	const query = `
-SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json
+SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json, q.question_type
 FROM exam_attempt_answers eaa
 JOIN exam_attempts ea ON ea.id = eaa.attempt_id
 JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id AND epq.order_no = eaa.display_order
 JOIN question_versions qv ON qv.id = eaa.question_version_id
+JOIN questions q ON q.id = eaa.question_id
 WHERE eaa.attempt_id = ?
 ORDER BY eaa.display_order ASC
 `
@@ -932,6 +942,7 @@ ORDER BY eaa.display_order ASC
 			&answerJSON,
 			&item.QuestionScore,
 			&correctAnswerJSON,
+			&item.QuestionType,
 		); err != nil {
 			return nil, err
 		}
@@ -960,6 +971,16 @@ SET is_correct = ?, score = ?, judged_at = ?, judge_source = 'auto'
 WHERE attempt_id = ? AND display_order = ?
 `
 	_, err := tx.ExecContext(ctx, query, isCorrect, formatExamScore(score), judgedAt, attemptID, displayOrder)
+	return err
+}
+
+func (repo *MySQLRepository) markAttemptAnswerPendingReview(ctx context.Context, tx *sql.Tx, attemptID int64, displayOrder int) error {
+	const query = `
+UPDATE exam_attempt_answers
+SET is_correct = NULL, score = ?, judged_at = NULL, judge_source = 'manual'
+WHERE attempt_id = ? AND display_order = ?
+`
+	_, err := tx.ExecContext(ctx, query, formatExamScore(0), attemptID, displayOrder)
 	return err
 }
 
