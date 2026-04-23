@@ -1570,6 +1570,12 @@ describe("createApiClient", () => {
               analysis: {
                 text: "基础加法"
               }
+            },
+            teacher_review: {
+              review_id: 5001,
+              reviewer_user_id: 7,
+              review_comment: "注意基础计算",
+              updated_at: "2026-04-22T09:08:00+08:00"
             }
           }
         }),
@@ -1595,12 +1601,63 @@ describe("createApiClient", () => {
     expect(result.session.session_id).toBe(9001);
     expect(result.question_detail.session_question_id).toBe(70002);
     expect(result.question_detail.is_correct).toBe(false);
+    expect(result.teacher_review?.review_id).toBe(5001);
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain(
       "/analytics/student-practice-session-question-detail?class_id=301&course_id=10&student_user_id=501&session_id=9001&session_question_id=70002"
     );
     expect(init?.method).toBe("GET");
+  });
+
+  it("upserts student practice session question review analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            review_id: 5002,
+            reviewer_user_id: 7,
+            review_comment: "先列式再计算。",
+            updated_at: "2026-04-22T09:10:00+08:00"
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.upsertStudentPracticeSessionQuestionReview({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      session_id: 9001,
+      session_question_id: 70002,
+      review_comment: "先列式再计算。"
+    });
+
+    expect(result.review_id).toBe(5002);
+    expect(result.review_comment).toBe("先列式再计算。");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/student-practice-session-question-review");
+    expect(init?.method).toBe("PUT");
+    expect(init?.body).toBe(
+      JSON.stringify({
+        class_id: 301,
+        course_id: 10,
+        student_user_id: 501,
+        session_id: 9001,
+        session_question_id: 70002,
+        review_comment: "先列式再计算。"
+      })
+    );
   });
 
   it("throws ApiError for error envelopes", async () => {

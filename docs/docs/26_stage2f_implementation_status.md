@@ -15,18 +15,21 @@
 - `internal/modules/analytics`：新增 `GET /analytics/student-practice-detail`，支持老师查看当前班级课程下单个学生的练题记录、错题和疑惑题。
 - `internal/modules/analytics`：新增 `GET /analytics/student-practice-session-detail`，支持老师继续下钻单次练题详情，返回会话汇总与题目明细。
 - `internal/modules/analytics`：新增 `GET /analytics/student-practice-session-question-detail`，支持老师查看单次练题中的单题完整详情。
+- `internal/modules/analytics`：新增 `PUT /analytics/student-practice-session-question-review`，支持老师在单题详情页保存个人讲评。
 - `internal/modules/analytics`：单次练题详情仓储按 `session_question_id + user_id` 取最新作答，题目按 `display_order` 升序，优先使用 `presented_options_json` 快照还原题目内容。
 - `cmd/server`：将 analytics handler 注册到 `/api/v1`。
 - `internal/modules/rbac`：用户端菜单新增“班级学习”，权限为 `analytics:view`。
 - `packages/api-sdk`：新增 `listClassCourseOptions`、`getClassPracticeSummary`、`getStudentPracticeDetail`、`getStudentPracticeSessionDetail` 方法与相关类型。
+- `packages/api-sdk`：补充 `getStudentPracticeSessionQuestionDetail` 与 `upsertStudentPracticeSessionQuestionReview` 方法及讲评类型。
 - `apps/user-web`：`ClassLearningPage` 升级为单个班级课程级联选择器，支持日期范围查询，展示汇总指标与学生明细。
 - `apps/user-web`：新增 `StudentLearningDetailPage`，支持从班级学习页继续下钻到学生详情，并通过标签页切换练题记录、错题和疑惑题。
 - `apps/user-web`：新增 `StudentPracticeSessionDetailPage`，支持从学生详情页 `sessions` 标签下钻单次练题详情并保留返回上下文。
 - `apps/user-web`：新增 `StudentPracticeSessionQuestionDetailPage`，支持从单次练题详情页继续下钻单题完整详情并保留返回上下文。
+- `apps/user-web`：单题完整详情页新增“老师讲评”编辑与保存能力，支持回填当前老师最近一次讲评。
 - `apps/user-web`：错题与疑惑题列表新增“查看题目详情”入口，可直接下钻到单题完整详情页。
 - `apps/user-web`：补齐登录页、动态菜单、退出登录、`401` 统一失效回退、本地会话恢复，以及 `localStorage` 脏 session 的结构校验与自动清理。
-- `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary`、`GET /analytics/student-practice-detail`、`GET /analytics/student-practice-session-detail`、`GET /analytics/student-practice-session-question-detail` 正式契约。
-- `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览、学生学习详情、单次练题详情与单题完整详情接口说明。
+- `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary`、`GET /analytics/student-practice-detail`、`GET /analytics/student-practice-session-detail`、`GET /analytics/student-practice-session-question-detail`、`PUT /analytics/student-practice-session-question-review` 正式契约。
+- `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览、学生学习详情、单次练题详情、单题完整详情与讲评保存接口说明。
 - `docs/README.md`：把阶段 2F 状态文档纳入阅读顺序和目录说明。
 
 ## 2. 已落地的业务口径
@@ -46,6 +49,8 @@
 13. 单次练题详情题目数据优先读取练题时快照，学生答案按每题最新作答去重，正确率由 `correct_count / answered_count` 计算。
 14. 单题完整详情通过 `GET /api/v1/analytics/student-practice-session-question-detail` 精确定位 `class_id + course_id + student_user_id + session_id + session_question_id`，不允许跨会话取题。
 15. 学生详情页 `wrong` / `confused` 标签返回题目最近一次练题定位字段，前端可直接跳转到单题完整详情页。
+16. 老师讲评按 `tenant_id + session_question_id + teacher_user_id` 唯一保存，前端进入单题详情页时会自动回填当前老师最近一次讲评。
+17. 老师讲评内容会自动去除首尾空白；若去除后为空，接口返回参数错误。
 
 ## 3. 当前限制
 
@@ -53,7 +58,7 @@
 2. 班级课程选择当前为基础级联按钮树，尚未接入更完整的搜索式选择器或组织树样式控件。
 3. 统计实时聚合，尚未引入物化统计表或异步汇总任务。
 4. 学校管理员的数据范围当前按 token 租户处理，后续可继续细化到学校/年级范围。
-5. 当前已支持从单次练题详情继续下钻到完整题目详情，但仍未支持老师讲评、导出与题目轨迹时间线。
+5. 当前已支持从单次练题详情继续下钻到完整题目详情并保存基础老师讲评，但仍未支持讲评模板、导出与题目轨迹时间线。
 
 ## 4. 已执行验证
 
@@ -64,6 +69,7 @@ git diff --check
 pnpm test -- packages/api-sdk/src/client.test.ts apps/user-web/src/app.test.tsx
 pnpm test -- apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/student-learning-detail-page.test.tsx
 pnpm test -- apps/user-web/src/student-practice-session-detail-page.test.tsx
+pnpm test -- packages/api-sdk/src/client.test.ts apps/user-web/src/student-practice-session-question-detail-page.test.tsx apps/user-web/src/app.test.tsx
 go test ./internal/modules/analytics
 pnpm test
 pnpm typecheck
@@ -78,19 +84,21 @@ PowerShell 脚本检查 `git diff --name-only` 中所有文本文件的 UTF-8 BO
 验证结论：
 1. `git diff --check` 无输出，空白检查通过。
 2. 前端定向回归通过：`packages/api-sdk/src/client.test.ts`、`apps/user-web/src/app.test.tsx`、`apps/user-web/src/class-learning-page.test.tsx`、`apps/user-web/src/student-learning-detail-page.test.tsx`、`apps/user-web/src/student-practice-session-detail-page.test.tsx`，覆盖登录页、动态菜单、退出登录、`401` 失效回退、班级学习页、学生详情页和单次练题详情页。
-3. 后端 analytics 包测试通过，覆盖班级汇总、学生详情、单次练题详情服务与 MySQL 仓储查询。
-4. 前端全量测试通过：`pnpm test` 共 16 个测试文件、97 个测试通过。
-5. 前端类型检查通过。
-6. 前端构建通过。
-7. Go 全包测试通过：`go test -work ./...` 覆盖 server、bootstrap、common 与各业务模块。
-8. OpenAPI YAML 解析通过：`openapi_parse_ok`。
-9. 提交前已完成 BOM、CRLF/LF 混用、异常字符、残留引用标记、冲突标记与敏感连接串快速检查，本轮新增文档与代码保持 UTF-8 编码。
+3. 本轮新增定向回归通过：`packages/api-sdk/src/client.test.ts`、`apps/user-web/src/student-practice-session-question-detail-page.test.tsx`、`apps/user-web/src/app.test.tsx`，覆盖单题完整详情页讲评回填、讲评保存与路由接线。
+4. 后端 analytics 包测试通过，覆盖班级汇总、学生详情、单次练题详情、单题详情、讲评保存服务与 MySQL 仓储查询。
+5. 前端全量测试通过：`pnpm test` 共 16 个测试文件、97 个测试通过。
+6. 前端类型检查通过。
+7. 前端构建通过。
+8. Go 全包测试通过：`go test -work ./...` 覆盖 server、bootstrap、common 与各业务模块。
+9. OpenAPI YAML 解析通过：`openapi_parse_ok`。
+10. `git diff --check` 无输出，本轮新增 SQL、Go、TS 与文档改动未引入空白错误。
+11. 提交前已完成 BOM、CRLF/LF 混用、异常字符、残留引用标记、冲突标记与敏感连接串快速检查，本轮新增文档与代码保持 UTF-8 编码。
 
 ## 5. 下一步建议
 
 阶段 2F 之后建议优先补齐：
 
-1. 从单次练题详情页继续进入完整题目详情与老师讲评能力。
+1. 将基础老师讲评继续扩展为讲评模板、讲评历史与讲评导出能力。
 2. 面向老师的课程维度学习趋势与薄弱题型统计。
 3. 将当前基础级联选择器升级为带搜索与更丰富状态提示的正式选择组件。
 4. 当数据量上升后，将实时聚合沉淀为异步统计任务或物化汇总表。

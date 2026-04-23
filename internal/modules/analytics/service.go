@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -289,11 +290,54 @@ func (service *Service) GetStudentPracticeSessionQuestionDetail(ctx context.Cont
 		return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
 	}
 
+	query.ReviewerUserID = scope.UserID
 	result, err := service.repo.GetStudentPracticeSessionQuestionDetail(ctx, query)
 	if err != nil {
 		return StudentPracticeSessionQuestionDetailResult{}, err
 	}
+	review, err := service.repo.GetStudentPracticeSessionQuestionReview(ctx, query)
+	if err != nil {
+		return StudentPracticeSessionQuestionDetailResult{}, err
+	}
+	result.TeacherReview = review
 	return result, nil
+}
+
+func (service *Service) UpsertStudentPracticeSessionQuestionReview(ctx context.Context, scope Scope, command UpsertStudentPracticeSessionQuestionReviewCommand) (StudentPracticeSessionQuestionReview, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return StudentPracticeSessionQuestionReview{}, ErrForbidden
+	}
+	if command.ClassID <= 0 || command.CourseID <= 0 || command.StudentUserID <= 0 || command.SessionID <= 0 || command.SessionQuestionID <= 0 {
+		return StudentPracticeSessionQuestionReview{}, ErrInvalidInput
+	}
+
+	trimmedComment := strings.TrimSpace(command.ReviewComment)
+	if trimmedComment == "" {
+		return StudentPracticeSessionQuestionReview{}, ErrInvalidInput
+	}
+
+	command.TenantID = scope.TenantID
+	command.ReviewerUserID = scope.UserID
+	command.ReviewComment = trimmedComment
+
+	query := StudentPracticeSessionQuestionDetailQuery{
+		TenantID:          command.TenantID,
+		ClassID:           command.ClassID,
+		CourseID:          command.CourseID,
+		StudentUserID:     command.StudentUserID,
+		SessionID:         command.SessionID,
+		SessionQuestionID: command.SessionQuestionID,
+		ReviewerUserID:    command.ReviewerUserID,
+	}
+	if _, err := service.GetStudentPracticeSessionQuestionDetail(ctx, scope, query); err != nil {
+		return StudentPracticeSessionQuestionReview{}, err
+	}
+
+	review, err := service.repo.UpsertStudentPracticeSessionQuestionReview(ctx, command)
+	if err != nil {
+		return StudentPracticeSessionQuestionReview{}, err
+	}
+	return review, nil
 }
 
 func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (time.Time, time.Time, error) {

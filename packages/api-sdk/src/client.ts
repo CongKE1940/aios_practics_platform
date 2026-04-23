@@ -101,6 +101,9 @@ export interface ApiClient {
   getStudentPracticeSessionQuestionDetail(
     query: StudentPracticeSessionQuestionDetailQuery
   ): Promise<StudentPracticeSessionQuestionDetailResult>;
+  upsertStudentPracticeSessionQuestionReview(
+    body: StudentPracticeSessionQuestionReviewInput
+  ): Promise<StudentPracticeSessionQuestionReview>;
   listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
@@ -610,6 +613,23 @@ export interface StudentPracticeSessionQuestionDetailResult {
   student_summary: StudentPracticeSessionStudentSummary;
   session: StudentPracticeSessionSummary;
   question_detail: StudentPracticeSessionQuestionItem;
+  teacher_review?: StudentPracticeSessionQuestionReview | null;
+}
+
+export interface StudentPracticeSessionQuestionReview {
+  review_id: number;
+  reviewer_user_id: number;
+  review_comment: string;
+  updated_at?: string | null;
+}
+
+export interface StudentPracticeSessionQuestionReviewInput {
+  class_id: number;
+  course_id: number;
+  student_user_id: number;
+  session_id: number;
+  session_question_id: number;
+  review_comment: string;
 }
 
 export interface ClassPracticeStudentItem {
@@ -1081,6 +1101,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     getStudentPracticeSessionQuestionDetail: (query) =>
       request(fetcher, options, buildPath("/analytics/student-practice-session-question-detail", query), {
         method: "GET"
+      }),
+    upsertStudentPracticeSessionQuestionReview: (body) =>
+      request(fetcher, options, "/analytics/student-practice-session-question-review", {
+        method: "PUT",
+        body: JSON.stringify(body)
       }),
     listClassCourseOptions: () =>
       request(fetcher, options, "/analytics/class-course-options", { method: "GET" }),

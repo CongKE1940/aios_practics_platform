@@ -65,6 +65,12 @@ function createQuestionDetailResult(
         text: "基础加法。"
       }
     },
+    teacher_review: {
+      review_id: 5001,
+      reviewer_user_id: 7,
+      review_comment: "注意基础加法。",
+      updated_at: "2026-04-22T10:03:00+08:00"
+    },
     ...overrides
   };
 }
@@ -74,7 +80,13 @@ describe("StudentPracticeSessionQuestionDetailPage", () => {
     const api: StudentPracticeSessionQuestionDetailApi = {
       getStudentPracticeSessionQuestionDetail: vi.fn(
         async (_query: StudentPracticeSessionQuestionDetailQuery) => createQuestionDetailResult()
-      )
+      ),
+      upsertStudentPracticeSessionQuestionReview: vi.fn(async () => ({
+        review_id: 5001,
+        reviewer_user_id: 7,
+        review_comment: "注意基础加法。",
+        updated_at: "2026-04-22T10:03:00+08:00"
+      }))
     };
 
     render(
@@ -100,11 +112,18 @@ describe("StudentPracticeSessionQuestionDetailPage", () => {
     expect(screen.getByText("题干：1+1等于几？")).toBeTruthy();
     expect(screen.getByText("结果：正确")).toBeTruthy();
     expect(screen.getByText("解析：基础加法。")).toBeTruthy();
+    expect(screen.getByDisplayValue("注意基础加法。")).toBeTruthy();
   });
 
   it("returns to session detail and keeps context", async () => {
     const api: StudentPracticeSessionQuestionDetailApi = {
-      getStudentPracticeSessionQuestionDetail: vi.fn(async () => createQuestionDetailResult())
+      getStudentPracticeSessionQuestionDetail: vi.fn(async () => createQuestionDetailResult()),
+      upsertStudentPracticeSessionQuestionReview: vi.fn(async () => ({
+        review_id: 5001,
+        reviewer_user_id: 7,
+        review_comment: "注意基础加法。",
+        updated_at: "2026-04-22T10:03:00+08:00"
+      }))
     };
     const onNavigate = vi.fn();
 
@@ -133,7 +152,13 @@ describe("StudentPracticeSessionQuestionDetailPage", () => {
 
   it("shows invalid message when required query is missing", () => {
     const api: StudentPracticeSessionQuestionDetailApi = {
-      getStudentPracticeSessionQuestionDetail: vi.fn(async () => createQuestionDetailResult())
+      getStudentPracticeSessionQuestionDetail: vi.fn(async () => createQuestionDetailResult()),
+      upsertStudentPracticeSessionQuestionReview: vi.fn(async () => ({
+        review_id: 5001,
+        reviewer_user_id: 7,
+        review_comment: "注意基础加法。",
+        updated_at: "2026-04-22T10:03:00+08:00"
+      }))
     };
 
     render(
@@ -152,7 +177,13 @@ describe("StudentPracticeSessionQuestionDetailPage", () => {
     const api: StudentPracticeSessionQuestionDetailApi = {
       getStudentPracticeSessionQuestionDetail: vi.fn(async () => {
         throw new Error("boom");
-      })
+      }),
+      upsertStudentPracticeSessionQuestionReview: vi.fn(async () => ({
+        review_id: 5001,
+        reviewer_user_id: 7,
+        review_comment: "注意基础加法。",
+        updated_at: "2026-04-22T10:03:00+08:00"
+      }))
     };
 
     render(
@@ -166,5 +197,53 @@ describe("StudentPracticeSessionQuestionDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("题目详情加载失败，请稍后重试。")).toBeTruthy();
     });
+  });
+
+  it("saves teacher review", async () => {
+    const api: StudentPracticeSessionQuestionDetailApi = {
+      getStudentPracticeSessionQuestionDetail: vi.fn(async () =>
+        createQuestionDetailResult({
+          teacher_review: {
+            review_id: 5001,
+            reviewer_user_id: 7,
+            review_comment: "注意基础加法。",
+            updated_at: "2026-04-22T10:03:00+08:00"
+          }
+        })
+      ),
+      upsertStudentPracticeSessionQuestionReview: vi.fn(async () => ({
+        review_id: 5002,
+        reviewer_user_id: 7,
+        review_comment: "先列式再计算。",
+        updated_at: "2026-04-22T10:05:00+08:00"
+      }))
+    };
+
+    render(
+      <StudentPracticeSessionQuestionDetailPage
+        api={api}
+        path="/app/class-learning/student/session/question?class_id=301&course_id=10&student_user_id=701&session_id=9001&session_question_id=70001"
+        onNavigate={() => {}}
+      />
+    );
+
+    await waitFor(() => expect(api.getStudentPracticeSessionQuestionDetail).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText("老师讲评"), { target: { value: "先列式再计算。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存讲评" }));
+
+    await waitFor(() => {
+      expect(api.upsertStudentPracticeSessionQuestionReview).toHaveBeenCalledWith({
+        class_id: 301,
+        course_id: 10,
+        student_user_id: 701,
+        session_id: 9001,
+        session_question_id: 70001,
+        review_comment: "先列式再计算。"
+      });
+    });
+
+    expect(screen.getByDisplayValue("先列式再计算。")).toBeTruthy();
+    expect(screen.getByText("讲评已保存。")).toBeTruthy();
   });
 });

@@ -2511,6 +2511,7 @@ QuestionAnswer:
 - 若 `session_question_id` 不属于目标 `session_id`，返回 `404`。
 - `question_detail` 题面、标准答案、解析优先读取练题快照，避免历史漂移。
 - 学生答案按 `session_question_id + user_id` 最新一条作答返回。
+- 若当前老师已保存过讲评，返回 `teacher_review`，用于前端回填编辑内容。
 
 ### Response
 ```json
@@ -2565,9 +2566,55 @@ QuestionAnswer:
       "analysis": {
         "text": "基础加法。"
       }
+    },
+    "teacher_review": {
+      "review_id": 81001,
+      "reviewer_user_id": 701,
+      "review_comment": "注意基础加法与审题步骤。",
+      "updated_at": "2026-04-23T16:20:00+08:00"
     }
   },
   "request_id": "req_analytics_student_session_question_1"
+}
+```
+
+---
+
+## 16.9 老师讲评保存
+
+### PUT `/api/v1/analytics/student-practice-session-question-review`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能对当前任课班级课程下学生该次练题中的题目保存讲评。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围保存讲评。
+
+### Body
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `session_id`：必填，练题会话 ID。
+- `session_question_id`：必填，会话题目 ID。
+- `review_comment`：必填，讲评内容。服务端会自动去除首尾空白，去除后不能为空。
+
+### 说明
+- 保存讲评前，服务端会复用单题详情接口的权限和归属校验。
+- 讲评按 `tenant_id + session_question_id + teacher_user_id` 唯一保存，同一老师对同一题重复保存时执行覆盖更新。
+- 当前版本仅支持文本讲评，不支持附件、模板讲评或公开评语。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "review_id": 81001,
+    "reviewer_user_id": 701,
+    "review_comment": "注意基础加法与审题步骤。",
+    "updated_at": "2026-04-23T16:20:00+08:00"
+  },
+  "request_id": "req_analytics_student_session_question_review_1"
 }
 ```
 

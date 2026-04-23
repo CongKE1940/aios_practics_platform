@@ -347,7 +347,10 @@ function isStudentPracticeSessionQuestionDetailApi(
       Partial<StudentLearningDetailApi> &
       Partial<StudentPracticeSessionDetailApi> &
       StudentPracticeSessionQuestionDetailApi) {
-  return typeof api?.getStudentPracticeSessionQuestionDetail === "function";
+  return (
+    typeof api?.getStudentPracticeSessionQuestionDetail === "function" &&
+    typeof api?.upsertStudentPracticeSessionQuestionReview === "function"
+  );
 }
 
 function wrapUnauthorizedApi<T extends object>(api: T, onUnauthorized: () => void): T {

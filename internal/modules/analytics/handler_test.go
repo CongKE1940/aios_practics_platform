@@ -943,6 +943,11 @@ func TestHandler_GetStudentPracticeSessionQuestionDetailSuccess(t *testing.T) {
 			IsCorrect:         boolPtr(true),
 		},
 	}
+	repo.studentPracticeSessionQuestionReviewPtr = &StudentPracticeSessionQuestionReview{
+		ReviewID:       5001,
+		ReviewerUserID: 7,
+		ReviewComment:  "注意基础计算。",
+	}
 
 	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
 		claims: auth.AccessClaims{
@@ -975,6 +980,9 @@ func TestHandler_GetStudentPracticeSessionQuestionDetailSuccess(t *testing.T) {
 	}
 	if body.Data.StudentSummary.StudentName != "张三" {
 		t.Fatalf("student summary = %+v", body.Data.StudentSummary)
+	}
+	if body.Data.TeacherReview == nil || body.Data.TeacherReview.ReviewID != 5001 {
+		t.Fatalf("teacher review = %+v", body.Data.TeacherReview)
 	}
 }
 
@@ -1035,6 +1043,99 @@ func TestHandler_GetStudentPracticeSessionQuestionDetailRejectsInvalidQuery(t *t
 		nil,
 		"token",
 	)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_PutStudentPracticeSessionQuestionReviewSuccess(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = true
+	repo.sessionQuestionBelongsToSession = true
+	repo.studentPracticeSessionQuestionResult = StudentPracticeSessionQuestionDetailResult{
+		StudentSummary: StudentPracticeSessionStudentSummary{
+			StudentUserID: 7001,
+			StudentName:   "张三",
+			ClassID:       101,
+			CourseID:      12,
+		},
+		Session: StudentPracticeSessionSummary{
+			SessionID: 9001,
+			Status:    "finished",
+		},
+		QuestionDetail: StudentPracticeSessionQuestionItem{
+			SessionQuestionID: 701,
+			QuestionID:        1,
+			QuestionVersionID: 11,
+			DisplayOrder:      1,
+			QuestionType:      "single_choice",
+			Content:           map[string]any{"stem": map[string]any{"text": "1+1=?"}},
+		},
+	}
+	repo.studentPracticeSessionQuestionReview = StudentPracticeSessionQuestionReview{
+		ReviewID:       6001,
+		ReviewerUserID: 7,
+		ReviewComment:  "先列式再作答。",
+	}
+
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodPut, "/api/v1/analytics/student-practice-session-question-review", map[string]any{
+		"class_id":            101,
+		"course_id":           12,
+		"student_user_id":     7001,
+		"session_id":          9001,
+		"session_question_id": 701,
+		"review_comment":      " 先列式再作答。 ",
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[StudentPracticeSessionQuestionReview]
+	decodeAnalyticsBody(t, rec, &body)
+	if body.Data.ReviewID != 6001 || body.Data.ReviewComment != "先列式再作答。" {
+		t.Fatalf("review = %+v", body.Data)
+	}
+	if repo.lastUpsertStudentPracticeSessionQuestionReview.ReviewerUserID != 7 {
+		t.Fatalf("upsert command = %+v", repo.lastUpsertStudentPracticeSessionQuestionReview)
+	}
+}
+
+func TestHandler_PutStudentPracticeSessionQuestionReviewRejectsInvalidBody(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	router := newAnalyticsTestRouter(newMemoryAnalyticsRepository(), fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodPut, "/api/v1/analytics/student-practice-session-question-review", map[string]any{
+		"class_id":            101,
+		"course_id":           12,
+		"student_user_id":     7001,
+		"session_id":          9001,
+		"session_question_id": 701,
+		"review_comment":      "   ",
+	}, "token")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -1237,6 +1338,11 @@ func TestService_GetStudentPracticeSessionQuestionDetailAdminScopes(t *testing.T
 				IsAnswered:        true,
 			},
 		}
+		repo.studentPracticeSessionQuestionReviewPtr = &StudentPracticeSessionQuestionReview{
+			ReviewID:       9001,
+			ReviewerUserID: 7,
+			ReviewComment:  "注意审题。",
+		}
 		service := NewService(repo)
 
 		result, err := service.GetStudentPracticeSessionQuestionDetail(context.Background(), Scope{
@@ -1259,6 +1365,9 @@ func TestService_GetStudentPracticeSessionQuestionDetailAdminScopes(t *testing.T
 		if result.QuestionDetail.SessionQuestionID != 701 {
 			t.Fatalf("userType=%s result=%+v", userType, result)
 		}
+		if result.TeacherReview == nil || result.TeacherReview.ReviewID != 9001 {
+			t.Fatalf("userType=%s teacherReview=%+v", userType, result.TeacherReview)
+		}
 		if repo.teacherCanViewCalls != 0 {
 			t.Fatalf("userType=%s teacherCanViewCalls=%d", userType, repo.teacherCanViewCalls)
 		}
@@ -1271,6 +1380,89 @@ func TestService_GetStudentPracticeSessionQuestionDetailAdminScopes(t *testing.T
 		if repo.lastStudentPracticeSessionQuestion.TenantID != 1 {
 			t.Fatalf("userType=%s query=%+v", userType, repo.lastStudentPracticeSessionQuestion)
 		}
+	}
+}
+
+func TestService_UpsertStudentPracticeSessionQuestionReviewTrimsComment(t *testing.T) {
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = true
+	repo.sessionQuestionBelongsToSession = true
+	repo.studentPracticeSessionQuestionResult = StudentPracticeSessionQuestionDetailResult{
+		StudentSummary: StudentPracticeSessionStudentSummary{
+			StudentUserID: 7001,
+			StudentName:   "张三",
+			ClassID:       101,
+			CourseID:      12,
+		},
+		Session: StudentPracticeSessionSummary{
+			SessionID: 9001,
+			Status:    "finished",
+		},
+		QuestionDetail: StudentPracticeSessionQuestionItem{
+			SessionQuestionID: 701,
+			QuestionID:        1,
+			QuestionVersionID: 11,
+			DisplayOrder:      1,
+			QuestionType:      "single_choice",
+			Content:           map[string]any{"stem": map[string]any{"text": "1+1=?"}},
+		},
+	}
+	repo.studentPracticeSessionQuestionReview = StudentPracticeSessionQuestionReview{
+		ReviewID:       8080,
+		ReviewerUserID: 7,
+		ReviewComment:  "注意单位。",
+	}
+
+	service := NewService(repo)
+	result, err := service.UpsertStudentPracticeSessionQuestionReview(context.Background(), Scope{
+		TenantID: 1,
+		UserID:   7,
+		UserType: "teacher",
+		Permissions: []string{
+			"analytics:view",
+		},
+	}, UpsertStudentPracticeSessionQuestionReviewCommand{
+		ClassID:           101,
+		CourseID:          12,
+		StudentUserID:     7001,
+		SessionID:         9001,
+		SessionQuestionID: 701,
+		ReviewComment:     " 注意单位。 ",
+	})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if result.ReviewID != 8080 || result.ReviewComment != "注意单位。" {
+		t.Fatalf("result = %+v", result)
+	}
+	if repo.lastUpsertStudentPracticeSessionQuestionReview.ReviewComment != "注意单位。" {
+		t.Fatalf("command = %+v", repo.lastUpsertStudentPracticeSessionQuestionReview)
+	}
+}
+
+func TestService_UpsertStudentPracticeSessionQuestionReviewRejectsBlankComment(t *testing.T) {
+	service := NewService(newMemoryAnalyticsRepository())
+
+	_, err := service.UpsertStudentPracticeSessionQuestionReview(context.Background(), Scope{
+		TenantID: 1,
+		UserID:   7,
+		UserType: "teacher",
+		Permissions: []string{
+			"analytics:view",
+		},
+	}, UpsertStudentPracticeSessionQuestionReviewCommand{
+		ClassID:           101,
+		CourseID:          12,
+		StudentUserID:     7001,
+		SessionID:         9001,
+		SessionQuestionID: 701,
+		ReviewComment:     "   ",
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -1365,6 +1557,10 @@ type memoryAnalyticsRepository struct {
 	studentPracticeSessionQuestionResult  StudentPracticeSessionQuestionDetailResult
 	lastStudentPracticeSessionQuestion    StudentPracticeSessionQuestionDetailQuery
 	getStudentPracticeSessionQuestionCall int
+	studentPracticeSessionQuestionReviewPtr *StudentPracticeSessionQuestionReview
+	studentPracticeSessionQuestionReview    StudentPracticeSessionQuestionReview
+	lastUpsertStudentPracticeSessionQuestionReview UpsertStudentPracticeSessionQuestionReviewCommand
+	upsertStudentPracticeSessionQuestionReviewCalls int
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
@@ -1439,6 +1635,16 @@ func (repo *memoryAnalyticsRepository) GetStudentPracticeSessionQuestionDetail(_
 		return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
 	}
 	return repo.studentPracticeSessionQuestionResult, nil
+}
+
+func (repo *memoryAnalyticsRepository) GetStudentPracticeSessionQuestionReview(_ context.Context, _ StudentPracticeSessionQuestionDetailQuery) (*StudentPracticeSessionQuestionReview, error) {
+	return repo.studentPracticeSessionQuestionReviewPtr, nil
+}
+
+func (repo *memoryAnalyticsRepository) UpsertStudentPracticeSessionQuestionReview(_ context.Context, command UpsertStudentPracticeSessionQuestionReviewCommand) (StudentPracticeSessionQuestionReview, error) {
+	repo.lastUpsertStudentPracticeSessionQuestionReview = command
+	repo.upsertStudentPracticeSessionQuestionReviewCalls++
+	return repo.studentPracticeSessionQuestionReview, nil
 }
 
 func performAnalyticsRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {

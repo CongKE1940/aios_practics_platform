@@ -33,6 +33,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/student-practice-detail", handler.getStudentPracticeDetail)
 	router.GET("/analytics/student-practice-session-detail", handler.getStudentPracticeSessionDetail)
 	router.GET("/analytics/student-practice-session-question-detail", handler.getStudentPracticeSessionQuestionDetail)
+	router.PUT("/analytics/student-practice-session-question-review", handler.putStudentPracticeSessionQuestionReview)
 }
 
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -118,6 +119,40 @@ func (handler *Handler) getStudentPracticeSessionQuestionDetail(ctx *gin.Context
 		return
 	}
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) putStudentPracticeSessionQuestionReview(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	var request upsertStudentPracticeSessionQuestionReviewRequest
+	if err := ctx.ShouldBindJSON(&request); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.UpsertStudentPracticeSessionQuestionReview(ctx.Request.Context(), scope, UpsertStudentPracticeSessionQuestionReviewCommand{
+		ClassID:           request.ClassID,
+		CourseID:          request.CourseID,
+		StudentUserID:     request.StudentUserID,
+		SessionID:         request.SessionID,
+		SessionQuestionID: request.SessionQuestionID,
+		ReviewComment:     request.ReviewComment,
+	})
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+type upsertStudentPracticeSessionQuestionReviewRequest struct {
+	ClassID           int64  `json:"class_id"`
+	CourseID          int64  `json:"course_id"`
+	StudentUserID     int64  `json:"student_user_id"`
+	SessionID         int64  `json:"session_id"`
+	SessionQuestionID int64  `json:"session_question_id"`
+	ReviewComment     string `json:"review_comment"`
 }
 
 func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {

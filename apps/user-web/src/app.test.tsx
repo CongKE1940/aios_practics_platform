@@ -596,7 +596,19 @@ describe("UserApp", () => {
               analysis: {
                 text: "基础加法。"
               }
+            },
+            teacher_review: {
+              review_id: 5001,
+              reviewer_user_id: 7,
+              review_comment: "注意基础加法。",
+              updated_at: "2026-04-22T10:03:00+08:00"
             }
+          }),
+          upsertStudentPracticeSessionQuestionReview: async () => ({
+            review_id: 5002,
+            reviewer_user_id: 7,
+            review_comment: "先列式再计算。",
+            updated_at: "2026-04-22T10:05:00+08:00"
           })
         }}
         sessionStore={createSessionStore(

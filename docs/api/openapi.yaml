@@ -1287,6 +1287,15 @@ paths:
           description: 会话题目 ID。
       responses:
         '200': { $ref: '#/components/responses/StudentPracticeSessionQuestionDetailOk' }
+  /analytics/student-practice-session-question-review:
+    put:
+      tags: [Analytics]
+      summary: 保存老师讲评
+      operationId: upsertStudentPracticeSessionQuestionReview
+      requestBody:
+        $ref: '#/components/requestBodies/StudentPracticeSessionQuestionReviewBody'
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeSessionQuestionReviewOk' }
   /audit-logs:
     get:
       tags: [Audit]
@@ -1446,6 +1455,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentPracticeSessionQuestionDetailResponse'
+    StudentPracticeSessionQuestionReviewOk:
+      description: 老师讲评保存结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionReviewResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -1561,6 +1576,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/QuestionStateInput'
+    StudentPracticeSessionQuestionReviewBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionReviewInput'
   schemas:
     BaseResponse:
       type: object
@@ -2813,6 +2834,10 @@ components:
           $ref: '#/components/schemas/StudentPracticeSessionSummary'
         question_detail:
           $ref: '#/components/schemas/StudentPracticeSessionQuestionItem'
+        teacher_review:
+          allOf:
+            - $ref: '#/components/schemas/StudentPracticeSessionQuestionReview'
+          nullable: true
     StudentPracticeSessionQuestionDetailResponse:
       type: object
       properties:
@@ -2822,6 +2847,55 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/StudentPracticeSessionQuestionDetailResult'
+        request_id:
+          type: string
+    StudentPracticeSessionQuestionReview:
+      type: object
+      required: [review_id, reviewer_user_id, review_comment]
+      properties:
+        review_id:
+          type: integer
+          format: int64
+        reviewer_user_id:
+          type: integer
+          format: int64
+        review_comment:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    StudentPracticeSessionQuestionReviewInput:
+      type: object
+      required: [class_id, course_id, student_user_id, session_id, session_question_id, review_comment]
+      properties:
+        class_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        student_user_id:
+          type: integer
+          format: int64
+        session_id:
+          type: integer
+          format: int64
+        session_question_id:
+          type: integer
+          format: int64
+        review_comment:
+          type: string
+          description: 讲评内容，服务端会自动去除首尾空白，去除后不能为空。
+    StudentPracticeSessionQuestionReviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeSessionQuestionReview'
         request_id:
           type: string
     QuestionBankResponse:

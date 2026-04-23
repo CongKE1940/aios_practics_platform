@@ -225,12 +225,32 @@ type StudentPracticeSessionQuestionDetailQuery struct {
 	StudentUserID     int64
 	SessionID         int64
 	SessionQuestionID int64
+	ReviewerUserID    int64
+}
+
+type StudentPracticeSessionQuestionReview struct {
+	ReviewID        int64      `json:"review_id"`
+	ReviewerUserID  int64      `json:"reviewer_user_id"`
+	ReviewComment   string     `json:"review_comment"`
+	LastUpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
 type StudentPracticeSessionQuestionDetailResult struct {
 	StudentSummary StudentPracticeSessionStudentSummary `json:"student_summary"`
 	Session        StudentPracticeSessionSummary        `json:"session"`
 	QuestionDetail StudentPracticeSessionQuestionItem   `json:"question_detail"`
+	TeacherReview  *StudentPracticeSessionQuestionReview `json:"teacher_review,omitempty"`
+}
+
+type UpsertStudentPracticeSessionQuestionReviewCommand struct {
+	TenantID          int64
+	ClassID           int64
+	CourseID          int64
+	StudentUserID     int64
+	SessionID         int64
+	SessionQuestionID int64
+	ReviewerUserID    int64
+	ReviewComment     string
 }
 
 type Repository interface {
@@ -246,6 +266,8 @@ type Repository interface {
 	ListStudentConfusedQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
 	GetStudentPracticeSessionDetail(ctx context.Context, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error)
 	GetStudentPracticeSessionQuestionDetail(ctx context.Context, query StudentPracticeSessionQuestionDetailQuery) (StudentPracticeSessionQuestionDetailResult, error)
+	GetStudentPracticeSessionQuestionReview(ctx context.Context, query StudentPracticeSessionQuestionDetailQuery) (*StudentPracticeSessionQuestionReview, error)
+	UpsertStudentPracticeSessionQuestionReview(ctx context.Context, command UpsertStudentPracticeSessionQuestionReviewCommand) (StudentPracticeSessionQuestionReview, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

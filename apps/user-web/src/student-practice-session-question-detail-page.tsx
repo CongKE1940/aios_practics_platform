@@ -3,13 +3,22 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   StudentPracticeSessionQuestionDetailQuery,
   StudentPracticeSessionQuestionDetailResult,
-  StudentPracticeSessionQuestionItem
+  StudentPracticeSessionQuestionItem,
+  StudentPracticeSessionQuestionReviewInput
 } from "@aios/api-sdk";
 
 export interface StudentPracticeSessionQuestionDetailApi {
   getStudentPracticeSessionQuestionDetail(
     query: StudentPracticeSessionQuestionDetailQuery
   ): Promise<StudentPracticeSessionQuestionDetailResult>;
+  upsertStudentPracticeSessionQuestionReview(
+    body: StudentPracticeSessionQuestionReviewInput
+  ): Promise<{
+    review_id: number;
+    reviewer_user_id: number;
+    review_comment: string;
+    updated_at?: string | null;
+  }>;
 }
 
 interface StudentPracticeSessionQuestionDetailPageProps {
@@ -44,6 +53,9 @@ export function StudentPracticeSessionQuestionDetailPage({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<StudentPracticeSessionQuestionDetailResult | null>(null);
+  const [reviewDraft, setReviewDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
     if (!parsed.ok) {
@@ -64,6 +76,7 @@ export function StudentPracticeSessionQuestionDetailPage({
           return;
         }
         setResult(data);
+        setReviewDraft(data.teacher_review?.review_comment ?? "");
         setMessage("");
       })
       .catch(() => {
@@ -71,6 +84,7 @@ export function StudentPracticeSessionQuestionDetailPage({
           return;
         }
         setResult(null);
+        setReviewDraft("");
         setMessage("题目详情加载失败，请稍后重试。");
       })
       .finally(() => {
@@ -97,6 +111,35 @@ export function StudentPracticeSessionQuestionDetailPage({
   const student = result?.student_summary;
   const session = result?.session;
   const question = result?.question_detail;
+
+  async function handleSaveReview() {
+    if (!parsed.ok) {
+      return;
+    }
+    setSaving(true);
+    setSaveMessage("");
+    try {
+      const review = await api.upsertStudentPracticeSessionQuestionReview({
+        ...parsed.query,
+        review_comment: reviewDraft
+      });
+      setResult((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          teacher_review: review
+        };
+      });
+      setReviewDraft(review.review_comment);
+      setSaveMessage("讲评已保存。");
+    } catch {
+      setSaveMessage("讲评保存失败，请稍后重试。");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <section aria-label="学生单题详情页">
@@ -135,6 +178,14 @@ export function StudentPracticeSessionQuestionDetailPage({
           <p>结果：{formatResult(question)}</p>
           <p>作答时间：{question.answered_at ?? "-"}</p>
           <p>解析：{extractAnalysis(question.analysis)}</p>
+          <label>
+            老师讲评
+            <textarea value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} />
+          </label>
+          <button type="button" onClick={handleSaveReview} disabled={saving}>
+            保存讲评
+          </button>
+          {saveMessage ? <p>{saveMessage}</p> : null}
         </section>
       ) : null}
     </section>

@@ -810,6 +810,85 @@ func (repo *MySQLRepository) GetStudentPracticeSessionQuestionDetail(ctx context
 	return StudentPracticeSessionQuestionDetailResult{}, ErrNotFound
 }
 
+func (repo *MySQLRepository) GetStudentPracticeSessionQuestionReview(ctx context.Context, query StudentPracticeSessionQuestionDetailQuery) (*StudentPracticeSessionQuestionReview, error) {
+	const reviewQuery = `
+SELECT id, teacher_user_id, review_comment, updated_at
+FROM practice_session_question_reviews
+WHERE tenant_id = ? AND session_question_id = ? AND teacher_user_id = ? AND status = 'active'
+LIMIT 1
+`
+	var (
+		review    StudentPracticeSessionQuestionReview
+		updatedAt sql.NullTime
+	)
+	if err := repo.db.QueryRowContext(ctx, reviewQuery, query.TenantID, query.SessionQuestionID, query.ReviewerUserID).Scan(
+		&review.ReviewID,
+		&review.ReviewerUserID,
+		&review.ReviewComment,
+		&updatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if updatedAt.Valid {
+		review.LastUpdatedAt = &updatedAt.Time
+	}
+	return &review, nil
+}
+
+func (repo *MySQLRepository) UpsertStudentPracticeSessionQuestionReview(ctx context.Context, command UpsertStudentPracticeSessionQuestionReviewCommand) (StudentPracticeSessionQuestionReview, error) {
+	const upsertQuery = `
+INSERT INTO practice_session_question_reviews (
+  tenant_id,
+  class_id,
+  course_id,
+  student_user_id,
+  session_id,
+  session_question_id,
+  teacher_user_id,
+  review_comment,
+  status
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+ON DUPLICATE KEY UPDATE
+  class_id = VALUES(class_id),
+  course_id = VALUES(course_id),
+  student_user_id = VALUES(student_user_id),
+  session_id = VALUES(session_id),
+  review_comment = VALUES(review_comment),
+  status = 'active',
+  updated_at = CURRENT_TIMESTAMP(3)
+`
+	if _, err := repo.db.ExecContext(
+		ctx,
+		upsertQuery,
+		command.TenantID,
+		command.ClassID,
+		command.CourseID,
+		command.StudentUserID,
+		command.SessionID,
+		command.SessionQuestionID,
+		command.ReviewerUserID,
+		command.ReviewComment,
+	); err != nil {
+		return StudentPracticeSessionQuestionReview{}, err
+	}
+
+	review, err := repo.GetStudentPracticeSessionQuestionReview(ctx, StudentPracticeSessionQuestionDetailQuery{
+		TenantID:          command.TenantID,
+		SessionQuestionID: command.SessionQuestionID,
+		ReviewerUserID:    command.ReviewerUserID,
+	})
+	if err != nil {
+		return StudentPracticeSessionQuestionReview{}, err
+	}
+	if review == nil {
+		return StudentPracticeSessionQuestionReview{}, ErrNotFound
+	}
+	return *review, nil
+}
+
 func (repo *MySQLRepository) listStudentPracticeQuestions(ctx context.Context, query StudentPracticeDetailQuery, stateFilter string, stateTimeColumn string, orderBy string) (PageResult[StudentPracticeQuestionItem], error) {
 	page := normalizePage(query.Page)
 	pageSize := normalizePageSize(query.PageSize)

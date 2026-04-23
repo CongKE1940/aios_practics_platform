@@ -994,3 +994,82 @@ func TestMySQLRepositoryGetStudentPracticeSessionQuestionDetailReturnsNotFoundWh
 		t.Fatalf("ExpectationsWereMet() error = %v", err)
 	}
 }
+
+func TestMySQLRepositoryGetStudentPracticeSessionQuestionReview(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	updatedAt := time.Date(2026, 4, 23, 8, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`(?s)SELECT\s+id,\s+teacher_user_id,\s+review_comment,\s+updated_at\s+FROM practice_session_question_reviews.*tenant_id = \?.*session_question_id = \?.*teacher_user_id = \?.*status = 'active'.*LIMIT 1`).
+		WithArgs(int64(7), int64(70001), int64(88)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "teacher_user_id", "review_comment", "updated_at",
+		}).AddRow(int64(5001), int64(88), "注意审题。", updatedAt))
+
+	review, err := repo.GetStudentPracticeSessionQuestionReview(context.Background(), StudentPracticeSessionQuestionDetailQuery{
+		TenantID:          7,
+		SessionQuestionID: 70001,
+		ReviewerUserID:    88,
+	})
+	if err != nil {
+		t.Fatalf("GetStudentPracticeSessionQuestionReview() error = %v", err)
+	}
+	if review == nil || review.ReviewID != 5001 || review.ReviewComment != "注意审题。" {
+		t.Fatalf("review = %+v", review)
+	}
+	if review.LastUpdatedAt == nil || !review.LastUpdatedAt.Equal(updatedAt) {
+		t.Fatalf("updatedAt = %+v", review.LastUpdatedAt)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryUpsertStudentPracticeSessionQuestionReview(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	updatedAt := time.Date(2026, 4, 23, 8, 30, 0, 0, time.UTC)
+
+	mock.ExpectExec(`(?s)INSERT INTO practice_session_question_reviews.*ON DUPLICATE KEY UPDATE.*review_comment = VALUES\(review_comment\).*status = 'active'`).
+		WithArgs(int64(7), int64(101), int64(12), int64(7001), int64(9001), int64(70001), int64(88), "先列式再计算。").
+		WillReturnResult(sqlmock.NewResult(6001, 1))
+
+	mock.ExpectQuery(`(?s)SELECT\s+id,\s+teacher_user_id,\s+review_comment,\s+updated_at\s+FROM practice_session_question_reviews.*tenant_id = \?.*session_question_id = \?.*teacher_user_id = \?.*status = 'active'.*LIMIT 1`).
+		WithArgs(int64(7), int64(70001), int64(88)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "teacher_user_id", "review_comment", "updated_at",
+		}).AddRow(int64(6001), int64(88), "先列式再计算。", updatedAt))
+
+	review, err := repo.UpsertStudentPracticeSessionQuestionReview(context.Background(), UpsertStudentPracticeSessionQuestionReviewCommand{
+		TenantID:          7,
+		ClassID:           101,
+		CourseID:          12,
+		StudentUserID:     7001,
+		SessionID:         9001,
+		SessionQuestionID: 70001,
+		ReviewerUserID:    88,
+		ReviewComment:     "先列式再计算。",
+	})
+	if err != nil {
+		t.Fatalf("UpsertStudentPracticeSessionQuestionReview() error = %v", err)
+	}
+	if review.ReviewID != 6001 || review.ReviewerUserID != 88 || review.ReviewComment != "先列式再计算。" {
+		t.Fatalf("review = %+v", review)
+	}
+	if review.LastUpdatedAt == nil || !review.LastUpdatedAt.Equal(updatedAt) {
+		t.Fatalf("updatedAt = %+v", review.LastUpdatedAt)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
