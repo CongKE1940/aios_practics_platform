@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Exam, ExamAttemptAnswerInput, ExamAttemptDetail, ExamAttemptResult, PageResult } from "@aios/api-sdk";
@@ -7,6 +7,7 @@ import type { Exam, ExamAttemptAnswerInput, ExamAttemptDetail, ExamAttemptResult
 import { StudentExamPage, type StudentExamApi } from "./student-exam-page";
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
 });
 
@@ -22,6 +23,7 @@ describe("StudentExamPage", () => {
     }));
     const submitExamAttempt = vi.fn(async () => createAttemptResult());
     const api = createStudentExamApiMock({ saveExamAttemptAnswer, submitExamAttempt });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<StudentExamPage api={api} />);
 
@@ -54,6 +56,82 @@ describe("StudentExamPage", () => {
       expect(screen.getByRole("heading", { name: "考试结果" })).toBeTruthy();
       expect(screen.getByText("得分：10")).toBeTruthy();
     });
+  });
+
+  it("shows countdown, question navigation, submit confirmation, and leave protection", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-24T09:00:00+08:00"));
+
+    const submitExamAttempt = vi.fn(async () => createAttemptResult());
+    const api = createStudentExamApiMock({
+      startExamAttempt: async () => createAttemptDetail({ questionCount: 2, startAt: "2026-04-24T09:00:00+08:00" }),
+      submitExamAttempt
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    render(<StudentExamPage api={api} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("期中测验")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "开始考试" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText((_content, node) => node?.textContent === "剩余时间：60:00")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "第 2 题" })).toBeTruthy();
+
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "第 2 题" }));
+    expect(screen.getByText("2+2等于几？")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "交卷" }));
+    expect(confirm).toHaveBeenCalledWith("确认交卷吗？交卷后不能继续修改答案。");
+    expect(submitExamAttempt).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "交卷" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(submitExamAttempt).toHaveBeenCalledWith(801);
+    expect(screen.getByRole("heading", { name: "考试结果" })).toBeTruthy();
+  });
+
+  it("auto submits when countdown reaches zero", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-24T09:59:59+08:00"));
+
+    const submitExamAttempt = vi.fn(async () => createAttemptResult());
+    const api = createStudentExamApiMock({
+      startExamAttempt: async () => createAttemptDetail({ startAt: "2026-04-24T09:00:00+08:00" }),
+      submitExamAttempt
+    });
+
+    render(<StudentExamPage api={api} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("期中测验")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "开始考试" }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText((_content, node) => node?.textContent === "剩余时间：00:01")).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      await Promise.resolve();
+    });
+
+    expect(submitExamAttempt).toHaveBeenCalledWith(801);
+    expect(screen.getByRole("heading", { name: "考试结果" })).toBeTruthy();
   });
 });
 
@@ -91,7 +169,8 @@ function createStudentExamApiMock(overrides: Partial<StudentExamApi> = {}): Stud
   };
 }
 
-function createAttemptDetail(): ExamAttemptDetail {
+function createAttemptDetail(options: { questionCount?: number; startAt?: string } = {}): ExamAttemptDetail {
+  const questionCount = options.questionCount ?? 1;
   return {
     attempt: {
       id: 801,
@@ -99,6 +178,7 @@ function createAttemptDetail(): ExamAttemptDetail {
       paper_id: 701,
       tenant_id: 1,
       user_id: 10001,
+      start_at: options.startAt,
       status: "in_progress",
       objective_score: 0,
       subjective_score: 0,
@@ -119,7 +199,26 @@ function createAttemptDetail(): ExamAttemptDetail {
           ]
         }
       }
-    ],
+    ].concat(
+      questionCount > 1
+        ? [
+            {
+              question_id: 102,
+              question_version_id: 1002,
+              display_order: 2,
+              score: 10,
+              question_type: "single_choice",
+              content: {
+                stem: { text: "2+2等于几？" },
+                options: [
+                  { key: "A", text: "4" },
+                  { key: "B", text: "5" }
+                ]
+              }
+            }
+          ]
+        : []
+    ),
     answers: []
   };
 }

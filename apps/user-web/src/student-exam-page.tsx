@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   Exam,
@@ -24,12 +24,16 @@ interface StudentExamPageProps {
 
 export function StudentExamPage({ api }: StudentExamPageProps) {
   const [exams, setExams] = useState<Exam[]>([]);
+  const [activeExam, setActiveExam] = useState<Exam | null>(null);
   const [attemptDetail, setAttemptDetail] = useState<ExamAttemptDetail | null>(null);
   const [result, setResult] = useState<ExamAttemptResult | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [message, setMessage] = useState("正在加载考试...");
+  const autoSubmittedRef = useRef(false);
 
   const currentQuestion = attemptDetail?.questions[currentIndex] ?? null;
 
@@ -65,13 +69,85 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
     };
   }, [api]);
 
-  async function handleStart(examId: number) {
+  const submitCurrentAttempt = useCallback(
+    async (requireConfirm: boolean) => {
+      if (!attemptDetail || submitting) {
+        return;
+      }
+      if (requireConfirm && !window.confirm("确认交卷吗？交卷后不能继续修改答案。")) {
+        return;
+      }
+
+      setSubmitting(true);
+      try {
+        const submitted = await api.submitExamAttempt(attemptDetail.attempt.id);
+        setResult(submitted);
+        setAttemptDetail(null);
+        setActiveExam(null);
+        setRemainingSeconds(null);
+        setMessage("");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [api, attemptDetail, submitting]
+  );
+
+  useEffect(() => {
+    if (!attemptDetail || !activeExam) {
+      setRemainingSeconds(null);
+      return;
+    }
+
+    const currentAttemptDetail = attemptDetail;
+    const currentActiveExam = activeExam;
+
+    function refreshCountdown() {
+      const next = calculateRemainingSeconds(currentAttemptDetail, currentActiveExam);
+      setRemainingSeconds(next);
+      if (next <= 0 && !autoSubmittedRef.current) {
+        autoSubmittedRef.current = true;
+        void submitCurrentAttempt(false);
+      }
+    }
+
+    refreshCountdown();
+    const timer = window.setInterval(refreshCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeExam, attemptDetail, submitCurrentAttempt]);
+
+  useEffect(() => {
+    if (!attemptDetail) {
+      return;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [attemptDetail]);
+
+  async function handleStart(exam: Exam) {
     setMessage("正在进入考试...");
-    const detail = await api.startExamAttempt(examId);
-    setAttemptDetail(detail);
+    const detail = await api.startExamAttempt(exam.id);
+    const normalizedDetail = detail.attempt.start_at
+      ? detail
+      : {
+          ...detail,
+          attempt: {
+            ...detail.attempt,
+            start_at: new Date().toISOString()
+          }
+        };
+    autoSubmittedRef.current = false;
+    setActiveExam(exam);
+    setAttemptDetail(normalizedDetail);
     setResult(null);
     setCurrentIndex(0);
-    setSelectedKeys(selectedKeysFor(detail.answers, detail.questions[0]?.display_order));
+    setSelectedKeys(selectedKeysFor(normalizedDetail.answers, normalizedDetail.questions[0]?.display_order));
     setMessage("");
   }
 
@@ -85,16 +161,6 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
     });
     setAttemptDetail((current) => mergeSavedAnswer(current, currentQuestion, selectedKeys));
     setMessage("答案已保存。");
-  }
-
-  async function handleSubmit() {
-    if (!attemptDetail) {
-      return;
-    }
-    const submitted = await api.submitExamAttempt(attemptDetail.attempt.id);
-    setResult(submitted);
-    setAttemptDetail(null);
-    setMessage("");
   }
 
   function handleMove(nextIndex: number) {
@@ -138,7 +204,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
                     {formatTime(exam.start_time)} 至 {formatTime(exam.end_time)}
                   </p>
                   <p>时长：{exam.duration_minutes ?? "-"} 分钟</p>
-                  <button type="button" onClick={() => void handleStart(exam.id)}>
+                  <button type="button" onClick={() => void handleStart(exam)}>
                     开始考试
                   </button>
                 </li>
@@ -150,6 +216,21 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
 
       {currentQuestion ? (
         <section aria-label="考试作答区">
+          {remainingSeconds !== null ? <p>剩余时间：{formatDuration(remainingSeconds)}</p> : null}
+          {attemptDetail && attemptDetail.questions.length > 1 ? (
+            <nav aria-label="考试题号导航">
+              {attemptDetail.questions.map((question, index) => (
+                <button
+                  key={question.display_order}
+                  type="button"
+                  aria-pressed={index === currentIndex}
+                  onClick={() => handleMove(index)}
+                >
+                  第 {index + 1} 题
+                </button>
+              ))}
+            </nav>
+          ) : null}
           <p>
             第 {currentIndex + 1} / {attemptDetail?.questions.length ?? 0} 题，{currentQuestion.score} 分
           </p>
@@ -181,8 +262,8 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
           >
             下一题
           </button>
-          <button type="button" onClick={() => void handleSubmit()}>
-            交卷
+          <button type="button" disabled={submitting} onClick={() => void submitCurrentAttempt(true)}>
+            {submitting ? "交卷中..." : "交卷"}
           </button>
         </section>
       ) : null}
@@ -197,6 +278,27 @@ function selectedKeysFor(answers: ExamAttemptAnswer[], displayOrder?: number): s
   const answer = answers.find((item) => item.display_order === displayOrder)?.answer;
   const selected = answer?.selected_keys;
   return Array.isArray(selected) ? selected.filter((item): item is string => typeof item === "string") : [];
+}
+
+function calculateRemainingSeconds(attemptDetail: ExamAttemptDetail, exam: Exam): number {
+  const durationMinutes = exam.duration_minutes ?? 0;
+  if (durationMinutes <= 0) {
+    return 0;
+  }
+
+  const startAt = attemptDetail.attempt.start_at ? Date.parse(attemptDetail.attempt.start_at) : Date.now();
+  if (!Number.isFinite(startAt)) {
+    return 0;
+  }
+
+  const deadline = startAt + durationMinutes * 60 * 1000;
+  return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+}
+
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function mergeSavedAnswer(
