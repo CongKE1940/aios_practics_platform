@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ExamDetail, ExamInput, ExamOverviewResult } from "@aios/api-sdk";
+import type { ExamAttemptReviewResult, ExamDetail, ExamInput, ExamOverviewResult } from "@aios/api-sdk";
 
 import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
 
@@ -208,6 +208,132 @@ describe("TeacherExamPage", () => {
     });
   });
 
+  it("loads selected student attempt review and shows question detail", async () => {
+    const getExamOverview = vi.fn(async (): Promise<ExamOverviewResult> => ({
+      summary: {
+        exam_id: 1,
+        exam_name: "期中测验",
+        exam_mode: "fixed",
+        status: "published",
+        duration_minutes: 60,
+        total_score: 100,
+        student_count: 1,
+        participated_student_count: 1,
+        submitted_count: 1,
+        in_progress_count: 0,
+        absent_count: 0,
+        average_score: 86,
+        highest_score: 86,
+        lowest_score: 86
+      },
+      students: {
+        items: [
+          {
+            student_user_id: 501,
+            student_name: "张三",
+            student_no: "S001",
+            class_name: "七年级一班",
+            attempt_id: 8001,
+            attempt_status: "submitted",
+            final_score: 86,
+            objective_score: 86
+          }
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1
+      }
+    }));
+    const getExamAttemptReview = vi.fn(async (): Promise<ExamAttemptReviewResult> => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        student_no: "S001",
+        class_name: "七年级一班",
+        attempt_status: "submitted",
+        objective_score: 86,
+        subjective_score: 0,
+        final_score: 86
+      },
+      questions: [
+        {
+          question_id: 1001,
+          question_version_id: 3001,
+          display_order: 1,
+          question_type: "single_choice",
+          score: 10,
+          content: {
+            stem: { text: "1+1等于几？" },
+            options: [
+              { key: "A", text: "1" },
+              { key: "B", text: "2" }
+            ]
+          },
+          correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+          student_answer: { selected_keys: ["B"] },
+          is_answered: true,
+          is_correct: true,
+          answer_score: 10
+        },
+        {
+          question_id: 1002,
+          question_version_id: 3002,
+          display_order: 2,
+          question_type: "single_choice",
+          score: 10,
+          content: {
+            stem: { text: "2+2等于几？" },
+            options: [
+              { key: "A", text: "3" },
+              { key: "B", text: "4" }
+            ]
+          },
+          correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+          student_answer: { selected_keys: ["A"] },
+          is_answered: true,
+          is_correct: false,
+          answer_score: 0
+        }
+      ]
+    }));
+    const api = createExamApiMock({ getExamOverview, getExamAttemptReview });
+
+    render(<TeacherExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看详情" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看答卷" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看答卷" }));
+
+    await waitFor(() => {
+      expect(getExamAttemptReview).toHaveBeenCalledWith({ attempt_id: 8001 });
+      expect(screen.getByRole("heading", { name: "学生答卷" })).toBeTruthy();
+      expect(screen.getByText("学生：张三")).toBeTruthy();
+      expect(screen.getByText("题干：1+1等于几？")).toBeTruthy();
+      expect(screen.getByText("学生答案：B")).toBeTruthy();
+      expect(screen.getByText("正确答案：B")).toBeTruthy();
+      expect(screen.getByText("得分：10 / 10")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "第 2 题" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("题干：2+2等于几？")).toBeTruthy();
+      expect(screen.getByText("学生答案：A")).toBeTruthy();
+      expect(screen.getByText("结果：错误")).toBeTruthy();
+    });
+  });
+
   it("loads draft detail into edit form and updates exam", async () => {
     const getExam = vi.fn(async (id: number) =>
       createExamDetail({
@@ -384,6 +510,20 @@ function createExamApiMock(overrides: Partial<TeacherExamApi> = {}): TeacherExam
         page_size: 20,
         total: 0
       }
+    }),
+    getExamAttemptReview: async () => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        attempt_status: "submitted",
+        objective_score: 0,
+        subjective_score: 0,
+        final_score: 0
+      },
+      questions: []
     }),
     ...overrides
   };

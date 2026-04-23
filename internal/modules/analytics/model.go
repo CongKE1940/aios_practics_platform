@@ -83,6 +83,47 @@ type ExamOverviewResult struct {
 	Students PageResult[ExamOverviewStudentItem] `json:"students"`
 }
 
+type ExamAttemptReviewQuery struct {
+	TenantID  int64
+	AttemptID int64
+}
+
+type ExamAttemptReviewSummary struct {
+	AttemptID       int64      `json:"attempt_id"`
+	ExamID          int64      `json:"exam_id"`
+	ExamName        string     `json:"exam_name"`
+	StudentUserID   int64      `json:"student_user_id"`
+	StudentName     string     `json:"student_name"`
+	StudentNo       *string    `json:"student_no,omitempty"`
+	ClassID         *int64     `json:"class_id,omitempty"`
+	ClassName       *string    `json:"class_name,omitempty"`
+	AttemptStatus   string     `json:"attempt_status"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	SubmitAt        *time.Time `json:"submit_at,omitempty"`
+	ObjectiveScore  float64    `json:"objective_score"`
+	SubjectiveScore float64    `json:"subjective_score"`
+	FinalScore      float64    `json:"final_score"`
+}
+
+type ExamAttemptReviewQuestionItem struct {
+	QuestionID        int64          `json:"question_id"`
+	QuestionVersionID int64          `json:"question_version_id"`
+	DisplayOrder      int            `json:"display_order"`
+	QuestionType      string         `json:"question_type"`
+	Score             float64        `json:"score"`
+	Content           map[string]any `json:"content"`
+	CorrectAnswer     map[string]any `json:"correct_answer"`
+	StudentAnswer     map[string]any `json:"student_answer,omitempty"`
+	IsAnswered        bool           `json:"is_answered"`
+	IsCorrect         *bool          `json:"is_correct,omitempty"`
+	AnswerScore       float64        `json:"answer_score"`
+}
+
+type ExamAttemptReviewResult struct {
+	Summary   ExamAttemptReviewSummary        `json:"summary"`
+	Questions []ExamAttemptReviewQuestionItem `json:"questions"`
+}
+
 type ClassPracticeSummary struct {
 	ClassID                  int64      `json:"class_id"`
 	ClassName                string     `json:"class_name"`
@@ -304,6 +345,7 @@ type Repository interface {
 	ExamExists(ctx context.Context, tenantID int64, examID int64) (bool, error)
 	GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error)
 	ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error)
+	GetExamAttemptReview(ctx context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error)
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
 	GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error)

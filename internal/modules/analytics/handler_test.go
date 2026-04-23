@@ -182,6 +182,72 @@ func TestHandler_ExamOverviewReturnsSummaryAndScoresForTeacherPublishPermission(
 	}
 }
 
+func TestHandler_ExamAttemptReviewReturnsQuestionDetails(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.examAttemptReviewResult = ExamAttemptReviewResult{
+		Summary: ExamAttemptReviewSummary{
+			AttemptID:       8001,
+			ExamID:          901,
+			ExamName:        "期中测验",
+			StudentUserID:   501,
+			StudentName:     "张三",
+			StudentNo:       strPtr("S001"),
+			ClassName:       strPtr("七年级一班"),
+			AttemptStatus:   "submitted",
+			ObjectiveScore:  86,
+			SubjectiveScore: 0,
+			FinalScore:      86,
+		},
+		Questions: []ExamAttemptReviewQuestionItem{
+			{
+				QuestionID:        1001,
+				QuestionVersionID: 3001,
+				DisplayOrder:      1,
+				QuestionType:      "single_choice",
+				Score:             10,
+				Content: map[string]any{
+					"stem": map[string]any{"text": "1+1等于几？"},
+					"options": []any{
+						map[string]any{"key": "A", "text": "1"},
+						map[string]any{"key": "B", "text": "2"},
+					},
+				},
+				CorrectAnswer: map[string]any{"judge_mode": "by_option_key", "correct_keys": []any{"B"}},
+				StudentAnswer: map[string]any{"selected_keys": []any{"B"}},
+				IsAnswered:    true,
+				IsCorrect:     boolPtr(true),
+				AnswerScore:   10,
+			},
+		},
+	}
+
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/exam-attempt-review?attempt_id=8001", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[ExamAttemptReviewResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if body.Data.Summary.StudentName != "张三" || len(body.Data.Questions) != 1 {
+		t.Fatalf("body = %+v", body.Data)
+	}
+	if body.Data.Questions[0].DisplayOrder != 1 || body.Data.Questions[0].IsCorrect == nil || !*body.Data.Questions[0].IsCorrect {
+		t.Fatalf("question = %+v", body.Data.Questions[0])
+	}
+}
+
 func TestHandler_AdminCanViewTenantClassCourse(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -1634,6 +1700,8 @@ type memoryAnalyticsRepository struct {
 	examOverviewSummary                             ExamOverviewSummary
 	examOverviewStudents                            []ExamOverviewStudentItem
 	lastExamOverviewQuery                           ExamOverviewQuery
+	examAttemptReviewResult                         ExamAttemptReviewResult
+	lastExamAttemptReviewQuery                      ExamAttemptReviewQuery
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
@@ -1732,6 +1800,11 @@ func (repo *memoryAnalyticsRepository) GetExamOverviewSummary(_ context.Context,
 func (repo *memoryAnalyticsRepository) ListExamOverviewStudents(_ context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error) {
 	repo.lastExamOverviewQuery = query
 	return pageOf(repo.examOverviewStudents, query.Page, query.PageSize), nil
+}
+
+func (repo *memoryAnalyticsRepository) GetExamAttemptReview(_ context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {
+	repo.lastExamAttemptReviewQuery = query
+	return repo.examAttemptReviewResult, nil
 }
 
 func performAnalyticsRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {

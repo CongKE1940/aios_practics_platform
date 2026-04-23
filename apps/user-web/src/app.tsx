@@ -312,7 +312,8 @@ function isTeacherExamApi(api: UserPracticeApi | undefined): api is UserPractice
     typeof api?.getExam === "function" &&
     typeof api?.updateExam === "function" &&
     typeof api?.publishExam === "function" &&
-    typeof api?.getExamOverview === "function"
+    typeof api?.getExamOverview === "function" &&
+    typeof api?.getExamAttemptReview === "function"
   );
 }
 

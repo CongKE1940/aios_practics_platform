@@ -1131,6 +1131,21 @@ paths:
             default: 20
       responses:
         '200': { $ref: '#/components/responses/ExamOverviewOk' }
+  /analytics/exam-attempt-review:
+    get:
+      tags: [Analytics]
+      summary: 老师侧单个学生考试答卷明细
+      operationId: getExamAttemptReview
+      parameters:
+        - in: query
+          name: attempt_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 考试作答记录 ID。
+      responses:
+        '200': { $ref: '#/components/responses/ExamAttemptReviewOk' }
   /analytics/wrong-questions:
     get:
       tags: [Analytics]
@@ -1503,6 +1518,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamOverviewResponse'
+    ExamAttemptReviewOk:
+      description: 老师侧单个学生考试答卷明细
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptReviewResponse'
     StudentPracticeDetailOk:
       description: 老师侧学生学习详情
       content:
@@ -3075,6 +3096,96 @@ components:
               type: integer
             total:
               type: integer
+    ExamAttemptReviewSummary:
+      type: object
+      required: [attempt_id, exam_id, exam_name, student_user_id, student_name, attempt_status, objective_score, subjective_score, final_score]
+      properties:
+        attempt_id:
+          type: integer
+          format: int64
+        exam_id:
+          type: integer
+          format: int64
+        exam_name:
+          type: string
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+          nullable: true
+        class_name:
+          type: string
+          nullable: true
+        attempt_status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_at:
+          type: string
+          format: date-time
+          nullable: true
+        objective_score:
+          type: number
+          format: double
+        subjective_score:
+          type: number
+          format: double
+        final_score:
+          type: number
+          format: double
+    ExamAttemptReviewQuestionItem:
+      type: object
+      required: [question_id, question_version_id, display_order, question_type, score, content, correct_answer, is_answered, answer_score]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        score:
+          type: number
+          format: double
+        content:
+          type: object
+          additionalProperties: true
+        correct_answer:
+          type: object
+          additionalProperties: true
+        student_answer:
+          type: object
+          additionalProperties: true
+        is_answered:
+          type: boolean
+        is_correct:
+          type: boolean
+          nullable: true
+        answer_score:
+          type: number
+          format: double
+    ExamAttemptReviewResult:
+      type: object
+      required: [summary, questions]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExamAttemptReviewSummary'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptReviewQuestionItem'
     StudentPracticeSummary:
       type: object
       required: [student_user_id, student_name, class_id, class_name, course_id, course_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
@@ -3708,6 +3819,17 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/ExamOverviewResult'
+        request_id:
+          type: string
+    ExamAttemptReviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptReviewResult'
         request_id:
           type: string
     ClassCourseOptionsResponse:

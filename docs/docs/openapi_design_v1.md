@@ -2338,6 +2338,75 @@ QuestionAnswer:
 
 ---
 
+### GET `/api/v1/analytics/exam-attempt-review`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Query
+- `attempt_id`：必填，考试作答记录 ID。
+
+### 作用
+- 用于老师侧从成绩列表点进单个学生，查看这场考试的完整答卷。
+- 返回学生信息、考试得分摘要，以及按题展开的题干、标准答案、学生答案、判题结果和得分。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "attempt_id": 8001,
+      "exam_id": 901,
+      "exam_name": "期中测验",
+      "student_user_id": 7001,
+      "student_name": "张三",
+      "student_no": "S001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "attempt_status": "submitted",
+      "started_at": "2026-04-24T09:01:00+08:00",
+      "submit_at": "2026-04-24T09:48:00+08:00",
+      "objective_score": 86,
+      "subjective_score": 0,
+      "final_score": 86
+    },
+    "questions": [
+      {
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "question_type": "single_choice",
+        "score": 10,
+        "content": {
+          "stem": {"text": "1+1等于几？"},
+          "options": [
+            {"key": "A", "text": "1"},
+            {"key": "B", "text": "2"}
+          ]
+        },
+        "correct_answer": {
+          "judge_mode": "by_option_key",
+          "correct_keys": ["B"]
+        },
+        "student_answer": {
+          "selected_keys": ["B"]
+        },
+        "is_answered": true,
+        "is_correct": true,
+        "answer_score": 10
+      }
+    ]
+  },
+  "request_id": "req_exam_attempt_review_1"
+}
+```
+
+---
+
 ## 16.3 错题分析
 
 ### GET `/api/v1/analytics/wrong-questions`

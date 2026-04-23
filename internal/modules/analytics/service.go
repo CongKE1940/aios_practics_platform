@@ -56,6 +56,23 @@ func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query 
 	}, nil
 }
 
+func (service *Service) GetExamAttemptReview(ctx context.Context, scope Scope, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {
+	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+		return ExamAttemptReviewResult{}, ErrForbidden
+	}
+	if query.AttemptID <= 0 {
+		return ExamAttemptReviewResult{}, ErrInvalidInput
+	}
+	switch scope.UserType {
+	case "teacher", "sys_admin", "school_admin":
+	default:
+		return ExamAttemptReviewResult{}, ErrForbidden
+	}
+
+	query.TenantID = scope.TenantID
+	return service.repo.GetExamAttemptReview(ctx, query)
+}
+
 func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope, query ClassPracticeSummaryQuery) (ClassPracticeSummaryResult, error) {
 	if !containsPermission(scope.Permissions, "analytics:view") {
 		return ClassPracticeSummaryResult{}, ErrForbidden

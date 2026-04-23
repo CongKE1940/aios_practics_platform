@@ -13,6 +13,111 @@ import (
 
 const latestAnswerSQLPattern = `SELECT pa1\.session_question_id, pa1\.user_id, pa1\.is_correct, pa1\.answered_at.*SELECT session_question_id, user_id, MAX\(id\) AS max_id.*WHERE answered_at BETWEEN \? AND \?.*GROUP BY session_question_id, user_id`
 
+func TestMySQLRepositoryGetExamAttemptReviewReturnsSummaryAndQuestions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  ea.id AS attempt_id,
+  e.id AS exam_id,
+  e.name AS exam_name,
+  u.id AS student_user_id,
+  u.display_name AS student_name,
+  sp.student_no,
+  c.id AS class_id,
+  c.name AS class_name,
+  ea.status,
+  ea.start_at,
+  ea.submit_at,
+  ea.objective_score,
+  ea.subjective_score,
+  ea.final_score
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
+LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
+LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
+  AND scm.is_current = 1 AND scm.status = 'active'
+LEFT JOIN classes c ON c.id = scm.class_id AND c.tenant_id = scm.tenant_id
+WHERE ea.id = ? AND ea.tenant_id = ?
+LIMIT 1
+`)).
+		WithArgs(int64(8001), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"attempt_id", "exam_id", "exam_name", "student_user_id", "student_name", "student_no", "class_id", "class_name",
+			"status", "start_at", "submit_at", "objective_score", "subjective_score", "final_score",
+		}).AddRow(
+			int64(8001), int64(901), "期中测验", int64(501), "张三", "S001", int64(301), "七年级一班",
+			"submitted", time.Date(2026, 4, 24, 9, 1, 0, 0, time.UTC), time.Date(2026, 4, 24, 9, 48, 0, 0, time.UTC), 86.0, 0.0, 86.0,
+		))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT
+  epq.question_id,
+  epq.question_version_id,
+  epq.order_no,
+  q.question_type,
+  epq.score,
+  qv.content_json,
+  qv.answer_json,
+  eaa.answer_json,
+  eaa.is_correct,
+  eaa.score
+FROM exam_attempts ea
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN exam_attempt_answers eaa ON eaa.attempt_id = ea.id AND eaa.display_order = epq.order_no
+WHERE ea.id = ? AND ea.tenant_id = ?
+ORDER BY epq.order_no ASC
+`)).
+		WithArgs(int64(8001), int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "question_version_id", "order_no", "question_type", "score",
+			"content_json", "answer_json", "student_answer_json", "is_correct", "answer_score",
+		}).AddRow(
+			int64(1001),
+			int64(3001),
+			1,
+			"single_choice",
+			10.0,
+			`{"stem":{"text":"1+1等于几？"},"options":[{"key":"A","text":"1"},{"key":"B","text":"2"}]}`,
+			`{"judge_mode":"by_option_key","correct_keys":["B"]}`,
+			`{"selected_keys":["B"]}`,
+			true,
+			10.0,
+		))
+
+	result, err := repo.GetExamAttemptReview(context.Background(), ExamAttemptReviewQuery{
+		TenantID:  9,
+		AttemptID: 8001,
+	})
+	if err != nil {
+		t.Fatalf("GetExamAttemptReview() error = %v", err)
+	}
+	if result.Summary.StudentName != "张三" || result.Summary.ExamName != "期中测验" {
+		t.Fatalf("summary = %+v", result.Summary)
+	}
+	if len(result.Questions) != 1 {
+		t.Fatalf("questions len = %d, want 1", len(result.Questions))
+	}
+	if result.Questions[0].DisplayOrder != 1 || !result.Questions[0].IsAnswered {
+		t.Fatalf("question = %+v", result.Questions[0])
+	}
+	if result.Questions[0].IsCorrect == nil || !*result.Questions[0].IsCorrect {
+		t.Fatalf("question is_correct = %+v", result.Questions[0].IsCorrect)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryTeacherCanViewClassCourseUsesTenantAndCurrentAssignment(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

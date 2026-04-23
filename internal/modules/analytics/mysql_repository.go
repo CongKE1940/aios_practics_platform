@@ -243,6 +243,86 @@ LIMIT ? OFFSET ?
 	}, nil
 }
 
+func (repo *MySQLRepository) GetExamAttemptReview(ctx context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {
+	const summaryQuery = `
+SELECT
+  ea.id AS attempt_id,
+  e.id AS exam_id,
+  e.name AS exam_name,
+  u.id AS student_user_id,
+  u.display_name AS student_name,
+  sp.student_no,
+  c.id AS class_id,
+  c.name AS class_name,
+  ea.status,
+  ea.start_at,
+  ea.submit_at,
+  ea.objective_score,
+  ea.subjective_score,
+  ea.final_score
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
+LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
+LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
+  AND scm.is_current = 1 AND scm.status = 'active'
+LEFT JOIN classes c ON c.id = scm.class_id AND c.tenant_id = scm.tenant_id
+WHERE ea.id = ? AND ea.tenant_id = ?
+LIMIT 1
+`
+	row := repo.db.QueryRowContext(ctx, summaryQuery, query.AttemptID, query.TenantID)
+	summary, err := scanExamAttemptReviewSummary(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ExamAttemptReviewResult{}, ErrNotFound
+		}
+		return ExamAttemptReviewResult{}, err
+	}
+
+	const questionQuery = `
+SELECT
+  epq.question_id,
+  epq.question_version_id,
+  epq.order_no,
+  q.question_type,
+  epq.score,
+  qv.content_json,
+  qv.answer_json,
+  eaa.answer_json,
+  eaa.is_correct,
+  eaa.score
+FROM exam_attempts ea
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN exam_attempt_answers eaa ON eaa.attempt_id = ea.id AND eaa.display_order = epq.order_no
+WHERE ea.id = ? AND ea.tenant_id = ?
+ORDER BY epq.order_no ASC
+`
+	rows, err := repo.db.QueryContext(ctx, questionQuery, query.AttemptID, query.TenantID)
+	if err != nil {
+		return ExamAttemptReviewResult{}, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamAttemptReviewQuestionItem, 0)
+	for rows.Next() {
+		item, err := scanExamAttemptReviewQuestion(rows)
+		if err != nil {
+			return ExamAttemptReviewResult{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return ExamAttemptReviewResult{}, err
+	}
+
+	return ExamAttemptReviewResult{
+		Summary:   summary,
+		Questions: items,
+	}, nil
+}
+
 func (repo *MySQLRepository) ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error) {
 	const query = `
 SELECT c.id
@@ -1553,6 +1633,100 @@ func scanExamOverviewStudent(scanner interface{ Scan(dest ...any) error }) (Exam
 	}
 	if finalScore.Valid {
 		item.FinalScore = &finalScore.Float64
+	}
+	return item, nil
+}
+
+func scanExamAttemptReviewSummary(scanner interface{ Scan(dest ...any) error }) (ExamAttemptReviewSummary, error) {
+	var item ExamAttemptReviewSummary
+	var (
+		studentNo sql.NullString
+		classID   sql.NullInt64
+		className sql.NullString
+		startAt   sql.NullTime
+		submitAt  sql.NullTime
+	)
+	if err := scanner.Scan(
+		&item.AttemptID,
+		&item.ExamID,
+		&item.ExamName,
+		&item.StudentUserID,
+		&item.StudentName,
+		&studentNo,
+		&classID,
+		&className,
+		&item.AttemptStatus,
+		&startAt,
+		&submitAt,
+		&item.ObjectiveScore,
+		&item.SubjectiveScore,
+		&item.FinalScore,
+	); err != nil {
+		return ExamAttemptReviewSummary{}, err
+	}
+	if studentNo.Valid {
+		item.StudentNo = &studentNo.String
+	}
+	if classID.Valid {
+		item.ClassID = &classID.Int64
+	}
+	if className.Valid {
+		item.ClassName = &className.String
+	}
+	if startAt.Valid {
+		item.StartedAt = &startAt.Time
+	}
+	if submitAt.Valid {
+		item.SubmitAt = &submitAt.Time
+	}
+	return item, nil
+}
+
+func scanExamAttemptReviewQuestion(scanner interface{ Scan(dest ...any) error }) (ExamAttemptReviewQuestionItem, error) {
+	var item ExamAttemptReviewQuestionItem
+	var (
+		contentJSON []byte
+		correctJSON []byte
+		studentJSON []byte
+		isCorrect   sql.NullBool
+		answerScore sql.NullFloat64
+	)
+	if err := scanner.Scan(
+		&item.QuestionID,
+		&item.QuestionVersionID,
+		&item.DisplayOrder,
+		&item.QuestionType,
+		&item.Score,
+		&contentJSON,
+		&correctJSON,
+		&studentJSON,
+		&isCorrect,
+		&answerScore,
+	); err != nil {
+		return ExamAttemptReviewQuestionItem{}, err
+	}
+	var err error
+	item.Content, err = decodeJSONMap(contentJSON)
+	if err != nil {
+		return ExamAttemptReviewQuestionItem{}, err
+	}
+	item.CorrectAnswer, err = decodeJSONMap(correctJSON)
+	if err != nil {
+		return ExamAttemptReviewQuestionItem{}, err
+	}
+	if len(studentJSON) > 0 {
+		item.StudentAnswer, err = decodeJSONMap(studentJSON)
+		if err != nil {
+			return ExamAttemptReviewQuestionItem{}, err
+		}
+		item.IsAnswered = true
+	}
+	if isCorrect.Valid {
+		value := isCorrect.Bool
+		item.IsCorrect = &value
+	}
+	if answerScore.Valid {
+		item.AnswerScore = answerScore.Float64
 	}
 	return item, nil
 }

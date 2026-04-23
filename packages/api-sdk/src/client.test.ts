@@ -1398,6 +1398,64 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("GET");
   });
 
+  it("queries exam attempt review analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              attempt_id: 8001,
+              exam_id: 901,
+              exam_name: "期中测验",
+              student_user_id: 501,
+              student_name: "张三",
+              student_no: "S001",
+              class_name: "七年级一班",
+              attempt_status: "submitted",
+              objective_score: 86,
+              subjective_score: 0,
+              final_score: 86
+            },
+            questions: [
+              {
+                question_id: 1001,
+                question_version_id: 3001,
+                display_order: 1,
+                question_type: "single_choice",
+                score: 10,
+                content: {
+                  stem: { text: "1+1等于几？" }
+                },
+                correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+                student_answer: { selected_keys: ["B"] },
+                is_answered: true,
+                is_correct: true,
+                answer_score: 10
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getExamAttemptReview({ attempt_id: 8001 });
+    expect(result.summary.student_name).toBe("张三");
+    expect(result.questions[0].display_order).toBe(1);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/exam-attempt-review?attempt_id=8001");
+    expect(init?.method).toBe("GET");
+  });
+
   it("queries student practice detail analytics", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

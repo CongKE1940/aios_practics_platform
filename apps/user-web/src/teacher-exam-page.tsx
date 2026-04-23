@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import type {
   Exam,
+  ExamAttemptReviewResult,
   ExamDetail,
   ExamFixedQuestion,
   ExamInput,
@@ -18,6 +19,7 @@ export interface TeacherExamApi {
   updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
   getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
+  getExamAttemptReview(query: { attempt_id: number }): Promise<ExamAttemptReviewResult>;
 }
 
 interface TeacherExamPageProps {
@@ -41,9 +43,12 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [selectedExamDetail, setSelectedExamDetail] = useState<ExamDetail | null>(null);
   const [selectedExamOverview, setSelectedExamOverview] = useState<ExamOverviewResult | null>(null);
+  const [selectedAttemptReview, setSelectedAttemptReview] = useState<ExamAttemptReviewResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [attemptReviewLoading, setAttemptReviewLoading] = useState(false);
   const [overviewPage, setOverviewPage] = useState(1);
+  const [reviewQuestionIndex, setReviewQuestionIndex] = useState(0);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +90,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
         const updated = await api.updateExam(editingExamId, payload);
         setSelectedExamId(updated.id);
         setSelectedExamDetail(updated);
+        setSelectedAttemptReview(null);
         await loadExamOverview(updated.id, 1);
         setForm(buildFormFromDetail(updated));
         await loadExams(`草稿已更新：${updated.name}`);
@@ -92,6 +98,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
         const created = await api.createExam(payload);
         setSelectedExamId(created.id);
         setSelectedExamDetail(created);
+        setSelectedAttemptReview(null);
         await loadExamOverview(created.id, 1);
         setForm(defaultForm);
         setFormMode("create");
@@ -109,6 +116,8 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     setDetailLoading(true);
     setSelectedExamId(id);
     setOverviewPage(1);
+    setReviewQuestionIndex(0);
+    setSelectedAttemptReview(null);
     setMessage("正在加载考试详情...");
     try {
       const detail = await api.getExam(id);
@@ -128,6 +137,8 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     setDetailLoading(true);
     setSelectedExamId(id);
     setOverviewPage(1);
+    setReviewQuestionIndex(0);
+    setSelectedAttemptReview(null);
     setMessage("正在载入草稿...");
     try {
       const detail = await api.getExam(id);
@@ -151,6 +162,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       const published = await api.publishExam(id);
       if (selectedExamId === id) {
         setSelectedExamDetail(published);
+        setSelectedAttemptReview(null);
         await loadExamOverview(id, 1);
       }
       await loadExams(`考试已发布：${published.name}`);
@@ -179,6 +191,18 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       return;
     }
     await loadExamOverview(selectedExamId, nextPage);
+  }
+
+  async function handleLoadAttemptReview(attemptId: number) {
+    setAttemptReviewLoading(true);
+    setSelectedAttemptReview(null);
+    setReviewQuestionIndex(0);
+    try {
+      const result = await api.getExamAttemptReview({ attempt_id: attemptId });
+      setSelectedAttemptReview(result);
+    } finally {
+      setAttemptReviewLoading(false);
+    }
   }
 
   return (
@@ -369,6 +393,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                               <p>得分：{formatNullableScore(student.final_score)}</p>
                               <p>客观题：{formatNullableScore(student.objective_score)}</p>
                               <p>交卷时间：{formatTime(student.submit_at)}</p>
+                              {student.attempt_id ? <AttemptReviewButton attemptId={student.attempt_id} onOpen={handleLoadAttemptReview} /> : null}
                             </li>
                           ))}
                         </ul>
@@ -406,6 +431,45 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                 </>
               ) : !overviewLoading ? (
                 <p>考试统计暂不可用。</p>
+              ) : null}
+            </section>
+            <section aria-label="学生答卷区">
+              <h4>学生答卷</h4>
+              {attemptReviewLoading ? <p>正在加载答卷...</p> : null}
+              {!attemptReviewLoading && selectedAttemptReview ? (
+                <>
+                  <p>学生：{selectedAttemptReview.summary.student_name}</p>
+                  <p>学号：{selectedAttemptReview.summary.student_no ?? "-"}</p>
+                  <p>班级：{selectedAttemptReview.summary.class_name ?? "-"}</p>
+                  <p>状态：{formatAttemptStatus(selectedAttemptReview.summary.attempt_status)}</p>
+                  <p>得分：{formatScore(selectedAttemptReview.summary.final_score)}</p>
+                  <p>客观题：{formatScore(selectedAttemptReview.summary.objective_score)}</p>
+                  {selectedAttemptReview.questions.length > 0 ? (
+                    <>
+                      {selectedAttemptReview.questions.length > 1 ? (
+                        <nav aria-label="答卷题号导航">
+                          {selectedAttemptReview.questions.map((question, index) => (
+                            <button
+                              key={question.display_order}
+                              type="button"
+                              aria-pressed={index === reviewQuestionIndex}
+                              onClick={() => setReviewQuestionIndex(index)}
+                            >
+                              第 {question.display_order} 题
+                            </button>
+                          ))}
+                        </nav>
+                      ) : null}
+                      <AttemptReviewQuestionDetail
+                        question={selectedAttemptReview.questions[reviewQuestionIndex] ?? selectedAttemptReview.questions[0]}
+                      />
+                    </>
+                  ) : (
+                    <p>当前答卷暂无题目。</p>
+                  )}
+                </>
+              ) : !attemptReviewLoading ? (
+                <p>请在成绩列表中选择一名学生查看答卷。</p>
               ) : null}
             </section>
           </>
@@ -489,6 +553,48 @@ function buildExamPayload(form: typeof defaultForm): ExamInput | string {
     targets,
     paper_rules: paperRules
   };
+}
+
+function AttemptReviewQuestionDetail({
+  question
+}: {
+  question: ExamAttemptReviewResult["questions"][number];
+}) {
+  return (
+    <section aria-label="答卷按题查看">
+      <p>
+        第 {question.display_order} 题（{question.question_type}）
+      </p>
+      <p>题干：{extractStem(question.content)}</p>
+      {questionOptions(question.content, question.question_type).length > 0 ? (
+        <ul>
+          {questionOptions(question.content, question.question_type).map((option) => (
+            <li key={option.key}>
+              <p>
+                {option.key}. {option.text}
+                {isOptionSelected(question.student_answer, option.key) ? " / 学生已选" : ""}
+                {isOptionCorrect(question.correct_answer, option.key) ? " / 正确答案" : ""}
+              </p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p>学生答案：{formatAnswerText(question.student_answer)}</p>
+      <p>正确答案：{formatAnswerText(question.correct_answer)}</p>
+      <p>结果：{formatReviewResult(question)}</p>
+      <p>
+        得分：{formatScore(question.answer_score)} / {formatScore(question.score)}
+      </p>
+    </section>
+  );
+}
+
+function AttemptReviewButton({ attemptId, onOpen }: { attemptId: number; onOpen(attemptId: number): Promise<void> }) {
+  return (
+    <button type="button" onClick={() => void onOpen(attemptId)}>
+      查看答卷
+    </button>
+  );
 }
 
 function parseTargets(value: string): ExamTarget[] {
@@ -640,4 +746,77 @@ function formatAttemptStatus(value: string): string {
     return "未开始";
   }
   return value;
+}
+
+function extractStem(content: Record<string, unknown>): string {
+  const stem = content.stem;
+  if (typeof stem !== "object" || stem === null) {
+    return "-";
+  }
+  const text = (stem as { text?: unknown }).text;
+  return typeof text === "string" && text.trim() !== "" ? text : "-";
+}
+
+function questionOptions(content: Record<string, unknown>, questionType: string): Array<{ key: string; text: string }> {
+  const options = Array.isArray(content.options) ? content.options : [];
+  if (options.length > 0) {
+    return options.map((option) => {
+      const typed = option as { key?: unknown; text?: unknown };
+      return {
+        key: typeof typed.key === "string" ? typed.key : "",
+        text: typeof typed.text === "string" ? typed.text : ""
+      };
+    });
+  }
+  if (questionType === "true_false") {
+    return [
+      { key: "true", text: "正确" },
+      { key: "false", text: "错误" }
+    ];
+  }
+  return [];
+}
+
+function formatAnswerText(answer?: Record<string, unknown>): string {
+  if (!answer) {
+    return "-";
+  }
+  const selected = answer.selected_keys;
+  if (Array.isArray(selected)) {
+    return selected.join(",");
+  }
+  const correct = answer.correct_keys;
+  if (Array.isArray(correct)) {
+    return correct.join(",");
+  }
+  if (typeof answer.value === "boolean") {
+    return answer.value ? "正确" : "错误";
+  }
+  if (typeof answer.correct_value === "boolean") {
+    return answer.correct_value ? "正确" : "错误";
+  }
+  return "-";
+}
+
+function isOptionSelected(answer: Record<string, unknown> | undefined, key: string): boolean {
+  const selected = answer?.selected_keys;
+  return Array.isArray(selected) && selected.includes(key);
+}
+
+function isOptionCorrect(answer: Record<string, unknown> | undefined, key: string): boolean {
+  const correct = answer?.correct_keys;
+  return Array.isArray(correct) && correct.includes(key);
+}
+
+function formatReviewResult(question: ExamAttemptReviewResult["questions"][number]): string {
+  if (!question.is_answered) {
+    return "未作答";
+  }
+  if (question.is_correct === true) {
+    return "正确";
+  }
+  if (question.is_correct === false) {
+    return "错误";
+  }
+  return "已作答";
 }

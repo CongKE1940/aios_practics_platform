@@ -266,6 +266,20 @@ describe("UserApp", () => {
               page_size: 20,
               total: 0
             }
+          }),
+          getExamAttemptReview: async () => ({
+            summary: {
+              attempt_id: 8001,
+              exam_id: 1,
+              exam_name: "期中测验",
+              student_user_id: 501,
+              student_name: "张三",
+              attempt_status: "submitted",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            questions: []
           })
         }}
         sessionStore={createSessionStore(teacherSession)}

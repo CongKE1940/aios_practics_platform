@@ -106,6 +106,7 @@ export interface ApiClient {
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
   getExamOverview(query: ExamOverviewQuery): Promise<ExamOverviewResult>;
+  getExamAttemptReview(query: ExamAttemptReviewQuery): Promise<ExamAttemptReviewResult>;
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
   getStudentPracticeDetail(query: StudentPracticeDetailQuery): Promise<StudentPracticeDetailResult>;
   getStudentPracticeSessionDetail(query: StudentPracticeSessionDetailQuery): Promise<StudentPracticeSessionDetailResult>;
@@ -550,6 +551,42 @@ export interface ExamOverviewStudentItem {
 export interface ExamOverviewResult {
   summary: ExamOverviewSummary;
   students: PageResult<ExamOverviewStudentItem>;
+}
+
+export interface ExamAttemptReviewSummary {
+  attempt_id: number;
+  exam_id: number;
+  exam_name: string;
+  student_user_id: number;
+  student_name: string;
+  student_no?: string | null;
+  class_id?: number | null;
+  class_name?: string | null;
+  attempt_status: string;
+  started_at?: string | null;
+  submit_at?: string | null;
+  objective_score: number;
+  subjective_score: number;
+  final_score: number;
+}
+
+export interface ExamAttemptReviewQuestionItem {
+  question_id: number;
+  question_version_id: number;
+  display_order: number;
+  question_type: string;
+  score: number;
+  content: Record<string, unknown>;
+  correct_answer: Record<string, unknown>;
+  student_answer?: Record<string, unknown>;
+  is_answered: boolean;
+  is_correct?: boolean | null;
+  answer_score: number;
+}
+
+export interface ExamAttemptReviewResult {
+  summary: ExamAttemptReviewSummary;
+  questions: ExamAttemptReviewQuestionItem[];
 }
 
 export type StudentPracticeDetailTab = "sessions" | "wrong" | "confused";
@@ -1124,6 +1161,10 @@ export interface ExamOverviewQuery {
   page_size?: number;
 }
 
+export interface ExamAttemptReviewQuery {
+  attempt_id: number;
+}
+
 export interface StudentPracticeDetailQuery {
   class_id: number;
   course_id: number;
@@ -1280,6 +1321,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
     getExamOverview: (query) =>
       request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
+    getExamAttemptReview: (query) =>
+      request(fetcher, options, buildPath("/analytics/exam-attempt-review", query), { method: "GET" }),
     getClassPracticeSummary: (query) =>
       request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
     getStudentPracticeDetail: (query) =>
