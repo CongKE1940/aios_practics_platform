@@ -7,6 +7,7 @@ import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-typ
 import { MenuNav } from "./menu-nav";
 import { LoginPage } from "./login-page";
 import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
+import { StudentLearningDetailPage, type StudentLearningDetailApi } from "./student-learning-detail-page";
 import { PracticePanel, type PracticePanelApi } from "./practice-panel";
 import {
   PracticeHistoryPage,
@@ -18,7 +19,7 @@ import {
 
 interface UserAppProps {
   authApi?: UserAuthApi;
-  practiceApi?: PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>;
+  practiceApi?: PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>;
   sessionStore?: UserSessionStore;
 }
 
@@ -30,6 +31,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   const [pendingPracticeSession, setPendingPracticeSession] = useState<PracticeSessionDetail | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const selectedRoute = getRoutePath(selectedPath);
 
   function handleUnauthorized() {
     store.clear();
@@ -40,7 +42,9 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     setErrorMessage("登录已失效，请重新登录");
   }
 
-  const currentPracticeApi = useMemo<(PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined>(() => {
+  const currentPracticeApi = useMemo<
+    (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>) | undefined
+  >(() => {
     if (practiceApi) {
       return wrapUnauthorizedApi(practiceApi, handleUnauthorized);
     }
@@ -146,15 +150,22 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
           <p>当前账号暂无可用功能</p>
         ) : (
           <>
-            {selectedPath === "/app/courses" ? <h2>我的课程</h2> : null}
-            {selectedPath === "/app/class-learning" ? (
+            {selectedRoute === "/app/courses" ? <h2>我的课程</h2> : null}
+            {selectedRoute.startsWith("/app/class-learning/student") ? (
+              currentPracticeApi && isStudentLearningDetailApi(currentPracticeApi) ? (
+                <StudentLearningDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
+              ) : (
+                <p>当前学生学习详情功能暂不可用。</p>
+              )
+            ) : null}
+            {selectedRoute === "/app/class-learning" ? (
               currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
-                <ClassLearningPage api={currentPracticeApi} />
+                <ClassLearningPage api={currentPracticeApi} onNavigate={setSelectedPath} />
               ) : (
                 <p>当前班级学习功能暂不可用。</p>
               )
             ) : null}
-            {selectedPath === "/app/practice" && currentPracticeApi ? (
+            {selectedRoute === "/app/practice" && currentPracticeApi ? (
               <PracticePanel
                 api={currentPracticeApi}
                 initialSession={pendingPracticeSession}
@@ -162,25 +173,25 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
                 onFinished={(summary) => setSelectedPath(`/app/practice/results/${summary.id}`)}
               />
             ) : null}
-            {selectedPath.startsWith("/app/practice/results/") && currentPracticeApi ? (
+            {selectedRoute.startsWith("/app/practice/results/") && currentPracticeApi ? (
               <PracticeResultPage
                 api={currentPracticeApi}
-                sessionId={getSessionId(selectedPath)}
+                sessionId={getSessionId(selectedRoute)}
                 onNavigate={setSelectedPath}
                 onPracticeCreated={setPendingPracticeSession}
               />
             ) : null}
-            {selectedPath === "/app/practice/history" && currentPracticeApi ? (
+            {selectedRoute === "/app/practice/history" && currentPracticeApi ? (
               <PracticeHistoryPage api={currentPracticeApi} onNavigate={setSelectedPath} />
             ) : null}
-            {selectedPath.startsWith("/app/practice/history/") && currentPracticeApi ? (
+            {selectedRoute.startsWith("/app/practice/history/") && currentPracticeApi ? (
               <PracticeSessionDetailPage
                 api={currentPracticeApi}
-                sessionId={getSessionId(selectedPath)}
+                sessionId={getSessionId(selectedRoute)}
                 onNavigate={setSelectedPath}
               />
             ) : null}
-            {selectedPath === "/app/practice/wrong" && currentPracticeApi ? (
+            {selectedRoute === "/app/practice/wrong" && currentPracticeApi ? (
               <PracticeStateListPage
                 api={currentPracticeApi}
                 stateType="wrong"
@@ -188,7 +199,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
                 onPracticeCreated={setPendingPracticeSession}
               />
             ) : null}
-            {selectedPath === "/app/practice/mastered" && currentPracticeApi ? (
+            {selectedRoute === "/app/practice/mastered" && currentPracticeApi ? (
               <PracticeStateListPage
                 api={currentPracticeApi}
                 stateType="mastered"
@@ -196,7 +207,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
                 onPracticeCreated={setPendingPracticeSession}
               />
             ) : null}
-            {selectedPath === "/app/practice/confused" && currentPracticeApi ? (
+            {selectedRoute === "/app/practice/confused" && currentPracticeApi ? (
               <PracticeStateListPage
                 api={currentPracticeApi}
                 stateType="confused"
@@ -216,10 +227,24 @@ function getSessionId(path: string): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function getRoutePath(path: string): string {
+  return path.split("?")[0];
+}
+
 function isClassLearningApi(
-  api: (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined
-): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi {
+  api:
+    | (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>)
+    | undefined
+): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi & Partial<StudentLearningDetailApi> {
   return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
+}
+
+function isStudentLearningDetailApi(
+  api:
+    | (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>)
+    | undefined
+): api is PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & StudentLearningDetailApi {
+  return typeof api?.getStudentPracticeDetail === "function";
 }
 
 function wrapUnauthorizedApi<T extends object>(api: T, onUnauthorized: () => void): T {

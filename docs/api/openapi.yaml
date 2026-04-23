@@ -1141,6 +1141,73 @@ paths:
             default: 20
       responses:
         '200': { $ref: '#/components/responses/ClassPracticeSummaryOk' }
+  /analytics/student-practice-detail:
+    get:
+      tags: [Analytics]
+      summary: 老师侧学生学习详情
+      operationId: getStudentPracticeDetail
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: student_user_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 学生用户 ID。
+        - in: query
+          name: tab
+          required: false
+          schema:
+            type: string
+            enum: [sessions, wrong, confused]
+          description: 当前展示的标签页，默认 sessions。
+        - in: query
+          name: start_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计开始时间，RFC3339 格式。
+        - in: query
+          name: end_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计结束时间，RFC3339 格式。
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: 当前分页页码。
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: 当前分页大小。
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeDetailOk' }
   /audit-logs:
     get:
       tags: [Audit]
@@ -1282,6 +1349,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ClassPracticeSummaryResponse'
+    StudentPracticeDetailOk:
+      description: 老师侧学生学习详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeDetailResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -2356,6 +2429,165 @@ components:
               type: integer
             total:
               type: integer
+    StudentPracticeSummary:
+      type: object
+      required: [student_user_id, student_name, class_id, class_name, course_id, course_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
+      properties:
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+        session_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        wrong_question_count:
+          type: integer
+        confused_question_count:
+          type: integer
+        last_practiced_at:
+          type: string
+          format: date-time
+          nullable: true
+    StudentPracticeSessionItem:
+      type: object
+      required: [session_id, status, total_count, answered_count, correct_count, wrong_count, accuracy]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        total_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+    StudentPracticeQuestionItem:
+      type: object
+      required: [question_id, question_version_id, question_type, stem, practice_wrong_count, is_confused, last_result]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        question_type:
+          type: string
+        stem:
+          type: string
+        practice_wrong_count:
+          type: integer
+        last_wrong_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_confused:
+          type: boolean
+        confused_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_result:
+          type: string
+    StudentPracticeDetailResult:
+      type: object
+      required: [student_summary, active_tab, sessions, wrong_questions, confused_questions]
+      properties:
+        student_summary:
+          $ref: '#/components/schemas/StudentPracticeSummary'
+        active_tab:
+          type: string
+          enum: [sessions, wrong, confused]
+        sessions:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentPracticeSessionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        wrong_questions:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentPracticeQuestionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        confused_questions:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentPracticeQuestionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+    StudentPracticeDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeDetailResult'
+        request_id:
+          type: string
     QuestionBankResponse:
       type: object
       properties:

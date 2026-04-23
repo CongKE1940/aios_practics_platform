@@ -2314,6 +2314,92 @@ QuestionAnswer:
 
 ---
 
+## 16.6 老师侧学生学习详情
+
+### GET `/api/v1/analytics/student-practice-detail`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能查看当前任课班级课程下的学生学习详情。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围查看学生学习详情。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `tab`：可选，`sessions` / `wrong` / `confused`，默认 `sessions`。
+- `start_at`：可选，统计开始时间，RFC3339 格式。
+- `end_at`：可选，统计结束时间，RFC3339 格式。
+- `page`：可选，当前标签页分页页码，默认 1。
+- `page_size`：可选，当前标签页分页大小，默认 20，最大 100。
+
+### 说明
+- `student_summary` 返回该学生在当前班级课程下的总览指标。
+- `sessions`、`wrong_questions`、`confused_questions` 均采用分页结构，前端根据 `tab` 选择其中一个分页列表展示。
+- `active_tab` 用于回显当前激活标签页，便于前端和后端在切换时保持一致。
+- `teacher` 访问时，后端应复用班级课程任课关系校验，避免越权查看同班其他课程或其他班级学生数据。
+- `sys_admin` 和 `school_admin` 仍需受租户边界限制，不得跨租户读取学生数据。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "student_summary": {
+      "student_user_id": 501,
+      "student_name": "张三",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学",
+      "session_count": 3,
+      "answered_count": 18,
+      "correct_count": 12,
+      "wrong_count": 6,
+      "accuracy": 0.67,
+      "wrong_question_count": 2,
+      "confused_question_count": 1
+    },
+    "active_tab": "wrong",
+    "sessions": {
+      "items": [],
+      "page": 1,
+      "page_size": 20,
+      "total": 0
+    },
+    "wrong_questions": {
+      "items": [
+        {
+          "question_id": 1001,
+          "question_version_id": 3001,
+          "question_type": "single_choice",
+          "stem": "1+1等于几？",
+          "practice_wrong_count": 2,
+          "last_wrong_at": "2026-04-22T09:15:00+08:00",
+          "is_confused": false,
+          "confused_at": null,
+          "last_result": "wrong"
+        }
+      ],
+      "page": 1,
+      "page_size": 20,
+      "total": 2
+    },
+    "confused_questions": {
+      "items": [],
+      "page": 1,
+      "page_size": 20,
+      "total": 0
+    }
+  },
+  "request_id": "req_analytics_student_1"
+}
+```
+
+---
+
 ## 17. 审计接口（可选开放）
 
 ## 17.1 审计日志列表

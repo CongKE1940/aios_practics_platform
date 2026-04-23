@@ -94,12 +94,85 @@ type ClassCourseOptionsResult struct {
 	Items []ClassCourseOption `json:"items"`
 }
 
+const (
+	StudentDetailTabSessions = "sessions"
+	StudentDetailTabWrong    = "wrong"
+	StudentDetailTabConfused = "confused"
+)
+
+type StudentPracticeDetailQuery struct {
+	TenantID       int64
+	ClassID        int64
+	CourseID       int64
+	StudentUserID  int64
+	Tab            string
+	StartAt        *time.Time
+	EndAt          *time.Time
+	Page           int
+	PageSize       int
+}
+
+type StudentPracticeSummary struct {
+	StudentUserID         int64      `json:"student_user_id"`
+	StudentName           string     `json:"student_name"`
+	StudentNo             *string    `json:"student_no,omitempty"`
+	ClassID               int64      `json:"class_id"`
+	ClassName             string     `json:"class_name"`
+	CourseID              int64      `json:"course_id"`
+	CourseName            string     `json:"course_name"`
+	SessionCount          int        `json:"session_count"`
+	AnsweredCount         int        `json:"answered_count"`
+	CorrectCount          int        `json:"correct_count"`
+	WrongCount            int        `json:"wrong_count"`
+	Accuracy              float64    `json:"accuracy"`
+	WrongQuestionCount    int        `json:"wrong_question_count"`
+	ConfusedQuestionCount int        `json:"confused_question_count"`
+	LastPracticedAt       *time.Time `json:"last_practiced_at,omitempty"`
+}
+
+type StudentPracticeSessionItem struct {
+	SessionID     int64      `json:"session_id"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	FinishedAt    *time.Time `json:"finished_at,omitempty"`
+	Status        string     `json:"status"`
+	TotalCount    int        `json:"total_count"`
+	AnsweredCount int        `json:"answered_count"`
+	CorrectCount  int        `json:"correct_count"`
+	WrongCount    int        `json:"wrong_count"`
+	Accuracy      float64    `json:"accuracy"`
+}
+
+type StudentPracticeQuestionItem struct {
+	QuestionID         int64      `json:"question_id"`
+	QuestionVersionID  int64      `json:"question_version_id"`
+	QuestionType       string     `json:"question_type"`
+	Stem               string     `json:"stem"`
+	PracticeWrongCount int        `json:"practice_wrong_count"`
+	LastWrongAt        *time.Time `json:"last_wrong_at,omitempty"`
+	IsConfused         bool       `json:"is_confused"`
+	ConfusedAt         *time.Time `json:"confused_at,omitempty"`
+	LastResult         string     `json:"last_result"`
+}
+
+type StudentPracticeDetailResult struct {
+	StudentSummary    StudentPracticeSummary                  `json:"student_summary"`
+	ActiveTab         string                                  `json:"active_tab"`
+	Sessions          PageResult[StudentPracticeSessionItem]  `json:"sessions"`
+	WrongQuestions    PageResult[StudentPracticeQuestionItem] `json:"wrong_questions"`
+	ConfusedQuestions PageResult[StudentPracticeQuestionItem] `json:"confused_questions"`
+}
+
 type Repository interface {
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
 	GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error)
 	ListClassPracticeStudents(ctx context.Context, query ClassPracticeSummaryQuery) (PageResult[ClassPracticeStudentItem], error)
 	ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error)
+	StudentBelongsToClass(ctx context.Context, tenantID int64, classID int64, studentUserID int64) (bool, error)
+	GetStudentPracticeSummary(ctx context.Context, query StudentPracticeDetailQuery) (StudentPracticeSummary, error)
+	ListStudentPracticeSessions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeSessionItem], error)
+	ListStudentWrongQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
+	ListStudentConfusedQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {
@@ -132,6 +205,15 @@ func normalizePageSize(pageSize int) int {
 		return 100
 	}
 	return pageSize
+}
+
+func emptyPageResult[T any](page int, pageSize int) PageResult[T] {
+	return PageResult[T]{
+		Items:    []T{},
+		Page:     normalizePage(page),
+		PageSize: normalizePageSize(pageSize),
+		Total:    0,
+	}
 }
 
 func containsPermission(permissions []string, target string) bool {

@@ -383,6 +383,114 @@ describe("UserApp", () => {
     });
   });
 
+  it("navigates to student learning detail page from class learning result list", async () => {
+    const getStudentPracticeDetail = vi.fn(async () => ({
+      student_summary: {
+        student_user_id: 7,
+        student_name: "李同学",
+        student_no: "stu_007",
+        class_id: 301,
+        class_name: "七年级一班",
+        course_id: 10,
+        course_name: "数学",
+        session_count: 2,
+        answered_count: 12,
+        correct_count: 9,
+        wrong_count: 3,
+        accuracy: 0.75,
+        wrong_question_count: 2,
+        confused_question_count: 1,
+        last_practiced_at: "2026-04-22T10:00:00+08:00"
+      },
+      active_tab: "sessions" as const,
+      sessions: { items: [], page: 1, page_size: 20, total: 0 },
+      wrong_questions: { items: [], page: 1, page_size: 20, total: 0 },
+      confused_questions: { items: [], page: 1, page_size: 20, total: 0 }
+    }));
+
+    render(
+      <UserApp
+        authApi={createAuthApiMock()}
+        practiceApi={{
+          ...createPracticeApiMock(),
+          listClassCourseOptions: async () => ({
+            items: [
+              {
+                class_id: 301,
+                class_name: "七年级一班",
+                courses: [{ course_id: 10, course_name: "数学" }]
+              }
+            ]
+          }),
+          getClassPracticeSummary: async () => ({
+            summary: {
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学",
+              student_count: 1,
+              participated_student_count: 1,
+              session_count: 2,
+              answered_count: 12,
+              correct_count: 9,
+              wrong_count: 3,
+              accuracy: 0.75,
+              wrong_question_count: 2,
+              confused_question_count: 1,
+              last_practiced_at: "2026-04-22T10:00:00+08:00"
+            },
+            students: {
+              items: [
+                {
+                  student_id: 7,
+                  student_name: "李同学",
+                  student_no: "stu_007",
+                  session_count: 2,
+                  answered_count: 12,
+                  correct_count: 9,
+                  wrong_count: 3,
+                  accuracy: 0.75,
+                  wrong_question_count: 2,
+                  confused_question_count: 1,
+                  last_practiced_at: "2026-04-22T10:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          getStudentPracticeDetail
+        }}
+        sessionStore={createSessionStore(
+          createSession([{ id: 23, name: "班级学习", path: "/app/class-learning", children: [] }])
+        )}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "班级学习" }));
+    await waitFor(() => {
+      expect(screen.getByText("当前已选：七年级一班 / 数学")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查询班级学习" }));
+    await waitFor(() => expect(screen.getByText("李同学", { selector: "p" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(getStudentPracticeDetail).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "返回" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "班级学习" })).toBeTruthy();
+      expect(screen.getByText("当前已选：七年级一班 / 数学")).toBeTruthy();
+    });
+  });
+
   it("keeps legacy class learning callers from crashing when course options are unavailable", async () => {
     render(
       <UserApp

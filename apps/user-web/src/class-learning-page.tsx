@@ -13,6 +13,7 @@ export interface ClassLearningApi {
 
 interface ClassLearningPageProps {
   api: ClassLearningApi;
+  onNavigate?(path: string): void;
 }
 
 interface SelectedClassCourse {
@@ -27,7 +28,7 @@ const defaultForm = {
   endDate: ""
 };
 
-export function ClassLearningPage({ api }: ClassLearningPageProps) {
+export function ClassLearningPage({ api, onNavigate }: ClassLearningPageProps) {
   const [form, setForm] = useState(defaultForm);
   const [result, setResult] = useState<ClassPracticeSummaryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -162,7 +163,14 @@ export function ClassLearningPage({ api }: ClassLearningPageProps) {
 
       {message ? <p>{message}</p> : null}
       {loading ? <p>正在刷新...</p> : null}
-      {result ? <ClassLearningResult result={result} /> : null}
+      {result ? (
+        <ClassLearningResult
+          result={result}
+          onNavigate={onNavigate}
+          start_at={toStartAt(form.startDate)}
+          end_at={toEndAt(form.endDate)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -224,7 +232,17 @@ function ClassCourseSelector({
   );
 }
 
-function ClassLearningResult({ result }: { result: ClassPracticeSummaryResult }) {
+function ClassLearningResult({
+  result,
+  onNavigate,
+  start_at,
+  end_at
+}: {
+  result: ClassPracticeSummaryResult;
+  onNavigate?: (path: string) => void;
+  start_at?: string;
+  end_at?: string;
+}) {
   const summary = result.summary;
   return (
     <>
@@ -257,6 +275,28 @@ function ClassLearningResult({ result }: { result: ClassPracticeSummaryResult })
                   错题 {student.wrong_question_count}，疑惑 {student.confused_question_count}
                 </p>
                 <p>最近练习：{formatTime(student.last_practiced_at)}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!onNavigate) {
+                      return;
+                    }
+                    const params = new URLSearchParams();
+                    params.set("class_id", String(summary.class_id));
+                    params.set("course_id", String(summary.course_id));
+                    params.set("student_user_id", String(student.student_id));
+                    params.set("tab", "sessions");
+                    if (start_at) {
+                      params.set("start_at", start_at);
+                    }
+                    if (end_at) {
+                      params.set("end_at", end_at);
+                    }
+                    onNavigate(`/app/class-learning/student?${params.toString()}`);
+                  }}
+                >
+                  查看详情
+                </button>
               </li>
             ))}
           </ul>

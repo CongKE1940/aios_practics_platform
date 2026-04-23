@@ -17,6 +17,9 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope, query ClassPracticeSummaryQuery) (ClassPracticeSummaryResult, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return ClassPracticeSummaryResult{}, ErrForbidden
+	}
 	if query.ClassID <= 0 || query.CourseID <= 0 {
 		return ClassPracticeSummaryResult{}, ErrInvalidInput
 	}
@@ -36,17 +39,15 @@ func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope
 	query.StartAt = &startAt
 	query.EndAt = &endAt
 
-	exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
-	if err != nil {
-		return ClassPracticeSummaryResult{}, err
-	}
-	if !exists {
-		return ClassPracticeSummaryResult{}, ErrNotFound
-	}
-
 	switch scope.UserType {
 	case "sys_admin", "school_admin":
-		// 学校/系统管理员可直接查看当前租户范围的数据。
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return ClassPracticeSummaryResult{}, err
+		}
+		if !exists {
+			return ClassPracticeSummaryResult{}, ErrNotFound
+		}
 	case "teacher":
 		allowed, err := service.repo.TeacherCanViewClassCourse(ctx, query.TenantID, scope.UserID, query.ClassID, query.CourseID)
 		if err != nil {
@@ -54,6 +55,13 @@ func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope
 		}
 		if !allowed {
 			return ClassPracticeSummaryResult{}, ErrForbidden
+		}
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return ClassPracticeSummaryResult{}, err
+		}
+		if !exists {
+			return ClassPracticeSummaryResult{}, ErrNotFound
 		}
 	default:
 		return ClassPracticeSummaryResult{}, ErrForbidden
@@ -85,6 +93,101 @@ func (service *Service) ListClassCourseOptions(ctx context.Context, scope Scope)
 	default:
 		return nil, ErrForbidden
 	}
+}
+
+func (service *Service) GetStudentPracticeDetail(ctx context.Context, scope Scope, query StudentPracticeDetailQuery) (StudentPracticeDetailResult, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return StudentPracticeDetailResult{}, ErrForbidden
+	}
+	if query.ClassID <= 0 || query.CourseID <= 0 || query.StudentUserID <= 0 {
+		return StudentPracticeDetailResult{}, ErrInvalidInput
+	}
+
+	query.TenantID = scope.TenantID
+	if query.Tab == "" {
+		query.Tab = StudentDetailTabSessions
+	}
+	switch query.Tab {
+	case StudentDetailTabSessions, StudentDetailTabWrong, StudentDetailTabConfused:
+	default:
+		return StudentPracticeDetailResult{}, ErrInvalidInput
+	}
+	query.Page = normalizePage(query.Page)
+	query.PageSize = normalizePageSize(query.PageSize)
+
+	now := service.now
+	if now == nil {
+		now = time.Now
+	}
+	startAt, endAt, err := normalizeTimeRange(now(), query.StartAt, query.EndAt)
+	if err != nil {
+		return StudentPracticeDetailResult{}, err
+	}
+	query.StartAt = &startAt
+	query.EndAt = &endAt
+
+	switch scope.UserType {
+	case "sys_admin", "school_admin":
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeDetailResult{}, err
+		}
+		if !exists {
+			return StudentPracticeDetailResult{}, ErrNotFound
+		}
+	case "teacher":
+		allowed, err := service.repo.TeacherCanViewClassCourse(ctx, query.TenantID, scope.UserID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeDetailResult{}, err
+		}
+		if !allowed {
+			return StudentPracticeDetailResult{}, ErrForbidden
+		}
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeDetailResult{}, err
+		}
+		if !exists {
+			return StudentPracticeDetailResult{}, ErrNotFound
+		}
+	default:
+		return StudentPracticeDetailResult{}, ErrForbidden
+	}
+
+	belongs, err := service.repo.StudentBelongsToClass(ctx, query.TenantID, query.ClassID, query.StudentUserID)
+	if err != nil {
+		return StudentPracticeDetailResult{}, err
+	}
+	if !belongs {
+		return StudentPracticeDetailResult{}, ErrNotFound
+	}
+
+	summary, err := service.repo.GetStudentPracticeSummary(ctx, query)
+	if err != nil {
+		return StudentPracticeDetailResult{}, err
+	}
+
+	result := StudentPracticeDetailResult{
+		StudentSummary:    summary,
+		ActiveTab:         query.Tab,
+		Sessions:          emptyPageResult[StudentPracticeSessionItem](query.Page, query.PageSize),
+		WrongQuestions:    emptyPageResult[StudentPracticeQuestionItem](query.Page, query.PageSize),
+		ConfusedQuestions: emptyPageResult[StudentPracticeQuestionItem](query.Page, query.PageSize),
+	}
+
+	switch query.Tab {
+	case StudentDetailTabSessions:
+		result.Sessions, err = service.repo.ListStudentPracticeSessions(ctx, query)
+	case StudentDetailTabWrong:
+		result.WrongQuestions, err = service.repo.ListStudentWrongQuestions(ctx, query)
+	case StudentDetailTabConfused:
+		result.ConfusedQuestions, err = service.repo.ListStudentConfusedQuestions(ctx, query)
+	}
+	if err != nil {
+		return StudentPracticeDetailResult{}, err
+	}
+
+	return result, nil
 }
 
 func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (time.Time, time.Time, error) {

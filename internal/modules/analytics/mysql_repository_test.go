@@ -10,6 +10,8 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 )
 
+const latestAnswerSQLPattern = `SELECT pa1\.session_question_id, pa1\.user_id, pa1\.is_correct, pa1\.answered_at.*SELECT session_question_id, user_id, MAX\(id\) AS max_id.*WHERE answered_at BETWEEN \? AND \?.*GROUP BY session_question_id, user_id`
+
 func TestMySQLRepositoryTeacherCanViewClassCourseUsesTenantAndCurrentAssignment(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -267,7 +269,7 @@ func TestMySQLRepositoryGetClassPracticeSummaryUsesAnswerWindowAndAnswerTimePrio
 		WillReturnRows(sqlmock.NewRows([]string{"class_id", "class_name", "course_id", "course_name", "student_count"}).
 			AddRow(int64(101), "一班", int64(12), "数学", 2))
 
-	mock.ExpectQuery(`(?s)SELECT COUNT\(DISTINCT participated\.student_id\).*UNION.*practice_answers pa`).
+	mock.ExpectQuery(`(?s)SELECT COUNT\(DISTINCT participated\.student_id\).*UNION.*`+latestAnswerSQLPattern).
 		WithArgs(int64(12), startAt, endAt, int64(7), int64(101), int64(12), startAt, endAt, int64(7), int64(101)).
 		WillReturnRows(sqlmock.NewRows([]string{"participated_student_count"}).AddRow(2))
 
@@ -275,7 +277,7 @@ func TestMySQLRepositoryGetClassPracticeSummaryUsesAnswerWindowAndAnswerTimePrio
 		WithArgs(int64(12), startAt, endAt, int64(7), int64(101)).
 		WillReturnRows(sqlmock.NewRows([]string{"session_count", "last_session_started_at"}).AddRow(1, endAt))
 
-	mock.ExpectQuery(`(?s)SELECT\s+COUNT\(pa\.id\) AS answered_count,.*MAX\(pa\.answered_at\) AS last_answered_at.*FROM student_class_memberships scm`).
+	mock.ExpectQuery(`(?s)SELECT\s+COUNT\(pa\.session_question_id\) AS answered_count,.*MAX\(pa\.answered_at\) AS last_answered_at.*FROM student_class_memberships scm.*`+latestAnswerSQLPattern).
 		WithArgs(int64(12), startAt, endAt, int64(7), int64(101)).
 		WillReturnRows(sqlmock.NewRows([]string{"answered_count", "correct_count", "wrong_count", "last_answered_at"}).
 			AddRow(3, 2, 1, startAt))
@@ -328,7 +330,7 @@ WHERE scm.tenant_id = ? AND scm.class_id = ?
 		WithArgs(int64(7), int64(101)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
-	mock.ExpectQuery(`(?s)SELECT\s+scm\.student_id,.*last_answered_at,.*last_session_started_at,.*JOIN questions q ON q\.id = qbq\.question_id.*FROM student_class_memberships scm.*ORDER BY u\.display_name ASC, scm\.student_id ASC\s+LIMIT \? OFFSET \?`).
+	mock.ExpectQuery(`(?s)SELECT\s+scm\.student_id,.*`+latestAnswerSQLPattern+`.*last_answered_at,.*last_session_started_at,.*JOIN questions q ON q\.id = qbq\.question_id.*FROM student_class_memberships scm.*ORDER BY u\.display_name ASC, scm\.student_id ASC\s+LIMIT \? OFFSET \?`).
 		WithArgs(
 			int64(12), startAt, endAt,
 			startAt, endAt, int64(12),
@@ -378,6 +380,262 @@ WHERE scm.tenant_id = ? AND scm.class_id = ?
 	}
 	if result.Items[1].LastPracticedAt == nil || !result.Items[1].LastPracticedAt.Equal(startAt) {
 		t.Fatalf("student last_practiced_at = %+v", result.Items[1].LastPracticedAt)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryStudentBelongsToClassUsesCurrentMembership(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+
+	mock.ExpectQuery(`(?s)SELECT\s+1\s+FROM student_class_memberships scm.*scm\.tenant_id = \?.*scm\.class_id = \?.*scm\.student_id = \?.*scm\.is_current = 1 AND scm\.status = 'active'.*LIMIT 1`).
+		WithArgs(int64(7), int64(101), int64(7001)).
+		WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+
+	ok, err := repo.StudentBelongsToClass(context.Background(), 7, 101, 7001)
+	if err != nil {
+		t.Fatalf("StudentBelongsToClass() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("StudentBelongsToClass() = false, want true")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryStudentBelongsToClassMapsMissingRowsToFalse(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+
+	mock.ExpectQuery(`(?s)SELECT\s+1\s+FROM student_class_memberships scm.*scm\.tenant_id = \?.*scm\.class_id = \?.*scm\.student_id = \?.*scm\.is_current = 1 AND scm\.status = 'active'.*LIMIT 1`).
+		WithArgs(int64(7), int64(101), int64(7001)).
+		WillReturnError(sql.ErrNoRows)
+
+	ok, err := repo.StudentBelongsToClass(context.Background(), 7, 101, 7001)
+	if err != nil {
+		t.Fatalf("StudentBelongsToClass() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("StudentBelongsToClass() = true, want false")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryGetStudentPracticeSummary(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startAt := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	endAt := time.Date(2026, 4, 22, 23, 59, 59, 0, time.UTC)
+
+	mock.ExpectQuery(`(?s)SELECT\s+u\.id AS student_user_id,.*co\.name AS course_name.*FROM student_class_memberships scm.*WHERE scm\.tenant_id = \?.*scm\.class_id = \?.*scm\.student_id = \?.*co\.id = \?.*LIMIT 1`).
+		WithArgs(int64(7), int64(101), int64(7001), int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"student_user_id", "student_name", "student_no", "class_id", "class_name", "course_id", "course_name",
+		}).AddRow(int64(7001), "张三", "S001", int64(101), "一班", int64(12), "数学"))
+
+	mock.ExpectQuery(`(?s)SELECT COUNT\(DISTINCT ps\.id\), MAX\(ps\.started_at\).*FROM practice_sessions ps.*ps\.tenant_id = \?.*ps\.user_id = \?.*ps\.course_id = \?.*ps\.started_at BETWEEN \? AND \?.*student_class_memberships scm`).
+		WithArgs(int64(7), int64(7001), int64(12), startAt, endAt, int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_count", "last_session_started_at"}).AddRow(2, endAt))
+
+	mock.ExpectQuery(`(?s)SELECT\s+COUNT\(pa\.session_question_id\) AS answered_count,.*MAX\(pa\.answered_at\) AS last_answered_at.*FROM practice_sessions ps.*`+latestAnswerSQLPattern+`.*pa\.user_id = \?.*student_class_memberships scm`).
+		WithArgs(startAt, endAt, int64(7001), int64(7), int64(7001), int64(12), int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"answered_count", "correct_count", "wrong_count", "last_answered_at"}).
+			AddRow(5, 4, 1, startAt))
+
+	mock.ExpectQuery(`(?s)SELECT\s+COUNT\(DISTINCT CASE WHEN uqs\.practice_wrong_count > 0 THEN uqs\.question_id END\).*FROM user_question_states uqs.*uqs\.tenant_id = \?.*uqs\.user_id = \?.*JOIN questions q ON q\.id = qbq\.question_id.*qb\.course_id = \?`).
+		WithArgs(int64(7), int64(7001), int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"wrong_question_count", "confused_question_count"}).AddRow(2, 1))
+
+	result, err := repo.GetStudentPracticeSummary(context.Background(), StudentPracticeDetailQuery{
+		TenantID:      7,
+		ClassID:       101,
+		CourseID:      12,
+		StudentUserID: 7001,
+		StartAt:       &startAt,
+		EndAt:         &endAt,
+	})
+	if err != nil {
+		t.Fatalf("GetStudentPracticeSummary() error = %v", err)
+	}
+	if result.StudentUserID != 7001 || result.StudentName != "张三" || result.CourseID != 12 {
+		t.Fatalf("summary identity = %+v", result)
+	}
+	if result.SessionCount != 2 || result.AnsweredCount != 5 || result.CorrectCount != 4 || result.WrongCount != 1 {
+		t.Fatalf("summary counts = %+v", result)
+	}
+	if result.Accuracy != 0.8 {
+		t.Fatalf("accuracy = %v", result.Accuracy)
+	}
+	if result.LastPracticedAt == nil || !result.LastPracticedAt.Equal(startAt) {
+		t.Fatalf("last_practiced_at = %+v", result.LastPracticedAt)
+	}
+	if result.StudentNo == nil || *result.StudentNo != "S001" {
+		t.Fatalf("student_no = %+v", result.StudentNo)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryListStudentPracticeSessions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startAt := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	endAt := time.Date(2026, 4, 22, 23, 59, 59, 0, time.UTC)
+
+	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\).*FROM practice_sessions ps.*ps\.tenant_id = \?.*ps\.user_id = \?.*ps\.course_id = \?.*ps\.started_at BETWEEN \? AND \?.*student_class_memberships scm.*scm\.class_id = \?`).
+		WithArgs(int64(7), int64(7001), int64(12), startAt, endAt, int64(101)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectQuery(`(?s)SELECT\s+ps\.id AS session_id,.*COUNT\(DISTINCT psq\.id\) AS total_count,.*COUNT\(pa\.session_question_id\) AS answered_count,.*FROM practice_sessions ps.*LEFT JOIN practice_session_questions psq.*`+latestAnswerSQLPattern+`.*student_class_memberships scm.*ORDER BY COALESCE\(MAX\(pa\.answered_at\), ps\.started_at\) DESC, ps\.id DESC\s+LIMIT \? OFFSET \?`).
+		WithArgs(startAt, endAt, int64(7001), int64(7), int64(7001), int64(12), startAt, endAt, int64(101), 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"session_id", "started_at", "finished_at", "status", "total_count", "answered_count", "correct_count", "wrong_count",
+		}).AddRow(int64(9001), startAt, endAt, "completed", 10, 8, 6, 2))
+
+	result, err := repo.ListStudentPracticeSessions(context.Background(), StudentPracticeDetailQuery{
+		TenantID:      7,
+		ClassID:       101,
+		CourseID:      12,
+		StudentUserID: 7001,
+		Tab:           StudentDetailTabSessions,
+		StartAt:       &startAt,
+		EndAt:         &endAt,
+		Page:          1,
+		PageSize:      20,
+	})
+	if err != nil {
+		t.Fatalf("ListStudentPracticeSessions() error = %v", err)
+	}
+	if result.Total != 1 || len(result.Items) != 1 {
+		t.Fatalf("result total/items = %d/%d", result.Total, len(result.Items))
+	}
+	if result.Items[0].SessionID != 9001 || result.Items[0].Accuracy != 0.75 {
+		t.Fatalf("session item = %+v", result.Items[0])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryListStudentPracticeWrongQuestions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startAt := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	endAt := time.Date(2026, 4, 22, 23, 59, 59, 0, time.UTC)
+
+	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\).*FROM user_question_states uqs.*uqs\.tenant_id = \?.*uqs\.user_id = \?.*student_class_memberships scm.*JOIN questions q ON q\.id = qbq\.question_id.*q\.status = 'active'.*q\.deleted_at IS NULL.*qb\.course_id = \?.*uqs\.practice_wrong_count > 0.*uqs\.last_wrong_at BETWEEN \? AND \?`).
+		WithArgs(int64(7), int64(7001), int64(101), int64(12), startAt, endAt).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectQuery(`(?s)SELECT\s+uqs\.question_id,.*JSON_UNQUOTE\(JSON_EXTRACT\(qv\.content_json, '\$\.stem\.text'\)\) AS stem,.*uqs\.practice_wrong_count,.*FROM user_question_states uqs.*JOIN questions q ON q\.id = uqs\.question_id.*q\.status = 'active'.*q\.deleted_at IS NULL.*JOIN question_versions qv ON qv\.id = uqs\.question_version_id.*uqs\.practice_wrong_count > 0.*uqs\.last_wrong_at BETWEEN \? AND \?.*ORDER BY uqs\.last_wrong_at DESC, uqs\.question_id DESC\s+LIMIT \? OFFSET \?`).
+		WithArgs(int64(7), int64(7001), int64(101), int64(12), startAt, endAt, 10, 10).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "question_version_id", "question_type", "stem", "practice_wrong_count", "last_wrong_at", "is_confused", "confused_at", "last_result",
+		}).AddRow(int64(501), int64(3001), "single_choice", "1+1=?", 2, time.Date(2026, 4, 20, 8, 0, 0, 0, time.UTC), false, nil, "wrong"))
+
+	result, err := repo.ListStudentWrongQuestions(context.Background(), StudentPracticeDetailQuery{
+		TenantID:      7,
+		ClassID:       101,
+		CourseID:      12,
+		StudentUserID: 7001,
+		Tab:           StudentDetailTabWrong,
+		StartAt:       &startAt,
+		EndAt:         &endAt,
+		Page:          2,
+		PageSize:      10,
+	})
+	if err != nil {
+		t.Fatalf("ListStudentWrongQuestions() error = %v", err)
+	}
+	if result.Total != 1 || len(result.Items) != 1 {
+		t.Fatalf("result total/items = %d/%d", result.Total, len(result.Items))
+	}
+	if result.Items[0].QuestionID != 501 || result.Items[0].PracticeWrongCount != 2 || result.Items[0].Stem != "1+1=?" {
+		t.Fatalf("wrong item = %+v", result.Items[0])
+	}
+	if result.Items[0].IsConfused {
+		t.Fatalf("is_confused = true, want false")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryListStudentPracticeConfusedQuestions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startAt := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	endAt := time.Date(2026, 4, 22, 23, 59, 59, 0, time.UTC)
+	confusedAt := time.Date(2026, 4, 21, 9, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\).*FROM user_question_states uqs.*uqs\.tenant_id = \?.*uqs\.user_id = \?.*student_class_memberships scm.*JOIN questions q ON q\.id = qbq\.question_id.*q\.status = 'active'.*q\.deleted_at IS NULL.*qb\.course_id = \?.*uqs\.is_confused = 1.*uqs\.confused_at BETWEEN \? AND \?`).
+		WithArgs(int64(7), int64(7001), int64(101), int64(12), startAt, endAt).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+
+	mock.ExpectQuery(`(?s)SELECT\s+uqs\.question_id,.*JSON_UNQUOTE\(JSON_EXTRACT\(qv\.content_json, '\$\.stem\.text'\)\) AS stem,.*uqs\.is_confused,.*FROM user_question_states uqs.*JOIN questions q ON q\.id = uqs\.question_id.*q\.status = 'active'.*q\.deleted_at IS NULL.*JOIN question_versions qv ON qv\.id = uqs\.question_version_id.*uqs\.is_confused = 1.*uqs\.confused_at BETWEEN \? AND \?.*ORDER BY uqs\.confused_at DESC, uqs\.question_id DESC\s+LIMIT \? OFFSET \?`).
+		WithArgs(int64(7), int64(7001), int64(101), int64(12), startAt, endAt, 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"question_id", "question_version_id", "question_type", "stem", "practice_wrong_count", "last_wrong_at", "is_confused", "confused_at", "last_result",
+		}).AddRow(int64(601), int64(3002), "short_answer", "解释公式", 0, nil, true, confusedAt, "wrong"))
+
+	result, err := repo.ListStudentConfusedQuestions(context.Background(), StudentPracticeDetailQuery{
+		TenantID:      7,
+		ClassID:       101,
+		CourseID:      12,
+		StudentUserID: 7001,
+		Tab:           StudentDetailTabConfused,
+		StartAt:       &startAt,
+		EndAt:         &endAt,
+		Page:          1,
+		PageSize:      20,
+	})
+	if err != nil {
+		t.Fatalf("ListStudentConfusedQuestions() error = %v", err)
+	}
+	if result.Total != 1 || len(result.Items) != 1 {
+		t.Fatalf("result total/items = %d/%d", result.Total, len(result.Items))
+	}
+	if result.Items[0].QuestionID != 601 || !result.Items[0].IsConfused || result.Items[0].Stem != "解释公式" {
+		t.Fatalf("confused item = %+v", result.Items[0])
+	}
+	if result.Items[0].ConfusedAt == nil || !result.Items[0].ConfusedAt.Equal(confusedAt) {
+		t.Fatalf("confused_at = %+v", result.Items[0].ConfusedAt)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet() error = %v", err)

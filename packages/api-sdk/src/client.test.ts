@@ -1282,6 +1282,119 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("GET");
   });
 
+  it("queries student practice detail analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            student_summary: {
+              student_user_id: 501,
+              student_name: "张三",
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学",
+              session_count: 3,
+              answered_count: 18,
+              correct_count: 12,
+              wrong_count: 6,
+              accuracy: 0.67,
+              wrong_question_count: 2,
+              confused_question_count: 1
+            },
+            active_tab: "wrong",
+            sessions: {
+              items: [
+                {
+                  session_id: 9001,
+                  started_at: "2026-04-22T09:00:00+08:00",
+                  finished_at: "2026-04-22T09:20:00+08:00",
+                  status: "finished",
+                  total_count: 10,
+                  answered_count: 10,
+                  correct_count: 8,
+                  wrong_count: 2,
+                  accuracy: 0.8
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            },
+            wrong_questions: {
+              items: [
+                {
+                  question_id: 1001,
+                  question_version_id: 3001,
+                  question_type: "single_choice",
+                  stem: "1+1等于几？",
+                  practice_wrong_count: 2,
+                  last_wrong_at: "2026-04-22T09:15:00+08:00",
+                  is_confused: false,
+                  confused_at: null,
+                  last_result: "wrong"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 2
+            },
+            confused_questions: {
+              items: [
+                {
+                  question_id: 1002,
+                  question_version_id: 3002,
+                  question_type: "single_choice",
+                  stem: "2+2等于几？",
+                  practice_wrong_count: 1,
+                  last_wrong_at: null,
+                  is_confused: true,
+                  confused_at: "2026-04-22T09:16:00+08:00",
+                  last_result: "confused"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getStudentPracticeDetail({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      tab: "wrong",
+      page: 1,
+      page_size: 20
+    });
+
+    expect(result.student_summary.student_user_id).toBe(501);
+    expect(result.student_summary.student_name).toBe("张三");
+    expect(result.student_summary.class_name).toBe("七年级一班");
+    expect(result.student_summary.course_name).toBe("数学");
+    expect(result.active_tab).toBe("wrong");
+    expect(result.wrong_questions.items[0].question_id).toBe(1001);
+    expect(result.wrong_questions.items[0].practice_wrong_count).toBe(2);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/student-practice-detail?class_id=301&course_id=10&student_user_id=501&tab=wrong&page=1&page_size=20"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
   it("queries class course options analytics", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

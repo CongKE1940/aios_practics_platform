@@ -30,6 +30,7 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/class-practice-summary", handler.getClassPracticeSummary)
 	router.GET("/analytics/class-course-options", handler.listClassCourseOptions)
+	router.GET("/analytics/student-practice-detail", handler.getStudentPracticeDetail)
 }
 
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -61,6 +62,24 @@ func (handler *Handler) listClassCourseOptions(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, response.Success(ClassCourseOptionsResult{Items: items}, requestID(ctx)))
+}
+
+func (handler *Handler) getStudentPracticeDetail(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	query, ok := parseStudentPracticeDetailQuery(ctx)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.GetStudentPracticeDetail(ctx.Request.Context(), scope, query)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
 func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
@@ -110,6 +129,39 @@ func parseClassPracticeSummaryQuery(ctx *gin.Context) (ClassPracticeSummaryQuery
 		EndAt:    endAt,
 		Page:     parseInt(ctx.Query("page")),
 		PageSize: parseInt(ctx.Query("page_size")),
+	}, true
+}
+
+func parseStudentPracticeDetailQuery(ctx *gin.Context) (StudentPracticeDetailQuery, bool) {
+	classID, ok := parsePositiveInt64(ctx.Query("class_id"))
+	if !ok {
+		return StudentPracticeDetailQuery{}, false
+	}
+	courseID, ok := parsePositiveInt64(ctx.Query("course_id"))
+	if !ok {
+		return StudentPracticeDetailQuery{}, false
+	}
+	studentUserID, ok := parsePositiveInt64(ctx.Query("student_user_id"))
+	if !ok {
+		return StudentPracticeDetailQuery{}, false
+	}
+	startAt, ok := parseOptionalTime(ctx.Query("start_at"))
+	if !ok {
+		return StudentPracticeDetailQuery{}, false
+	}
+	endAt, ok := parseOptionalTime(ctx.Query("end_at"))
+	if !ok {
+		return StudentPracticeDetailQuery{}, false
+	}
+	return StudentPracticeDetailQuery{
+		ClassID:       classID,
+		CourseID:      courseID,
+		StudentUserID: studentUserID,
+		Tab:           strings.TrimSpace(ctx.Query("tab")),
+		StartAt:       startAt,
+		EndAt:         endAt,
+		Page:          parseInt(ctx.Query("page")),
+		PageSize:      parseInt(ctx.Query("page_size")),
 	}, true
 }
 
