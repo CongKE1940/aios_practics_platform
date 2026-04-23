@@ -31,6 +31,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/exams", handler.createExam)
 	router.GET("/exams/:id", handler.getExam)
 	router.PUT("/exams/:id", handler.updateExam)
+	router.POST("/exams/:id/publish", handler.publishExam)
 }
 
 func (handler *Handler) listExams(ctx *gin.Context) {
@@ -103,6 +104,22 @@ func (handler *Handler) updateExam(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.UpdateExam(ctx.Request.Context(), scope, id, input)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) publishExam(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.PublishExam(ctx.Request.Context(), scope, id)
 	if err != nil {
 		writeExamError(ctx, err)
 		return

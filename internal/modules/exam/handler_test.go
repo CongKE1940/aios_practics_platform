@@ -311,6 +311,132 @@ func TestHandler_UpdatePublishedExamReturnsForbidden(t *testing.T) {
 	}
 }
 
+func TestHandler_PublishFixedExamSuccess(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created, err := repo.CreateExam(context.Background(), Scope{TenantID: 1, UserID: 7}, ExamInput{
+		Name:            "待发布考试",
+		ExamMode:        ExamModeFixed,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 1001},
+		},
+		FixedQuestions: []ExamFixedQuestionInput{
+			{QuestionID: 91, QuestionVersionID: 191, Score: 10, DisplayOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
+	}
+
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(created.ID, 10)+"/publish", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var payload examEnvelope[ExamDetail]
+	decodeExamBody(t, rec, &payload)
+	if payload.Data.Status != ExamStatusPublished {
+		t.Fatalf("status = %q", payload.Data.Status)
+	}
+}
+
+func TestHandler_PublishFixedExamWithoutQuestionsReturnsBadRequest(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created, err := repo.CreateExam(context.Background(), Scope{TenantID: 1, UserID: 7}, ExamInput{
+		Name:            "空题考试",
+		ExamMode:        ExamModeFixed,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 1001},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
+	}
+
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(created.ID, 10)+"/publish", nil, "token")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_PublishPublishedExamReturnsForbidden(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created, err := repo.CreateExam(context.Background(), Scope{TenantID: 1, UserID: 7}, ExamInput{
+		Name:            "已发布考试",
+		ExamMode:        ExamModeFixed,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 1001},
+		},
+		FixedQuestions: []ExamFixedQuestionInput{
+			{QuestionID: 91, QuestionVersionID: 191, Score: 10, DisplayOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
+	}
+	current := repo.items[created.ID]
+	current.Status = ExamStatusPublished
+	repo.items[created.ID] = current
+
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(created.ID, 10)+"/publish", nil, "token")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandler_ListExamsRequiresAuthorization(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -452,6 +578,22 @@ func (repo *memoryExamRepository) UpdateExam(_ context.Context, scope Scope, id 
 			CreatedAt:         current.CreatedAt,
 		})
 	}
+	repo.items[id] = current
+	return current, nil
+}
+
+func (repo *memoryExamRepository) PublishExam(_ context.Context, scope Scope, id int64) (ExamDetail, error) {
+	current, ok := repo.items[id]
+	if !ok || current.TenantID != scope.TenantID {
+		return ExamDetail{}, ErrNotFound
+	}
+	if current.Status != ExamStatusDraft {
+		return ExamDetail{}, ErrForbidden
+	}
+	if current.ExamMode != ExamModeFixed || len(current.FixedQuestions) == 0 {
+		return ExamDetail{}, ErrInvalidInput
+	}
+	current.Status = ExamStatusPublished
 	repo.items[id] = current
 	return current, nil
 }

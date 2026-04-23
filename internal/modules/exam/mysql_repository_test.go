@@ -293,6 +293,63 @@ ORDER BY display_order ASC, id ASC
 	}
 }
 
+func TestMySQLRepositoryPublishFixedExamCreatesPaperAndMarksPublished(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startTime := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	endTime := startTime.Add(2 * time.Hour)
+	createdAt := startTime.Add(-time.Hour)
+	updatedAt := createdAt.Add(time.Minute)
+
+	expectExamDetailQueries(mock, 301, 9, "待发布考试", ExamStatusDraft, startTime, endTime, 90, createdAt, updatedAt, []ExamTarget{}, []ExamFixedQuestion{
+		{QuestionID: 21, QuestionVersionID: 121, Score: 12, DisplayOrder: 1, CreatedAt: createdAt},
+		{QuestionID: 22, QuestionVersionID: 122, Score: 18, DisplayOrder: 2, CreatedAt: createdAt},
+	})
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`
+INSERT INTO exam_papers (exam_id, paper_type, paper_name, total_score)
+VALUES (?, ?, ?, ?)
+`)).
+		WithArgs(int64(301), ExamPaperTypeFixed, "待发布考试", "30.00").
+		WillReturnResult(sqlmock.NewResult(701, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`
+INSERT INTO exam_paper_questions (paper_id, question_id, question_version_id, score, order_no)
+VALUES (?, ?, ?, ?, ?)
+`)).
+		WithArgs(int64(701), int64(21), int64(121), "12.00", 1).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`
+INSERT INTO exam_paper_questions (paper_id, question_id, question_version_id, score, order_no)
+VALUES (?, ?, ?, ?, ?)
+`)).
+		WithArgs(int64(701), int64(22), int64(122), "18.00", 2).
+		WillReturnResult(sqlmock.NewResult(2, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exams SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?`)).
+		WithArgs(ExamStatusPublished, int64(301), int64(9), ExamStatusDraft).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectExamDetailQueries(mock, 301, 9, "待发布考试", ExamStatusPublished, startTime, endTime, 90, createdAt, updatedAt, []ExamTarget{}, []ExamFixedQuestion{
+		{QuestionID: 21, QuestionVersionID: 121, Score: 12, DisplayOrder: 1, CreatedAt: createdAt},
+		{QuestionID: 22, QuestionVersionID: 122, Score: 18, DisplayOrder: 2, CreatedAt: createdAt},
+	})
+
+	result, err := repo.PublishExam(context.Background(), Scope{TenantID: 9}, 301)
+	if err != nil {
+		t.Fatalf("PublishExam() error = %v", err)
+	}
+	if result.Status != ExamStatusPublished {
+		t.Fatalf("status = %q", result.Status)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryListExamsReturnsExplicitErrorWhenDBMissing(t *testing.T) {
 	var repo *MySQLRepository
 
@@ -303,4 +360,53 @@ func TestMySQLRepositoryListExamsReturnsExplicitErrorWhenDBMissing(t *testing.T)
 	if len(result.Items) != 0 || result.Total != 0 {
 		t.Fatalf("result = %+v", result)
 	}
+}
+
+func expectExamDetailQueries(
+	mock sqlmock.Sqlmock,
+	examID int64,
+	tenantID int64,
+	name string,
+	status string,
+	startTime time.Time,
+	endTime time.Time,
+	durationMinutes int,
+	createdAt time.Time,
+	updatedAt time.Time,
+	targets []ExamTarget,
+	fixedQuestions []ExamFixedQuestion,
+) {
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at
+FROM exams
+WHERE id = ? AND tenant_id = ?
+LIMIT 1
+`)).
+		WithArgs(examID, tenantID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at"}).
+			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "fixed", status, startTime, endTime, durationMinutes, createdAt, updatedAt))
+	targetRows := sqlmock.NewRows([]string{"target_type", "target_id", "created_at"})
+	for _, target := range targets {
+		targetRows.AddRow(target.TargetType, target.TargetID, target.CreatedAt)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT target_type, target_id, created_at
+FROM exam_targets
+WHERE exam_id = ?
+ORDER BY id ASC
+`)).
+		WithArgs(examID).
+		WillReturnRows(targetRows)
+	questionRows := sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"})
+	for _, question := range fixedQuestions {
+		questionRows.AddRow(question.QuestionID, question.QuestionVersionID, formatExamScore(question.Score), question.DisplayOrder, question.CreatedAt)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT question_id, question_version_id, score, display_order, created_at
+FROM exam_fixed_question_drafts
+WHERE exam_id = ?
+ORDER BY display_order ASC, id ASC
+`)).
+		WithArgs(examID).
+		WillReturnRows(questionRows)
 }

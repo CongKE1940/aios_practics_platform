@@ -178,6 +178,59 @@ WHERE id = ? AND tenant_id = ?
 	return repo.GetExam(ctx, scope, id)
 }
 
+func (repo *MySQLRepository) PublishExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamDetail{}, ErrRepositoryUnavailable
+	}
+	current, err := repo.GetExam(ctx, scope, id)
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	if current.Status != ExamStatusDraft {
+		return ExamDetail{}, ErrForbidden
+	}
+	if current.ExamMode != ExamModeFixed || len(current.FixedQuestions) == 0 {
+		return ExamDetail{}, ErrInvalidInput
+	}
+
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	defer tx.Rollback()
+
+	const paperQuery = `
+INSERT INTO exam_papers (exam_id, paper_type, paper_name, total_score)
+VALUES (?, ?, ?, ?)
+`
+	result, err := tx.ExecContext(ctx, paperQuery, id, ExamPaperTypeFixed, current.Name, formatExamScore(totalPublishedScore(current.FixedQuestions)))
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	paperID, err := result.LastInsertId()
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	if err := repo.insertPaperQuestions(ctx, tx, paperID, current.FixedQuestions); err != nil {
+		return ExamDetail{}, err
+	}
+	statusResult, err := tx.ExecContext(ctx, `UPDATE exams SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?`, ExamStatusPublished, id, scope.TenantID, ExamStatusDraft)
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	rowsAffected, err := statusResult.RowsAffected()
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	if rowsAffected == 0 {
+		return ExamDetail{}, ErrForbidden
+	}
+	if err := tx.Commit(); err != nil {
+		return ExamDetail{}, err
+	}
+	return repo.GetExam(ctx, scope, id)
+}
+
 func (repo *MySQLRepository) replaceTargets(ctx context.Context, tx *sql.Tx, examID int64, targets []ExamTargetInput) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM exam_targets WHERE exam_id = ?`, examID); err != nil {
 		return err
@@ -212,6 +265,19 @@ VALUES (?, ?, ?, ?, ?)
 `
 	for _, item := range fixedQuestions {
 		if _, err := tx.ExecContext(ctx, query, examID, item.QuestionID, item.QuestionVersionID, formatExamScore(item.Score), item.DisplayOrder); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (repo *MySQLRepository) insertPaperQuestions(ctx context.Context, tx *sql.Tx, paperID int64, fixedQuestions []ExamFixedQuestion) error {
+	const query = `
+INSERT INTO exam_paper_questions (paper_id, question_id, question_version_id, score, order_no)
+VALUES (?, ?, ?, ?, ?)
+`
+	for _, item := range fixedQuestions {
+		if _, err := tx.ExecContext(ctx, query, paperID, item.QuestionID, item.QuestionVersionID, formatExamScore(item.Score), item.DisplayOrder); err != nil {
 			return err
 		}
 	}
@@ -310,6 +376,14 @@ func wrapExamNotFound(err error) error {
 }
 
 func totalScore(items []ExamFixedQuestionInput) float64 {
+	total := 0.0
+	for _, item := range items {
+		total += item.Score
+	}
+	return total
+}
+
+func totalPublishedScore(items []ExamFixedQuestion) float64 {
 	total := 0.0
 	for _, item := range items {
 		total += item.Score

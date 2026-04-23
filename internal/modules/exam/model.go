@@ -14,10 +14,13 @@ const (
 
 	OwnerOrgTypeSchool = "school"
 
-	ExamStatusDraft = "draft"
+	ExamStatusDraft     = "draft"
+	ExamStatusPublished = "published"
 
 	ExamModeFixed  = "fixed"
 	ExamModeRandom = "random_assembly"
+
+	ExamPaperTypeFixed = "fixed"
 
 	TargetTypeClass  = "class"
 	TargetTypeCourse = "course"
@@ -113,6 +116,7 @@ type Repository interface {
 	CreateExam(ctx context.Context, scope Scope, input ExamInput) (ExamDetail, error)
 	GetExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
 	UpdateExam(ctx context.Context, scope Scope, id int64, input ExamInput) (ExamDetail, error)
+	PublishExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

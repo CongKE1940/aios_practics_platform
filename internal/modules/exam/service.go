@@ -69,6 +69,19 @@ func (service *Service) UpdateExam(ctx context.Context, scope Scope, id int64, i
 	return service.repo.UpdateExam(ctx, scope, id, normalized)
 }
 
+func (service *Service) PublishExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamDetail{}, ErrRepositoryUnavailable
+	}
+	if !containsPermission(scope.Permissions, "exam:publish") {
+		return ExamDetail{}, ErrForbidden
+	}
+	if id <= 0 {
+		return ExamDetail{}, ErrInvalidInput
+	}
+	return service.repo.PublishExam(ctx, scope, id)
+}
+
 func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.ExamMode = strings.TrimSpace(strings.ToLower(input.ExamMode))
