@@ -1129,8 +1129,68 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - in: query
+          name: attempt_status
+          required: false
+          schema:
+            type: string
+            enum: [not_started, in_progress, submitted]
+          description: 作答状态筛选；不传表示全部，submitted 包含超时交卷。
+        - in: query
+          name: review_status
+          required: false
+          schema:
+            type: string
+            enum: [pending, reviewed]
+          description: 批阅状态筛选；pending 表示仍有待人工批阅主观题，reviewed 表示无需批阅或已完成批阅。
+        - in: query
+          name: keyword
+          required: false
+          schema:
+            type: string
+          description: 按学生姓名或学号模糊搜索。
       responses:
         '200': { $ref: '#/components/responses/ExamOverviewOk' }
+  /analytics/exam-overview-export:
+    get:
+      tags: [Analytics]
+      summary: 导出考试成绩明细 CSV
+      operationId: exportExamOverview
+      parameters:
+        - in: query
+          name: exam_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 考试 ID。
+        - in: query
+          name: attempt_status
+          required: false
+          schema:
+            type: string
+            enum: [not_started, in_progress, submitted]
+          description: 作答状态筛选；与考试概览列表保持一致。
+        - in: query
+          name: review_status
+          required: false
+          schema:
+            type: string
+            enum: [pending, reviewed]
+          description: 批阅状态筛选；与考试概览列表保持一致。
+        - in: query
+          name: keyword
+          required: false
+          schema:
+            type: string
+          description: 按学生姓名或学号模糊搜索。
+      responses:
+        '200':
+          description: CSV 文件内容。
+          content:
+            text/csv:
+              schema:
+                type: string
   /analytics/exam-attempt-review:
     get:
       tags: [Analytics]
@@ -3056,7 +3116,7 @@ components:
           format: double
     ExamOverviewStudentItem:
       type: object
-      required: [student_user_id, student_name, attempt_status]
+      required: [student_user_id, student_name, attempt_status, review_status]
       properties:
         student_user_id:
           type: integer
@@ -3079,6 +3139,9 @@ components:
           nullable: true
         attempt_status:
           type: string
+        review_status:
+          type: string
+          description: not_started 表示未开考，not_ready 表示尚未交卷，pending 表示待人工批阅，reviewed 表示已完成或无需批阅。
         started_at:
           type: string
           format: date-time
@@ -3088,6 +3151,10 @@ components:
           format: date-time
           nullable: true
         objective_score:
+          type: number
+          format: double
+          nullable: true
+        subjective_score:
           type: number
           format: double
           nullable: true

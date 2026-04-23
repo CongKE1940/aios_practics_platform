@@ -167,17 +167,47 @@ GROUP BY e.id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.durati
 func (repo *MySQLRepository) ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error) {
 	page := normalizePage(query.Page)
 	pageSize := normalizePageSize(query.PageSize)
-
-	countQuery := `
-SELECT COUNT(*)
-FROM ` + examTargetStudentsSubquery + ` ts
-JOIN users u ON u.id = ts.student_id AND u.tenant_id = ?
-`
-	var total int
-	if err := repo.db.QueryRowContext(ctx, countQuery, query.ExamID, query.ExamID, query.ExamID, query.TenantID).Scan(&total); err != nil {
+	total, err := repo.countExamOverviewStudents(ctx, query)
+	if err != nil {
 		return PageResult[ExamOverviewStudentItem]{}, err
 	}
+	items, err := repo.listExamOverviewStudents(ctx, query, true, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return PageResult[ExamOverviewStudentItem]{}, err
+	}
+	return PageResult[ExamOverviewStudentItem]{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}
 
+func (repo *MySQLRepository) ListExamOverviewExportStudents(ctx context.Context, query ExamOverviewQuery) ([]ExamOverviewStudentItem, error) {
+	return repo.listExamOverviewStudents(ctx, query, false, 0, 0)
+}
+
+func (repo *MySQLRepository) countExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (int, error) {
+	filters, args := buildExamOverviewFilterClause(query)
+	countQuery := `
+SELECT COUNT(*)
+FROM ` + examOverviewStudentBaseFromClause() + `
+WHERE 1 = 1` + filters
+	var total int
+	if err := repo.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (repo *MySQLRepository) listExamOverviewStudents(
+	ctx context.Context,
+	query ExamOverviewQuery,
+	paginated bool,
+	limit int,
+	offset int,
+) ([]ExamOverviewStudentItem, error) {
+	filters, args := buildExamOverviewFilterClause(query)
 	rowQuery := `
 SELECT
   u.id AS student_user_id,
@@ -187,39 +217,34 @@ SELECT
   c.name AS class_name,
   ea.id AS attempt_id,
   COALESCE(ea.status, ?) AS attempt_status,
+  CASE
+    WHEN ea.id IS NULL THEN 'not_started'
+    WHEN ea.status NOT IN ('submitted', 'timeout_submitted') THEN 'not_ready'
+    WHEN COALESCE(review_stats.subjective_question_count, 0) = 0 THEN 'reviewed'
+    WHEN COALESCE(review_stats.pending_review_count, 0) > 0 THEN 'pending'
+    ELSE 'reviewed'
+  END AS review_status,
   ea.start_at,
   ea.submit_at,
   ea.objective_score,
+  review_stats.subjective_score,
   ea.final_score
-FROM ` + examTargetStudentsSubquery + ` ts
-JOIN users u ON u.id = ts.student_id AND u.tenant_id = ?
-LEFT JOIN student_profiles sp ON sp.tenant_id = u.tenant_id AND sp.user_id = u.id
-LEFT JOIN student_class_memberships scm ON scm.tenant_id = u.tenant_id AND scm.student_id = u.id
-  AND scm.is_current = 1 AND scm.status = 'active'
-LEFT JOIN classes c ON c.tenant_id = scm.tenant_id AND c.id = scm.class_id
-LEFT JOIN exam_attempts ea ON ea.exam_id = ? AND ea.user_id = u.id AND ea.tenant_id = u.tenant_id
+FROM ` + examOverviewStudentBaseFromClause() + `
+WHERE 1 = 1` + filters + `
 ORDER BY
   CASE WHEN ea.final_score IS NULL THEN 1 ELSE 0 END ASC,
   ea.final_score DESC,
   ea.submit_at ASC,
   u.display_name ASC,
-  u.id ASC
-LIMIT ? OFFSET ?
-`
-	rows, err := repo.db.QueryContext(
-		ctx,
-		rowQuery,
-		ExamAttemptStatusNotStarted,
-		query.ExamID,
-		query.ExamID,
-		query.ExamID,
-		query.TenantID,
-		query.ExamID,
-		pageSize,
-		(page-1)*pageSize,
-	)
+  u.id ASC`
+	args = append([]any{ExamAttemptStatusNotStarted}, args...)
+	if paginated {
+		rowQuery += "\nLIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+	rows, err := repo.db.QueryContext(ctx, rowQuery, args...)
 	if err != nil {
-		return PageResult[ExamOverviewStudentItem]{}, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -227,20 +252,80 @@ LIMIT ? OFFSET ?
 	for rows.Next() {
 		item, err := scanExamOverviewStudent(rows)
 		if err != nil {
-			return PageResult[ExamOverviewStudentItem]{}, err
+			return nil, err
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return PageResult[ExamOverviewStudentItem]{}, err
+		return nil, err
 	}
+	return items, nil
+}
 
-	return PageResult[ExamOverviewStudentItem]{
-		Items:    items,
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
-	}, nil
+func examOverviewStudentBaseFromClause() string {
+	return `
+` + examTargetStudentsSubquery + ` ts
+JOIN users u ON u.id = ts.student_id AND u.tenant_id = ?
+LEFT JOIN student_profiles sp ON sp.tenant_id = u.tenant_id AND sp.user_id = u.id
+LEFT JOIN student_class_memberships scm ON scm.tenant_id = u.tenant_id AND scm.student_id = u.id
+  AND scm.is_current = 1 AND scm.status = 'active'
+LEFT JOIN classes c ON c.tenant_id = scm.tenant_id AND c.id = scm.class_id
+LEFT JOIN exam_attempts ea ON ea.exam_id = ? AND ea.user_id = u.id AND ea.tenant_id = u.tenant_id
+LEFT JOIN (
+  SELECT
+    eaa.attempt_id,
+    SUM(CASE WHEN q.question_type IN ('short_answer', 'essay') THEN 1 ELSE 0 END) AS subjective_question_count,
+    SUM(
+      CASE
+        WHEN q.question_type IN ('short_answer', 'essay') AND (eaa.reviewer_user_id IS NULL OR eaa.reviewed_at IS NULL) THEN 1
+        ELSE 0
+      END
+    ) AS pending_review_count,
+    COALESCE(SUM(CASE WHEN q.question_type IN ('short_answer', 'essay') THEN eaa.score ELSE 0 END), 0) AS subjective_score
+  FROM exam_attempt_answers eaa
+  JOIN questions q ON q.id = eaa.question_id
+  GROUP BY eaa.attempt_id
+) review_stats ON review_stats.attempt_id = ea.id`
+}
+
+func buildExamOverviewFilterClause(query ExamOverviewQuery) (string, []any) {
+	args := []any{query.ExamID, query.ExamID, query.ExamID, query.TenantID, query.ExamID}
+	filters := strings.Builder{}
+	if query.AttemptStatus != "" {
+		switch query.AttemptStatus {
+		case "submitted":
+			filters.WriteString("\n  AND COALESCE(ea.status, 'not_started') IN ('submitted', 'timeout_submitted')")
+		default:
+			filters.WriteString("\n  AND COALESCE(ea.status, 'not_started') = ?")
+			args = append(args, query.AttemptStatus)
+		}
+	}
+	if query.ReviewStatus != "" {
+		switch query.ReviewStatus {
+		case "pending":
+			filters.WriteString(`
+  AND ea.id IS NOT NULL
+  AND ea.status IN ('submitted', 'timeout_submitted')
+  AND COALESCE(review_stats.subjective_question_count, 0) > 0
+  AND COALESCE(review_stats.pending_review_count, 0) > 0`)
+		case "reviewed":
+			filters.WriteString(`
+  AND ea.id IS NOT NULL
+  AND (
+    COALESCE(review_stats.subjective_question_count, 0) = 0
+    OR (
+      ea.status IN ('submitted', 'timeout_submitted')
+      AND COALESCE(review_stats.pending_review_count, 0) = 0
+    )
+  )`)
+		}
+	}
+	if query.Keyword != "" {
+		filters.WriteString("\n  AND (u.display_name LIKE ? OR sp.student_no LIKE ?)")
+		likeValue := "%" + query.Keyword + "%"
+		args = append(args, likeValue, likeValue)
+	}
+	return filters.String(), args
 }
 
 func (repo *MySQLRepository) GetExamAttemptReview(ctx context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {
@@ -1697,14 +1782,15 @@ func scanClassPracticeStudent(scanner interface{ Scan(dest ...any) error }) (Cla
 func scanExamOverviewStudent(scanner interface{ Scan(dest ...any) error }) (ExamOverviewStudentItem, error) {
 	var item ExamOverviewStudentItem
 	var (
-		studentNo      sql.NullString
-		classID        sql.NullInt64
-		className      sql.NullString
-		attemptID      sql.NullInt64
-		startedAt      sql.NullTime
-		submitAt       sql.NullTime
-		objectiveScore sql.NullFloat64
-		finalScore     sql.NullFloat64
+		studentNo       sql.NullString
+		classID         sql.NullInt64
+		className       sql.NullString
+		attemptID       sql.NullInt64
+		startedAt       sql.NullTime
+		submitAt        sql.NullTime
+		objectiveScore  sql.NullFloat64
+		subjectiveScore sql.NullFloat64
+		finalScore      sql.NullFloat64
 	)
 	if err := scanner.Scan(
 		&item.StudentUserID,
@@ -1714,9 +1800,11 @@ func scanExamOverviewStudent(scanner interface{ Scan(dest ...any) error }) (Exam
 		&className,
 		&attemptID,
 		&item.AttemptStatus,
+		&item.ReviewStatus,
 		&startedAt,
 		&submitAt,
 		&objectiveScore,
+		&subjectiveScore,
 		&finalScore,
 	); err != nil {
 		return ExamOverviewStudentItem{}, err
@@ -1741,6 +1829,9 @@ func scanExamOverviewStudent(scanner interface{ Scan(dest ...any) error }) (Exam
 	}
 	if objectiveScore.Valid {
 		item.ObjectiveScore = &objectiveScore.Float64
+	}
+	if subjectiveScore.Valid {
+		item.SubjectiveScore = &subjectiveScore.Float64
 	}
 	if finalScore.Valid {
 		item.FinalScore = &finalScore.Float64

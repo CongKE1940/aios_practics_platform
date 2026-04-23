@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -142,8 +143,10 @@ func TestHandler_ExamOverviewReturnsSummaryAndScoresForTeacherPublishPermission(
 			ClassName:      strPtr("七年级一班"),
 			AttemptID:      int64Ptr(8001),
 			AttemptStatus:  "submitted",
+			ReviewStatus:   "reviewed",
 			FinalScore:     float64Ptr(86),
 			ObjectiveScore: float64Ptr(86),
+			SubjectiveScore: float64Ptr(0),
 		},
 		{
 			StudentUserID: 502,
@@ -151,6 +154,7 @@ func TestHandler_ExamOverviewReturnsSummaryAndScoresForTeacherPublishPermission(
 			StudentNo:     strPtr("S002"),
 			ClassName:     strPtr("七年级一班"),
 			AttemptStatus: "not_started",
+			ReviewStatus:  "not_started",
 		},
 	}
 
@@ -179,6 +183,92 @@ func TestHandler_ExamOverviewReturnsSummaryAndScoresForTeacherPublishPermission(
 	}
 	if body.Data.Students.Items[0].AttemptStatus != "submitted" {
 		t.Fatalf("first student = %+v", body.Data.Students.Items[0])
+	}
+}
+
+func TestHandler_ExamOverviewPassesFilterQuery(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.examExists = true
+	repo.examOverviewSummary = ExamOverviewSummary{ExamID: 901, ExamName: "期中测验"}
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(
+		router,
+		http.MethodGet,
+		"/api/v1/analytics/exam-overview?exam_id=901&attempt_status=submitted&review_status=pending&keyword=%E5%BC%A0&page=2&page_size=10",
+		nil,
+		"token",
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if repo.lastExamOverviewQuery.AttemptStatus != "submitted" ||
+		repo.lastExamOverviewQuery.ReviewStatus != "pending" ||
+		repo.lastExamOverviewQuery.Keyword != "张" ||
+		repo.lastExamOverviewQuery.Page != 2 ||
+		repo.lastExamOverviewQuery.PageSize != 10 {
+		t.Fatalf("query = %+v", repo.lastExamOverviewQuery)
+	}
+}
+
+func TestHandler_ExamOverviewExportReturnsCSV(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.examExists = true
+	repo.examOverviewExportStudents = []ExamOverviewStudentItem{
+		{
+			StudentUserID:   501,
+			StudentName:     "张三",
+			StudentNo:       strPtr("S001"),
+			ClassName:       strPtr("七年级一班"),
+			AttemptStatus:   "submitted",
+			ReviewStatus:    "pending",
+			ObjectiveScore:  float64Ptr(60),
+			SubjectiveScore: float64Ptr(0),
+			FinalScore:      float64Ptr(60),
+		},
+	}
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(
+		router,
+		http.MethodGet,
+		"/api/v1/analytics/exam-overview-export?exam_id=901&attempt_status=submitted&review_status=pending&keyword=%E5%BC%A0",
+		nil,
+		"token",
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if contentType := rec.Header().Get("Content-Type"); !strings.Contains(contentType, "text/csv") {
+		t.Fatalf("content type = %q", contentType)
+	}
+	if !strings.Contains(rec.Body.String(), "学生姓名,学号,班级,作答状态,批阅状态") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+	if repo.lastExamOverviewQuery.AttemptStatus != "submitted" ||
+		repo.lastExamOverviewQuery.ReviewStatus != "pending" ||
+		repo.lastExamOverviewQuery.Keyword != "张" {
+		t.Fatalf("query = %+v", repo.lastExamOverviewQuery)
 	}
 }
 
@@ -1804,6 +1894,7 @@ type memoryAnalyticsRepository struct {
 	examExists                                      bool
 	examOverviewSummary                             ExamOverviewSummary
 	examOverviewStudents                            []ExamOverviewStudentItem
+	examOverviewExportStudents                      []ExamOverviewStudentItem
 	lastExamOverviewQuery                           ExamOverviewQuery
 	examAttemptReviewResult                         ExamAttemptReviewResult
 	lastExamAttemptReviewQuery                      ExamAttemptReviewQuery
@@ -1907,6 +1998,11 @@ func (repo *memoryAnalyticsRepository) GetExamOverviewSummary(_ context.Context,
 func (repo *memoryAnalyticsRepository) ListExamOverviewStudents(_ context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error) {
 	repo.lastExamOverviewQuery = query
 	return pageOf(repo.examOverviewStudents, query.Page, query.PageSize), nil
+}
+
+func (repo *memoryAnalyticsRepository) ListExamOverviewExportStudents(_ context.Context, query ExamOverviewQuery) ([]ExamOverviewStudentItem, error) {
+	repo.lastExamOverviewQuery = query
+	return append([]ExamOverviewStudentItem{}, repo.examOverviewExportStudents...), nil
 }
 
 func (repo *memoryAnalyticsRepository) GetExamAttemptReview(_ context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {

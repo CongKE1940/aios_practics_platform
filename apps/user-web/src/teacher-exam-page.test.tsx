@@ -171,15 +171,18 @@ describe("TeacherExamPage", () => {
             class_name: "七年级一班",
             attempt_id: 8001,
             attempt_status: "submitted",
+            review_status: "reviewed",
             final_score: 86,
-            objective_score: 86
+            objective_score: 86,
+            subjective_score: 0
           },
           {
             student_user_id: 502,
             student_name: "李四",
             student_no: "S002",
             class_name: "七年级一班",
-            attempt_status: "not_started"
+            attempt_status: "not_started",
+            review_status: "not_started"
           }
         ],
         page: 1,
@@ -205,6 +208,122 @@ describe("TeacherExamPage", () => {
       expect(screen.getByText("张三")).toBeTruthy();
       expect(screen.getByText("状态：已交卷")).toBeTruthy();
       expect(screen.getByText("状态：未开始")).toBeTruthy();
+      expect(screen.getByText("批阅：已批阅")).toBeTruthy();
+    });
+  });
+
+  it("filters exam overview list and exports current filtered csv", async () => {
+    const getExamOverview = vi
+      .fn<() => Promise<ExamOverviewResult>>()
+      .mockResolvedValueOnce({
+        summary: {
+          exam_id: 1,
+          exam_name: "期中测验",
+          exam_mode: "fixed",
+          status: "published",
+          duration_minutes: 60,
+          total_score: 100,
+          student_count: 2,
+          participated_student_count: 1,
+          submitted_count: 1,
+          in_progress_count: 0,
+          absent_count: 1,
+          average_score: 86,
+          highest_score: 86,
+          lowest_score: 86
+        },
+        students: {
+          items: [],
+          page: 1,
+          page_size: 20,
+          total: 0
+        }
+      })
+      .mockResolvedValueOnce({
+        summary: {
+          exam_id: 1,
+          exam_name: "期中测验",
+          exam_mode: "fixed",
+          status: "published",
+          duration_minutes: 60,
+          total_score: 100,
+          student_count: 2,
+          participated_student_count: 1,
+          submitted_count: 1,
+          in_progress_count: 0,
+          absent_count: 1,
+          average_score: 60,
+          highest_score: 60,
+          lowest_score: 60
+        },
+        students: {
+          items: [
+            {
+              student_user_id: 501,
+              student_name: "张三",
+              student_no: "S001",
+              class_name: "七年级一班",
+              attempt_id: 8001,
+              attempt_status: "submitted",
+              review_status: "pending",
+              final_score: 60,
+              objective_score: 60,
+              subjective_score: 0
+            }
+          ],
+          page: 1,
+          page_size: 20,
+          total: 1
+        }
+      });
+    const exportExamOverviewCsv = vi.fn(async () => "学生姓名,学号\n张三,S001\n");
+    const createObjectURL = vi.fn(() => "blob:exam-overview");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", { value: createObjectURL, configurable: true });
+    Object.defineProperty(window.URL, "revokeObjectURL", { value: revokeObjectURL, configurable: true });
+
+    const api = createExamApiMock({ getExamOverview, exportExamOverviewCsv });
+    render(<TeacherExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看详情" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(getExamOverview).toHaveBeenCalledWith({ exam_id: 1, page: 1, page_size: 20 });
+    });
+
+    fireEvent.change(screen.getByLabelText("作答状态筛选"), { target: { value: "submitted" } });
+    fireEvent.change(screen.getByLabelText("批阅状态筛选"), { target: { value: "pending" } });
+    fireEvent.change(screen.getByLabelText("学生搜索"), { target: { value: "张" } });
+    fireEvent.click(screen.getByRole("button", { name: "查询成绩" }));
+
+    await waitFor(() => {
+      expect(getExamOverview).toHaveBeenLastCalledWith({
+        exam_id: 1,
+        attempt_status: "submitted",
+        review_status: "pending",
+        keyword: "张",
+        page: 1,
+        page_size: 20
+      });
+      expect(screen.getByText("批阅：待批阅")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "导出 CSV" }));
+
+    await waitFor(() => {
+      expect(exportExamOverviewCsv).toHaveBeenCalledWith({
+        exam_id: 1,
+        attempt_status: "submitted",
+        review_status: "pending",
+        keyword: "张",
+        page: 1,
+        page_size: 20
+      });
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalled();
     });
   });
 
@@ -235,8 +354,10 @@ describe("TeacherExamPage", () => {
             class_name: "七年级一班",
             attempt_id: 8001,
             attempt_status: "submitted",
+            review_status: "reviewed",
             final_score: 86,
-            objective_score: 86
+            objective_score: 86,
+            subjective_score: 0
           }
         ],
         page: 1,
@@ -361,8 +482,10 @@ describe("TeacherExamPage", () => {
             class_name: "七年级一班",
             attempt_id: 8001,
             attempt_status: "submitted",
+            review_status: "pending",
             final_score: 60,
-            objective_score: 60
+            objective_score: 60,
+            subjective_score: 0
           }
         ],
         page: 1,
@@ -461,6 +584,213 @@ describe("TeacherExamPage", () => {
       expect(screen.getByText("得分：8 / 10")).toBeTruthy();
       expect(screen.getByText("主观题：8")).toBeTruthy();
       expect(screen.getByText("总分：68")).toBeTruthy();
+    });
+  });
+
+  it("focuses pending subjective questions and continues review in pending-only mode", async () => {
+    const getExamOverview = vi.fn(async (): Promise<ExamOverviewResult> => ({
+      summary: {
+        exam_id: 1,
+        exam_name: "期中测验",
+        exam_mode: "fixed",
+        status: "published",
+        duration_minutes: 60,
+        total_score: 100,
+        student_count: 1,
+        participated_student_count: 1,
+        submitted_count: 1,
+        in_progress_count: 0,
+        absent_count: 0,
+        average_score: 60,
+        highest_score: 60,
+        lowest_score: 60
+      },
+      students: {
+        items: [
+          {
+            student_user_id: 501,
+            student_name: "张三",
+            student_no: "S001",
+            class_name: "七年级一班",
+            attempt_id: 8001,
+            attempt_status: "submitted",
+            review_status: "pending",
+            final_score: 60,
+            objective_score: 60,
+            subjective_score: 0
+          }
+        ],
+        page: 1,
+        page_size: 20,
+        total: 1
+      }
+    }));
+    const getExamAttemptReview = vi.fn(async (): Promise<ExamAttemptReviewResult> => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        student_no: "S001",
+        class_name: "七年级一班",
+        attempt_status: "submitted",
+        objective_score: 60,
+        subjective_score: 0,
+        final_score: 60
+      },
+      questions: [
+        {
+          question_id: 1001,
+          question_version_id: 3001,
+          display_order: 1,
+          question_type: "single_choice",
+          score: 10,
+          content: { stem: { text: "1+1等于几？" }, options: [{ key: "A", text: "1" }, { key: "B", text: "2" }] },
+          correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+          student_answer: { selected_keys: ["B"] },
+          is_answered: true,
+          is_correct: true,
+          answer_score: 10,
+          judge_source: "auto"
+        },
+        {
+          question_id: 1002,
+          question_version_id: 3002,
+          display_order: 2,
+          question_type: "essay",
+          score: 10,
+          content: { stem: { text: "解释勾股定理（第一问）。" } },
+          correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+          student_answer: { text: "第一问答案" },
+          is_answered: true,
+          answer_score: 0,
+          judge_source: "manual"
+        },
+        {
+          question_id: 1003,
+          question_version_id: 3003,
+          display_order: 3,
+          question_type: "short_answer",
+          score: 10,
+          content: { stem: { text: "解释勾股定理（第二问）。" } },
+          correct_answer: { text: "第二问标准答案" },
+          student_answer: { text: "第二问答案" },
+          is_answered: true,
+          answer_score: 0,
+          judge_source: "manual"
+        }
+      ]
+    }));
+    const reviewExamAttemptQuestion = vi.fn(async () => ({
+      summary: {
+        attempt_id: 8001,
+        exam_id: 1,
+        exam_name: "期中测验",
+        student_user_id: 501,
+        student_name: "张三",
+        student_no: "S001",
+        class_name: "七年级一班",
+        attempt_status: "submitted",
+        objective_score: 60,
+        subjective_score: 8,
+        final_score: 68
+      },
+      question: {
+        question_id: 1002,
+        question_version_id: 3002,
+        display_order: 2,
+        question_type: "essay",
+        score: 10,
+        content: { stem: { text: "解释勾股定理（第一问）。" } },
+        correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+        student_answer: { text: "第一问答案" },
+        is_answered: true,
+        answer_score: 8,
+        judge_source: "manual",
+        review_comment: "第一问已批阅。",
+        reviewer_user_id: 7
+      }
+    }));
+    const api = createExamApiMock({ getExamOverview, getExamAttemptReview, reviewExamAttemptQuestion });
+
+    render(<TeacherExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看详情" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看答卷" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看答卷" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("主观题进度：0 / 2 已批阅，2 题待批阅")).toBeTruthy();
+      expect(screen.getByText("题干：解释勾股定理（第一问）。")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText("只看待批阅"));
+    fireEvent.change(screen.getByLabelText("主观题得分"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("批阅评语"), { target: { value: "第一问已批阅。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存批阅" }));
+
+    await waitFor(() => {
+      expect(reviewExamAttemptQuestion).toHaveBeenCalledWith({
+        attempt_id: 8001,
+        display_order: 2,
+        score: 8,
+        review_comment: "第一问已批阅。"
+      });
+      expect(screen.getByText("题干：解释勾股定理（第二问）。")).toBeTruthy();
+      expect(screen.getByText("主观题进度：1 / 2 已批阅，1 题待批阅")).toBeTruthy();
+    });
+  });
+
+  it("keeps opened review context when loading or saving review fails", async () => {
+    const getExamAttemptReview = vi
+      .fn()
+      .mockResolvedValueOnce(createManualAttemptReview("解释勾股定理。"))
+      .mockRejectedValueOnce(new Error("network"));
+    const reviewExamAttemptQuestion = vi.fn().mockRejectedValueOnce(new Error("timeout"));
+    const api = createExamApiMock({
+      getExamOverview: async () => createOverviewWithReviewStudent(),
+      getExamAttemptReview,
+      reviewExamAttemptQuestion
+    });
+
+    render(<TeacherExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看详情" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看答卷" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查看答卷" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("题干：解释勾股定理。")).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByLabelText("主观题得分"), { target: { value: "7" } });
+    fireEvent.change(screen.getByLabelText("批阅评语"), { target: { value: "需要补充证明过程。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存批阅" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("批阅保存失败，请重试。")).toBeTruthy();
+      expect((screen.getByLabelText("主观题得分") as HTMLInputElement).value).toBe("7");
+      expect((screen.getByLabelText("批阅评语") as HTMLTextAreaElement).value).toBe("需要补充证明过程。");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看答卷" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("答卷加载失败，请稍后重试。")).toBeTruthy();
+      expect(screen.getByText("题干：解释勾股定理。")).toBeTruthy();
     });
   });
 
@@ -641,6 +971,7 @@ function createExamApiMock(overrides: Partial<TeacherExamApi> = {}): TeacherExam
         total: 0
       }
     }),
+    exportExamOverviewCsv: async () => "学生姓名,学号\n",
     getExamAttemptReview: async () => ({
       summary: {
         attempt_id: 8001,
@@ -681,6 +1012,79 @@ function createExamApiMock(overrides: Partial<TeacherExamApi> = {}): TeacherExam
       }
     }),
     ...overrides
+  };
+}
+
+function createManualAttemptReview(stemText: string): ExamAttemptReviewResult {
+  return {
+    summary: {
+      attempt_id: 8001,
+      exam_id: 1,
+      exam_name: "期中测验",
+      student_user_id: 501,
+      student_name: "张三",
+      student_no: "S001",
+      class_name: "七年级一班",
+      attempt_status: "submitted",
+      objective_score: 60,
+      subjective_score: 0,
+      final_score: 60
+    },
+    questions: [
+      {
+        question_id: 1002,
+        question_version_id: 3002,
+        display_order: 2,
+        question_type: "essay",
+        score: 10,
+        content: { stem: { text: stemText } },
+        correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+        student_answer: { text: "学生答案" },
+        is_answered: true,
+        answer_score: 0,
+        judge_source: "manual"
+      }
+    ]
+  };
+}
+
+function createOverviewWithReviewStudent(): ExamOverviewResult {
+  return {
+    summary: {
+      exam_id: 1,
+      exam_name: "期中测验",
+      exam_mode: "fixed",
+      status: "published",
+      duration_minutes: 60,
+      total_score: 100,
+      student_count: 1,
+      participated_student_count: 1,
+      submitted_count: 1,
+      in_progress_count: 0,
+      absent_count: 0,
+      average_score: 60,
+      highest_score: 60,
+      lowest_score: 60
+    },
+    students: {
+      items: [
+        {
+          student_user_id: 501,
+          student_name: "张三",
+          student_no: "S001",
+          class_name: "七年级一班",
+          attempt_id: 8001,
+          attempt_status: "submitted",
+          review_status: "pending",
+          final_score: 60,
+          objective_score: 60,
+          subjective_score: 0
+        }
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1
+    }
   };
 }
 

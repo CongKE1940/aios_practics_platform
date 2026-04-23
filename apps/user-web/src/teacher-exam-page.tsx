@@ -20,7 +20,22 @@ export interface TeacherExamApi {
   getExam(id: number): Promise<ExamDetail>;
   updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
-  getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
+  getExamOverview(query: {
+    exam_id: number;
+    attempt_status?: string;
+    review_status?: string;
+    keyword?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<ExamOverviewResult>;
+  exportExamOverviewCsv(query: {
+    exam_id: number;
+    attempt_status?: string;
+    review_status?: string;
+    keyword?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<string>;
   getExamAttemptReview(query: { attempt_id: number }): Promise<ExamAttemptReviewResult>;
   reviewExamAttemptQuestion(body: ExamAttemptQuestionReviewInput): Promise<ExamAttemptQuestionReviewResult>;
 }
@@ -40,6 +55,12 @@ const defaultForm = {
   paperRulesText: ""
 };
 
+const defaultOverviewFilter = {
+  attemptStatus: "",
+  reviewStatus: "",
+  keyword: ""
+};
+
 export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [form, setForm] = useState(defaultForm);
   const [exams, setExams] = useState<Exam[]>([]);
@@ -52,7 +73,9 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [attemptReviewLoading, setAttemptReviewLoading] = useState(false);
   const [attemptReviewSaving, setAttemptReviewSaving] = useState(false);
   const [overviewPage, setOverviewPage] = useState(1);
+  const [overviewFilter, setOverviewFilter] = useState(defaultOverviewFilter);
   const [reviewQuestionIndex, setReviewQuestionIndex] = useState(0);
+  const [reviewPendingOnly, setReviewPendingOnly] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,6 +86,18 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   useEffect(() => {
     void loadExams();
   }, [api]);
+
+  useEffect(() => {
+    if (!selectedAttemptReview) {
+      return;
+    }
+    const visibleQuestions = reviewPendingOnly
+      ? pendingReviewQuestions(selectedAttemptReview.questions)
+      : selectedAttemptReview.questions;
+    if (reviewQuestionIndex >= visibleQuestions.length) {
+      setReviewQuestionIndex(Math.max(0, visibleQuestions.length - 1));
+    }
+  }, [selectedAttemptReview, reviewPendingOnly, reviewQuestionIndex]);
 
   async function loadExams(successMessage?: string) {
     setLoading(true);
@@ -121,6 +156,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     setSelectedExamId(id);
     setOverviewPage(1);
     setReviewQuestionIndex(0);
+    setReviewPendingOnly(false);
     setSelectedAttemptReview(null);
     setMessage("正在加载考试详情...");
     try {
@@ -142,6 +178,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     setSelectedExamId(id);
     setOverviewPage(1);
     setReviewQuestionIndex(0);
+    setReviewPendingOnly(false);
     setSelectedAttemptReview(null);
     setMessage("正在载入草稿...");
     try {
@@ -167,6 +204,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       if (selectedExamId === id) {
         setSelectedExamDetail(published);
         setSelectedAttemptReview(null);
+        setReviewPendingOnly(false);
         await loadExamOverview(id, 1);
       }
       await loadExams(`考试已发布：${published.name}`);
@@ -180,11 +218,11 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   async function loadExamOverview(id: number, page = 1) {
     setOverviewLoading(true);
     try {
-      const result = await api.getExamOverview({ exam_id: id, page, page_size: 20 });
+      const result = await api.getExamOverview(buildOverviewQuery(id, overviewFilter, page));
       setSelectedExamOverview(result);
       setOverviewPage(result.students.page ?? page);
     } catch {
-      setSelectedExamOverview(null);
+      setMessage("考试统计加载失败，请稍后重试。");
     } finally {
       setOverviewLoading(false);
     }
@@ -197,13 +235,64 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     await loadExamOverview(selectedExamId, nextPage);
   }
 
+  async function handleOverviewSearch() {
+    if (!selectedExamId || overviewLoading) {
+      return;
+    }
+    await loadExamOverview(selectedExamId, 1);
+  }
+
+  async function handleOverviewReset() {
+    if (!selectedExamId || overviewLoading) {
+      setOverviewFilter(defaultOverviewFilter);
+      return;
+    }
+    const resetFilter = { ...defaultOverviewFilter };
+    setOverviewFilter(resetFilter);
+    setOverviewLoading(true);
+    try {
+      const result = await api.getExamOverview(buildOverviewQuery(selectedExamId, resetFilter, 1));
+      setSelectedExamOverview(result);
+      setOverviewPage(result.students.page ?? 1);
+    } catch {
+      setSelectedExamOverview(null);
+      setMessage("考试统计加载失败，请稍后重试。");
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
+
+  async function handleOverviewExport() {
+    if (!selectedExamId) {
+      return;
+    }
+    try {
+      const csv = await api.exportExamOverviewCsv(buildOverviewQuery(selectedExamId, overviewFilter, 1));
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `exam-overview-${selectedExamId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setMessage("成绩明细已导出。");
+    } catch {
+      setMessage("成绩导出失败，请稍后重试。");
+    }
+  }
+
   async function handleLoadAttemptReview(attemptId: number) {
     setAttemptReviewLoading(true);
-    setSelectedAttemptReview(null);
-    setReviewQuestionIndex(0);
     try {
       const result = await api.getExamAttemptReview({ attempt_id: attemptId });
+      setReviewQuestionIndex(firstPendingReviewQuestionIndex(result.questions));
       setSelectedAttemptReview(result);
+      setReviewPendingOnly(false);
+      setMessage("");
+    } catch {
+      setMessage("答卷加载失败，请稍后重试。");
     } finally {
       setAttemptReviewLoading(false);
     }
@@ -239,6 +328,15 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       setAttemptReviewSaving(false);
     }
   }
+
+  const attemptReviewStats = selectedAttemptReview ? buildAttemptReviewStats(selectedAttemptReview.questions) : null;
+  const visibleAttemptReviewQuestions = selectedAttemptReview
+    ? reviewPendingOnly
+      ? pendingReviewQuestions(selectedAttemptReview.questions)
+      : selectedAttemptReview.questions
+    : [];
+  const currentAttemptReviewQuestion =
+    visibleAttemptReviewQuestions[reviewQuestionIndex] ?? visibleAttemptReviewQuestions[0] ?? null;
 
   return (
     <section aria-label="考试管理页">
@@ -416,6 +514,48 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                   <p>最低分：{formatScore(selectedExamOverview.summary.lowest_score)}</p>
                   <section aria-label="成绩列表">
                     <h5>成绩列表</h5>
+                    <div>
+                      <label htmlFor="teacher_exam_attempt_status_filter">作答状态筛选</label>
+                      <select
+                        id="teacher_exam_attempt_status_filter"
+                        value={overviewFilter.attemptStatus}
+                        onChange={(event) =>
+                          setOverviewFilter((current) => ({ ...current, attemptStatus: event.target.value }))
+                        }
+                      >
+                        <option value="">全部</option>
+                        <option value="not_started">未开始</option>
+                        <option value="in_progress">作答中</option>
+                        <option value="submitted">已交卷</option>
+                      </select>
+                      <label htmlFor="teacher_exam_review_status_filter">批阅状态筛选</label>
+                      <select
+                        id="teacher_exam_review_status_filter"
+                        value={overviewFilter.reviewStatus}
+                        onChange={(event) =>
+                          setOverviewFilter((current) => ({ ...current, reviewStatus: event.target.value }))
+                        }
+                      >
+                        <option value="">全部</option>
+                        <option value="pending">待批阅</option>
+                        <option value="reviewed">已批阅</option>
+                      </select>
+                      <label htmlFor="teacher_exam_keyword_filter">学生搜索</label>
+                      <input
+                        id="teacher_exam_keyword_filter"
+                        value={overviewFilter.keyword}
+                        onChange={(event) => setOverviewFilter((current) => ({ ...current, keyword: event.target.value }))}
+                      />
+                      <button type="button" onClick={() => void handleOverviewSearch()}>
+                        查询成绩
+                      </button>
+                      <button type="button" onClick={() => void handleOverviewReset()}>
+                        重置筛选
+                      </button>
+                      <button type="button" onClick={() => void handleOverviewExport()}>
+                        导出 CSV
+                      </button>
+                    </div>
                     {selectedExamOverview.students.items.length > 0 ? (
                       <>
                         <ul>
@@ -425,8 +565,10 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                               <p>学号：{student.student_no ?? "-"}</p>
                               <p>班级：{student.class_name ?? "-"}</p>
                               <p>状态：{formatAttemptStatus(student.attempt_status)}</p>
+                              <p>批阅：{formatReviewStatus(student.review_status)}</p>
                               <p>得分：{formatNullableScore(student.final_score)}</p>
                               <p>客观题：{formatNullableScore(student.objective_score)}</p>
+                              <p>主观题：{formatNullableScore(student.subjective_score)}</p>
                               <p>交卷时间：{formatTime(student.submit_at)}</p>
                               {student.attempt_id ? <AttemptReviewButton attemptId={student.attempt_id} onOpen={handleLoadAttemptReview} /> : null}
                             </li>
@@ -482,9 +624,46 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                   <p>主观题：{formatScore(selectedAttemptReview.summary.subjective_score)}</p>
                   {selectedAttemptReview.questions.length > 0 ? (
                     <>
-                      {selectedAttemptReview.questions.length > 1 ? (
+                      {attemptReviewStats ? (
+                        <section aria-label="批阅工作台">
+                          <p>
+                            主观题进度：{attemptReviewStats.reviewed} / {attemptReviewStats.total} 已批阅，
+                            {attemptReviewStats.pending} 题待批阅
+                          </p>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={reviewPendingOnly}
+                              onChange={(event) => {
+                                setReviewPendingOnly(event.target.checked);
+                                setReviewQuestionIndex(0);
+                              }}
+                            />
+                            只看待批阅
+                          </label>
+                          <button
+                            type="button"
+                            disabled={reviewQuestionIndex <= 0}
+                            onClick={() => setReviewQuestionIndex((current) => Math.max(0, current - 1))}
+                          >
+                            上一题
+                          </button>
+                          <button
+                            type="button"
+                            disabled={reviewQuestionIndex >= visibleAttemptReviewQuestions.length - 1}
+                            onClick={() =>
+                              setReviewQuestionIndex((current) =>
+                                Math.min(visibleAttemptReviewQuestions.length - 1, current + 1)
+                              )
+                            }
+                          >
+                            下一题
+                          </button>
+                        </section>
+                      ) : null}
+                      {visibleAttemptReviewQuestions.length > 1 ? (
                         <nav aria-label="答卷题号导航">
-                          {selectedAttemptReview.questions.map((question, index) => (
+                          {visibleAttemptReviewQuestions.map((question, index) => (
                             <button
                               key={question.display_order}
                               type="button"
@@ -496,11 +675,15 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                           ))}
                         </nav>
                       ) : null}
-                      <AttemptReviewQuestionDetail
-                        attemptReviewSaving={attemptReviewSaving}
-                        question={selectedAttemptReview.questions[reviewQuestionIndex] ?? selectedAttemptReview.questions[0]}
-                        onReview={handleReviewQuestion}
-                      />
+                      {currentAttemptReviewQuestion ? (
+                        <AttemptReviewQuestionDetail
+                          attemptReviewSaving={attemptReviewSaving}
+                          question={currentAttemptReviewQuestion}
+                          onReview={handleReviewQuestion}
+                        />
+                      ) : (
+                        <p>当前筛选下暂无待批阅题目。</p>
+                      )}
                     </>
                   ) : (
                     <p>当前答卷暂无题目。</p>
@@ -619,12 +802,16 @@ function AttemptReviewQuestionDetail({
       setMessage("请输入有效分数。");
       return;
     }
-    await onReview({
-      display_order: question.display_order,
-      score,
-      review_comment: reviewComment
-    });
-    setMessage("批阅已保存。");
+    try {
+      await onReview({
+        display_order: question.display_order,
+        score,
+        review_comment: reviewComment
+      });
+      setMessage("批阅已保存。");
+    } catch {
+      setMessage("批阅保存失败，请重试。");
+    }
   }
 
   return (
@@ -836,6 +1023,58 @@ function formatAttemptStatus(value: string): string {
   return value;
 }
 
+function formatReviewStatus(value?: string | null): string {
+  if (value === "pending") {
+    return "待批阅";
+  }
+  if (value === "reviewed") {
+    return "已批阅";
+  }
+  if (value === "not_started") {
+    return "未开始";
+  }
+  if (value === "not_ready") {
+    return "待交卷";
+  }
+  return value ?? "-";
+}
+
+function buildOverviewQuery(
+  examId: number,
+  filter: { attemptStatus: string; reviewStatus: string; keyword: string },
+  page: number
+): {
+  exam_id: number;
+  attempt_status?: string;
+  review_status?: string;
+  keyword?: string;
+  page: number;
+  page_size: number;
+} {
+  const query: {
+    exam_id: number;
+    attempt_status?: string;
+    review_status?: string;
+    keyword?: string;
+    page: number;
+    page_size: number;
+  } = {
+    exam_id: examId,
+    page,
+    page_size: 20
+  };
+  if (filter.attemptStatus) {
+    query.attempt_status = filter.attemptStatus;
+  }
+  if (filter.reviewStatus) {
+    query.review_status = filter.reviewStatus;
+  }
+  if (filter.keyword.trim()) {
+    query.keyword = filter.keyword.trim();
+  }
+  return query;
+}
+
 function extractStem(content: Record<string, unknown>): string {
   const stem = content.stem;
   if (typeof stem !== "object" || stem === null) {
@@ -926,4 +1165,36 @@ function formatReviewResult(question: ExamAttemptReviewResult["questions"][numbe
 
 function isSubjectiveQuestion(questionType: string): boolean {
   return questionType === "short_answer" || questionType === "essay";
+}
+
+function isPendingReviewQuestion(question: ExamAttemptReviewResult["questions"][number]): boolean {
+  if (!isSubjectiveQuestion(question.question_type)) {
+    return false;
+  }
+  return !(question.reviewer_user_id || question.review_comment || question.reviewed_at);
+}
+
+function pendingReviewQuestions(
+  questions: ExamAttemptReviewResult["questions"]
+): ExamAttemptReviewResult["questions"] {
+  return questions.filter(isPendingReviewQuestion);
+}
+
+function firstPendingReviewQuestionIndex(questions: ExamAttemptReviewResult["questions"]): number {
+  const index = questions.findIndex(isPendingReviewQuestion);
+  return index >= 0 ? index : 0;
+}
+
+function buildAttemptReviewStats(questions: ExamAttemptReviewResult["questions"]): {
+  total: number;
+  reviewed: number;
+  pending: number;
+} {
+  const subjective = questions.filter((question) => isSubjectiveQuestion(question.question_type));
+  const pending = subjective.filter(isPendingReviewQuestion).length;
+  return {
+    total: subjective.length,
+    reviewed: subjective.length - pending,
+    pending
+  };
 }

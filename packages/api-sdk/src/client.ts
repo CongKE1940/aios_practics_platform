@@ -106,6 +106,7 @@ export interface ApiClient {
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
   getExamOverview(query: ExamOverviewQuery): Promise<ExamOverviewResult>;
+  exportExamOverviewCsv(query: ExamOverviewQuery): Promise<string>;
   getExamAttemptReview(query: ExamAttemptReviewQuery): Promise<ExamAttemptReviewResult>;
   reviewExamAttemptQuestion(body: ExamAttemptQuestionReviewInput): Promise<ExamAttemptQuestionReviewResult>;
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
@@ -543,9 +544,11 @@ export interface ExamOverviewStudentItem {
   class_name?: string | null;
   attempt_id?: number | null;
   attempt_status: string;
+  review_status: string;
   started_at?: string | null;
   submit_at?: string | null;
   objective_score?: number | null;
+  subjective_score?: number | null;
   final_score?: number | null;
 }
 
@@ -1174,6 +1177,9 @@ export interface ClassPracticeSummaryQuery {
 
 export interface ExamOverviewQuery {
   exam_id: number;
+  attempt_status?: string;
+  review_status?: string;
+  keyword?: string;
   page?: number;
   page_size?: number;
 }
@@ -1334,12 +1340,14 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/practice/questions/${id}/mark-mastered`, { method: "POST", body: JSON.stringify(body) }),
     markPracticeQuestionConfused: (id, body) =>
       request(fetcher, options, `/practice/questions/${id}/mark-confused`, { method: "POST", body: JSON.stringify(body) }),
-    listUserQuestionStates: (query) =>
-      request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
-    getExamOverview: (query) =>
-      request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
-    getExamAttemptReview: (query) =>
-      request(fetcher, options, buildPath("/analytics/exam-attempt-review", query), { method: "GET" }),
+      listUserQuestionStates: (query) =>
+        request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
+      getExamOverview: (query) =>
+        request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
+      exportExamOverviewCsv: (query) =>
+        rawTextRequest(fetcher, options, buildPath("/analytics/exam-overview-export", query), { method: "GET" }),
+      getExamAttemptReview: (query) =>
+        request(fetcher, options, buildPath("/analytics/exam-attempt-review", query), { method: "GET" }),
     reviewExamAttemptQuestion: (body) =>
       request(fetcher, options, "/analytics/exam-attempt-question-review", {
         method: "PUT",

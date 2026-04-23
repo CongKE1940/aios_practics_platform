@@ -8,6 +8,7 @@ import { StudentExamPage, type StudentExamApi } from "./student-exam-page";
 
 afterEach(() => {
   vi.useRealTimers();
+  window.localStorage.clear();
   cleanup();
 });
 
@@ -133,6 +134,87 @@ describe("StudentExamPage", () => {
     expect(submitExamAttempt).toHaveBeenCalledWith(801);
     expect(screen.getByRole("heading", { name: "考试结果" })).toBeTruthy();
   });
+
+  it("recovers an in-progress attempt after refresh", async () => {
+    window.localStorage.setItem("aios.student_exam.recovery.v1", JSON.stringify({ exam_id: 301, attempt_id: 801 }));
+    const getExamAttempt = vi.fn(async () =>
+      createAttemptDetail({
+        answers: [
+          {
+            attempt_id: 801,
+            question_id: 101,
+            question_version_id: 1001,
+            display_order: 1,
+            answer: { selected_keys: ["A"] },
+            score: 0
+          }
+        ]
+      })
+    );
+    const api = createStudentExamApiMock({ getExamAttempt });
+
+    render(<StudentExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(getExamAttempt).toHaveBeenCalledWith(801);
+      expect(screen.getByText("已恢复未完成考试。")).toBeTruthy();
+      expect(screen.getByText("1+1等于几？")).toBeTruthy();
+      expect(optionInput("选项 A").checked).toBe(true);
+    });
+  });
+
+  it("keeps current answer and allows retry when save or submit fails", async () => {
+    const saveExamAttemptAnswer = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockImplementationOnce(async (_id: number, body: ExamAttemptAnswerInput) => ({
+        attempt_id: 801,
+        question_id: 101,
+        question_version_id: 1001,
+        display_order: body.display_order,
+        answer: body.answer,
+        score: 0
+      }));
+    const submitExamAttempt = vi.fn().mockRejectedValueOnce(new Error("timeout")).mockResolvedValueOnce(createAttemptResult());
+    const api = createStudentExamApiMock({ saveExamAttemptAnswer, submitExamAttempt });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<StudentExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("期中测验")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始考试" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("1+1等于几？")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText("选项 A"));
+    fireEvent.click(screen.getByRole("button", { name: "保存答案" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("答案保存失败，请重试。")).toBeTruthy();
+      expect(optionInput("选项 A").checked).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "保存答案" }));
+    await waitFor(() => {
+      expect(screen.getByText("答案已保存。")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "交卷" }));
+    await waitFor(() => {
+      expect(screen.getByText("交卷失败，请检查网络后重试。")).toBeTruthy();
+      expect(screen.getByText("1+1等于几？")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "交卷" }));
+    await waitFor(() => {
+      expect(submitExamAttempt).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole("heading", { name: "考试结果" })).toBeTruthy();
+    });
+  });
 });
 
 function createStudentExamApiMock(overrides: Partial<StudentExamApi> = {}): StudentExamApi {
@@ -155,6 +237,7 @@ function createStudentExamApiMock(overrides: Partial<StudentExamApi> = {}): Stud
       total: 1
     }),
     startExamAttempt: async () => createAttemptDetail(),
+    getExamAttempt: async () => createAttemptDetail(),
     saveExamAttemptAnswer: async (_id, body) => ({
       attempt_id: 801,
       question_id: 101,
@@ -169,7 +252,21 @@ function createStudentExamApiMock(overrides: Partial<StudentExamApi> = {}): Stud
   };
 }
 
-function createAttemptDetail(options: { questionCount?: number; startAt?: string } = {}): ExamAttemptDetail {
+function optionInput(label: string): HTMLInputElement {
+  const element = screen.getByLabelText(label);
+  if (element instanceof HTMLInputElement) {
+    return element;
+  }
+  const input = element.querySelector("input");
+  if (!input) {
+    throw new Error(`找不到选项输入框：${label}`);
+  }
+  return input;
+}
+
+function createAttemptDetail(
+  options: { questionCount?: number; startAt?: string; answers?: ExamAttemptDetail["answers"] } = {}
+): ExamAttemptDetail {
   const questionCount = options.questionCount ?? 1;
   return {
     attempt: {
@@ -219,7 +316,7 @@ function createAttemptDetail(options: { questionCount?: number; startAt?: string
           ]
         : []
     ),
-    answers: []
+    answers: options.answers ?? []
   };
 }
 

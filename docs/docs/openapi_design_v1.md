@@ -2274,10 +2274,14 @@ QuestionAnswer:
 - `exam_id`：必填，考试 ID。
 - `page`：可选，成绩列表页码，默认 1。
 - `page_size`：可选，成绩列表分页大小，默认 20，最大 100。
+- `attempt_status`：可选，作答状态筛选，允许 `not_started`、`in_progress`、`submitted`；`submitted` 包含正常交卷和超时交卷。
+- `review_status`：可选，批阅状态筛选，允许 `pending`、`reviewed`。
+- `keyword`：可选，按学生姓名或学号模糊搜索。
 
 ### 作用
 - 用于老师侧考试详情页查看整场考试的参加人数、提交情况、均分以及学生成绩列表。
 - 成绩列表基于考试发布范围展开应参加学生，再按 `exam_attempts` 实时拼接作答状态与得分。
+- 老师端成绩列表筛选和 CSV 导出共用同一套筛选语义，确保页面结果与导出结果一致。
 
 ### Response
 ```json
@@ -2313,9 +2317,11 @@ QuestionAnswer:
           "class_name": "七年级一班",
           "attempt_id": 8001,
           "attempt_status": "submitted",
+          "review_status": "reviewed",
           "started_at": "2026-04-24T09:01:00+08:00",
           "submit_at": "2026-04-24T09:48:00+08:00",
           "objective_score": 86,
+          "subjective_score": 0,
           "final_score": 86
         },
         {
@@ -2324,7 +2330,8 @@ QuestionAnswer:
           "student_no": "S002",
           "class_id": 301,
           "class_name": "七年级一班",
-          "attempt_status": "not_started"
+          "attempt_status": "not_started",
+          "review_status": "not_started"
         }
       ],
       "page": 1,
@@ -2335,6 +2342,37 @@ QuestionAnswer:
   "request_id": "req_exam_overview_1"
 }
 ```
+
+---
+
+### GET `/api/v1/analytics/exam-overview-export`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Query
+- `exam_id`：必填，考试 ID。
+- `attempt_status`：可选，作答状态筛选，与考试概览列表一致。
+- `review_status`：可选，批阅状态筛选，与考试概览列表一致。
+- `keyword`：可选，按学生姓名或学号模糊搜索。
+
+### 作用
+- 导出当前筛选结果全集，不受页面分页限制。
+- 返回 `text/csv; charset=utf-8`，用于老师侧下载成绩明细。
+
+### CSV 列
+- 学生姓名
+- 学号
+- 班级
+- 作答状态
+- 批阅状态
+- 客观题得分
+- 主观题得分
+- 总分
+- 开始时间
+- 交卷时间
 
 ---
 

@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/exam-overview", handler.getExamOverview)
+	router.GET("/analytics/exam-overview-export", handler.exportExamOverviewCSV)
 	router.GET("/analytics/exam-attempt-review", handler.getExamAttemptReview)
 	router.PUT("/analytics/exam-attempt-question-review", handler.putExamAttemptQuestionReview)
 	router.GET("/analytics/class-practice-summary", handler.getClassPracticeSummary)
@@ -55,6 +57,27 @@ func (handler *Handler) getExamOverview(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) exportExamOverviewCSV(ctx *gin.Context) {
+	scope, ok := handler.authorizeExamOverview(ctx)
+	if !ok {
+		return
+	}
+	query, ok := parseExamOverviewQuery(ctx)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	payload, err := handler.service.ExportExamOverviewCSV(ctx.Request.Context(), scope, query)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	filename := fmt.Sprintf("exam-overview-%d.csv", query.ExamID)
+	ctx.Header("Content-Type", "text/csv; charset=utf-8")
+	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	ctx.Data(http.StatusOK, "text/csv; charset=utf-8", payload)
 }
 
 func (handler *Handler) getExamAttemptReview(ctx *gin.Context) {
@@ -276,9 +299,12 @@ func parseExamOverviewQuery(ctx *gin.Context) (ExamOverviewQuery, bool) {
 		return ExamOverviewQuery{}, false
 	}
 	return ExamOverviewQuery{
-		ExamID:   examID,
-		Page:     parseInt(ctx.Query("page")),
-		PageSize: parseInt(ctx.Query("page_size")),
+		ExamID:        examID,
+		AttemptStatus: strings.TrimSpace(ctx.Query("attempt_status")),
+		ReviewStatus:  strings.TrimSpace(ctx.Query("review_status")),
+		Keyword:       strings.TrimSpace(ctx.Query("keyword")),
+		Page:          parseInt(ctx.Query("page")),
+		PageSize:      parseInt(ctx.Query("page_size")),
 	}, true
 }
 

@@ -39,10 +39,13 @@ type ClassPracticeSummaryQuery struct {
 const ExamAttemptStatusNotStarted = "not_started"
 
 type ExamOverviewQuery struct {
-	TenantID int64
-	ExamID   int64
-	Page     int
-	PageSize int
+	TenantID      int64
+	ExamID        int64
+	AttemptStatus string
+	ReviewStatus  string
+	Keyword       string
+	Page          int
+	PageSize      int
 }
 
 type ExamOverviewSummary struct {
@@ -72,9 +75,11 @@ type ExamOverviewStudentItem struct {
 	ClassName      *string    `json:"class_name,omitempty"`
 	AttemptID      *int64     `json:"attempt_id,omitempty"`
 	AttemptStatus  string     `json:"attempt_status"`
+	ReviewStatus   string     `json:"review_status"`
 	StartedAt      *time.Time `json:"started_at,omitempty"`
 	SubmitAt       *time.Time `json:"submit_at,omitempty"`
 	ObjectiveScore *float64   `json:"objective_score,omitempty"`
+	SubjectiveScore *float64  `json:"subjective_score,omitempty"`
 	FinalScore     *float64   `json:"final_score,omitempty"`
 }
 
@@ -363,6 +368,7 @@ type Repository interface {
 	ExamExists(ctx context.Context, tenantID int64, examID int64) (bool, error)
 	GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error)
 	ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error)
+	ListExamOverviewExportStudents(ctx context.Context, query ExamOverviewQuery) ([]ExamOverviewStudentItem, error)
 	GetExamAttemptReview(ctx context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error)
 	UpsertExamAttemptQuestionReview(ctx context.Context, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error)
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)

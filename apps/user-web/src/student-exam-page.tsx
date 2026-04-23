@@ -13,6 +13,7 @@ import type {
 export interface StudentExamApi {
   listExams(query?: { page?: number; page_size?: number; status?: string }): Promise<PageResult<Exam>>;
   startExamAttempt(examId: number): Promise<ExamAttemptDetail>;
+  getExamAttempt(attemptId: number): Promise<ExamAttemptDetail>;
   saveExamAttemptAnswer(attemptId: number, body: ExamAttemptAnswerInput): Promise<ExamAttemptAnswer>;
   submitExamAttempt(attemptId: number): Promise<ExamAttemptResult>;
   getExamAttemptResult(attemptId: number): Promise<ExamAttemptResult>;
@@ -21,6 +22,8 @@ export interface StudentExamApi {
 interface StudentExamPageProps {
   api: StudentExamApi;
 }
+
+const recoveryStorageKey = "aios.student_exam.recovery.v1";
 
 export function StudentExamPage({ api }: StudentExamPageProps) {
   const [exams, setExams] = useState<Exam[]>([]);
@@ -44,12 +47,27 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
 
     void api
       .listExams({ page: 1, page_size: 20, status: "published" })
-      .then((data) => {
+      .then(async (data) => {
         if (!active) {
           return;
         }
-        setExams(data.items ?? []);
-        setMessage(data.items.length > 0 ? "" : "暂无可参加考试。");
+        const items = data.items ?? [];
+        setExams(items);
+        const recovered = await restoreAttemptIfPossible(api, items);
+        if (!active) {
+          return;
+        }
+        if (recovered) {
+          autoSubmittedRef.current = false;
+          setActiveExam(recovered.exam);
+          setAttemptDetail(recovered.detail);
+          setResult(null);
+          setCurrentIndex(0);
+          setSelectedKeys(selectedKeysFor(recovered.detail.answers, recovered.detail.questions[0]?.display_order));
+          setMessage("已恢复未完成考试。");
+          return;
+        }
+        setMessage(items.length > 0 ? "" : "暂无可参加考试。");
       })
       .catch(() => {
         if (!active) {
@@ -85,7 +103,10 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
         setAttemptDetail(null);
         setActiveExam(null);
         setRemainingSeconds(null);
+        clearExamRecovery();
         setMessage("");
+      } catch {
+        setMessage("交卷失败，请检查网络后重试。");
       } finally {
         setSubmitting(false);
       }
@@ -132,35 +153,36 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
 
   async function handleStart(exam: Exam) {
     setMessage("正在进入考试...");
-    const detail = await api.startExamAttempt(exam.id);
-    const normalizedDetail = detail.attempt.start_at
-      ? detail
-      : {
-          ...detail,
-          attempt: {
-            ...detail.attempt,
-            start_at: new Date().toISOString()
-          }
-        };
-    autoSubmittedRef.current = false;
-    setActiveExam(exam);
-    setAttemptDetail(normalizedDetail);
-    setResult(null);
-    setCurrentIndex(0);
-    setSelectedKeys(selectedKeysFor(normalizedDetail.answers, normalizedDetail.questions[0]?.display_order));
-    setMessage("");
+    try {
+      const detail = await api.startExamAttempt(exam.id);
+      const normalizedDetail = normalizeAttemptStartTime(detail);
+      autoSubmittedRef.current = false;
+      setActiveExam(exam);
+      setAttemptDetail(normalizedDetail);
+      setResult(null);
+      setCurrentIndex(0);
+      setSelectedKeys(selectedKeysFor(normalizedDetail.answers, normalizedDetail.questions[0]?.display_order));
+      saveExamRecovery(exam.id, normalizedDetail.attempt.id);
+      setMessage("");
+    } catch {
+      setMessage("进入考试失败，请稍后重试。");
+    }
   }
 
   async function handleSaveAnswer() {
     if (!attemptDetail || !currentQuestion) {
       return;
     }
-    await api.saveExamAttemptAnswer(attemptDetail.attempt.id, {
-      display_order: currentQuestion.display_order,
-      answer: { selected_keys: selectedKeys }
-    });
-    setAttemptDetail((current) => mergeSavedAnswer(current, currentQuestion, selectedKeys));
-    setMessage("答案已保存。");
+    try {
+      await api.saveExamAttemptAnswer(attemptDetail.attempt.id, {
+        display_order: currentQuestion.display_order,
+        answer: { selected_keys: selectedKeys }
+      });
+      setAttemptDetail((current) => mergeSavedAnswer(current, currentQuestion, selectedKeys));
+      setMessage("答案已保存。");
+    } catch {
+      setMessage("答案保存失败，请重试。");
+    }
   }
 
   function handleMove(nextIndex: number) {
@@ -278,6 +300,80 @@ function selectedKeysFor(answers: ExamAttemptAnswer[], displayOrder?: number): s
   const answer = answers.find((item) => item.display_order === displayOrder)?.answer;
   const selected = answer?.selected_keys;
   return Array.isArray(selected) ? selected.filter((item): item is string => typeof item === "string") : [];
+}
+
+async function restoreAttemptIfPossible(
+  api: StudentExamApi,
+  exams: Exam[]
+): Promise<{ exam: Exam; detail: ExamAttemptDetail } | null> {
+  const recovery = readExamRecovery();
+  if (!recovery) {
+    return null;
+  }
+  const exam = exams.find((item) => item.id === recovery.exam_id);
+  if (!exam) {
+    clearExamRecovery();
+    return null;
+  }
+  try {
+    const detail = await api.getExamAttempt(recovery.attempt_id);
+    if (detail.attempt.status !== "in_progress") {
+      clearExamRecovery();
+      return null;
+    }
+    saveExamRecovery(exam.id, detail.attempt.id);
+    return { exam, detail: normalizeAttemptStartTime(detail) };
+  } catch {
+    clearExamRecovery();
+    return null;
+  }
+}
+
+function normalizeAttemptStartTime(detail: ExamAttemptDetail): ExamAttemptDetail {
+  if (detail.attempt.start_at) {
+    return detail;
+  }
+  return {
+    ...detail,
+    attempt: {
+      ...detail.attempt,
+      start_at: new Date().toISOString()
+    }
+  };
+}
+
+function readExamRecovery(): { exam_id: number; attempt_id: number } | null {
+  try {
+    const raw = window.localStorage.getItem(recoveryStorageKey);
+    if (!raw) {
+      return null;
+    }
+    const value = JSON.parse(raw) as { exam_id?: unknown; attempt_id?: unknown };
+    if (typeof value.exam_id !== "number" || typeof value.attempt_id !== "number") {
+      clearExamRecovery();
+      return null;
+    }
+    return { exam_id: value.exam_id, attempt_id: value.attempt_id };
+  } catch {
+    clearExamRecovery();
+    return null;
+  }
+}
+
+function saveExamRecovery(examId: number, attemptId: number) {
+  try {
+    window.localStorage.setItem(recoveryStorageKey, JSON.stringify({ exam_id: examId, attempt_id: attemptId }));
+  } catch {
+    // 本地存储不可用时不阻断考试主流程。
+  }
+}
+
+function clearExamRecovery() {
+  try {
+    window.localStorage.removeItem(recoveryStorageKey);
+  } catch {
+    // 本地存储不可用时无需额外处理。
+  }
 }
 
 function calculateRemainingSeconds(attemptDetail: ExamAttemptDetail, exam: Exam): number {

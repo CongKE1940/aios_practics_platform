@@ -1365,8 +1365,10 @@ describe("createApiClient", () => {
                   class_name: "七年级一班",
                   attempt_id: 8001,
                   attempt_status: "submitted",
+                  review_status: "pending",
                   final_score: 86,
-                  objective_score: 86
+                  objective_score: 86,
+                  subjective_score: 0
                 }
               ],
               page: 1,
@@ -1387,14 +1389,49 @@ describe("createApiClient", () => {
 
     const result = await client.getExamOverview({
       exam_id: 901,
+      attempt_status: "submitted",
+      review_status: "pending",
+      keyword: "张",
       page: 1,
       page_size: 20
     });
     expect(result.summary.average_score).toBe(86);
     expect(result.students.items[0].student_name).toBe("张三");
+    expect(result.students.items[0].review_status).toBe("pending");
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toContain("/analytics/exam-overview?exam_id=901&page=1&page_size=20");
+    expect(String(url)).toContain(
+      "/analytics/exam-overview?exam_id=901&attempt_status=submitted&review_status=pending&keyword=%E5%BC%A0&page=1&page_size=20"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+  it("exports filtered exam overview csv", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response("学生姓名,学号\n张三,S001\n", {
+        status: 200,
+        headers: { "content-type": "text/csv; charset=utf-8" }
+      });
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.exportExamOverviewCsv({
+      exam_id: 901,
+      attempt_status: "submitted",
+      review_status: "pending",
+      keyword: "张"
+    });
+    expect(result).toContain("学生姓名,学号");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/exam-overview-export?exam_id=901&attempt_status=submitted&review_status=pending&keyword=%E5%BC%A0"
+    );
     expect(init?.method).toBe("GET");
   });
 
