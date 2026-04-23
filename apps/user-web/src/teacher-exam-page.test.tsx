@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ExamDetail, ExamInput } from "@aios/api-sdk";
+import type { ExamDetail, ExamInput, ExamOverviewResult } from "@aios/api-sdk";
 
 import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
 
@@ -141,6 +141,70 @@ describe("TeacherExamPage", () => {
       expect(screen.getByText("题目 1001 / 版本 3001 / 2 分")).toBeTruthy();
       expect(screen.getByText("第 2 题")).toBeTruthy();
       expect(screen.getByText("题目 1002 / 版本 3002 / 3 分")).toBeTruthy();
+    });
+  });
+
+  it("loads exam overview statistics and score list", async () => {
+    const getExamOverview = vi.fn(async (): Promise<ExamOverviewResult> => ({
+      summary: {
+        exam_id: 1,
+        exam_name: "期中测验",
+        exam_mode: "fixed",
+        status: "published",
+        duration_minutes: 60,
+        total_score: 100,
+        student_count: 2,
+        participated_student_count: 1,
+        submitted_count: 1,
+        in_progress_count: 0,
+        absent_count: 1,
+        average_score: 86,
+        highest_score: 86,
+        lowest_score: 86
+      },
+      students: {
+        items: [
+          {
+            student_user_id: 501,
+            student_name: "张三",
+            student_no: "S001",
+            class_name: "七年级一班",
+            attempt_id: 8001,
+            attempt_status: "submitted",
+            final_score: 86,
+            objective_score: 86
+          },
+          {
+            student_user_id: 502,
+            student_name: "李四",
+            student_no: "S002",
+            class_name: "七年级一班",
+            attempt_status: "not_started"
+          }
+        ],
+        page: 1,
+        page_size: 20,
+        total: 2
+      }
+    }));
+    const api = createExamApiMock({ getExamOverview });
+
+    render(<TeacherExamPage api={api} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "查看详情" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+
+    await waitFor(() => {
+      expect(getExamOverview).toHaveBeenCalledWith({ exam_id: 1, page: 1, page_size: 20 });
+      expect(screen.getByText("应参加人数：2")).toBeTruthy();
+      expect(screen.getByText("已交卷：1")).toBeTruthy();
+      expect(screen.getByText("平均分：86")).toBeTruthy();
+      expect(screen.getByText("张三")).toBeTruthy();
+      expect(screen.getByText("状态：已交卷")).toBeTruthy();
+      expect(screen.getByText("状态：未开始")).toBeTruthy();
     });
   });
 
@@ -297,6 +361,30 @@ function createExamApiMock(overrides: Partial<TeacherExamApi> = {}): TeacherExam
         targets: [],
         fixed_questions: []
       }),
+    getExamOverview: async () => ({
+      summary: {
+        exam_id: 1,
+        exam_name: "期中测验",
+        exam_mode: "fixed",
+        status: "draft",
+        duration_minutes: 60,
+        total_score: 100,
+        student_count: 0,
+        participated_student_count: 0,
+        submitted_count: 0,
+        in_progress_count: 0,
+        absent_count: 0,
+        average_score: 0,
+        highest_score: 0,
+        lowest_score: 0
+      },
+      students: {
+        items: [],
+        page: 1,
+        page_size: 20,
+        total: 0
+      }
+    }),
     ...overrides
   };
 }

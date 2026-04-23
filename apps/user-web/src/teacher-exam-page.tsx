@@ -5,6 +5,7 @@ import type {
   ExamDetail,
   ExamFixedQuestion,
   ExamInput,
+  ExamOverviewResult,
   ExamPaperRule,
   ExamTarget,
   PageResult
@@ -16,6 +17,7 @@ export interface TeacherExamApi {
   getExam(id: number): Promise<ExamDetail>;
   updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
+  getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
 }
 
 interface TeacherExamPageProps {
@@ -38,7 +40,10 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [selectedExamDetail, setSelectedExamDetail] = useState<ExamDetail | null>(null);
+  const [selectedExamOverview, setSelectedExamOverview] = useState<ExamOverviewResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewPage, setOverviewPage] = useState(1);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingExamId, setEditingExamId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,12 +85,14 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
         const updated = await api.updateExam(editingExamId, payload);
         setSelectedExamId(updated.id);
         setSelectedExamDetail(updated);
+        await loadExamOverview(updated.id, 1);
         setForm(buildFormFromDetail(updated));
         await loadExams(`草稿已更新：${updated.name}`);
       } else {
         const created = await api.createExam(payload);
         setSelectedExamId(created.id);
         setSelectedExamDetail(created);
+        await loadExamOverview(created.id, 1);
         setForm(defaultForm);
         setFormMode("create");
         setEditingExamId(null);
@@ -101,13 +108,16 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   async function handleView(id: number) {
     setDetailLoading(true);
     setSelectedExamId(id);
+    setOverviewPage(1);
     setMessage("正在加载考试详情...");
     try {
       const detail = await api.getExam(id);
       setSelectedExamDetail(detail);
+      await loadExamOverview(id, 1);
       setMessage("");
     } catch {
       setSelectedExamDetail(null);
+      setSelectedExamOverview(null);
       setMessage("考试详情加载失败，请稍后重试。");
     } finally {
       setDetailLoading(false);
@@ -117,10 +127,12 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   async function handleEdit(id: number) {
     setDetailLoading(true);
     setSelectedExamId(id);
+    setOverviewPage(1);
     setMessage("正在载入草稿...");
     try {
       const detail = await api.getExam(id);
       setSelectedExamDetail(detail);
+      await loadExamOverview(id, 1);
       setForm(buildFormFromDetail(detail));
       setFormMode("edit");
       setEditingExamId(id);
@@ -139,6 +151,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       const published = await api.publishExam(id);
       if (selectedExamId === id) {
         setSelectedExamDetail(published);
+        await loadExamOverview(id, 1);
       }
       await loadExams(`考试已发布：${published.name}`);
     } catch {
@@ -146,6 +159,26 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     } finally {
       setPublishingId(null);
     }
+  }
+
+  async function loadExamOverview(id: number, page = 1) {
+    setOverviewLoading(true);
+    try {
+      const result = await api.getExamOverview({ exam_id: id, page, page_size: 20 });
+      setSelectedExamOverview(result);
+      setOverviewPage(result.students.page ?? page);
+    } catch {
+      setSelectedExamOverview(null);
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
+
+  async function handleOverviewPageChange(nextPage: number) {
+    if (!selectedExamId || nextPage <= 0 || overviewLoading) {
+      return;
+    }
+    await loadExamOverview(selectedExamId, nextPage);
   }
 
   return (
@@ -308,6 +341,72 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
               ) : (
                 <p>暂无组卷规则。</p>
               )}
+            </section>
+            <section aria-label="考试统计">
+              <h4>考试统计</h4>
+              {overviewLoading ? <p>正在加载考试统计...</p> : null}
+              {!overviewLoading && selectedExamOverview ? (
+                <>
+                  <p>应参加人数：{selectedExamOverview.summary.student_count}</p>
+                  <p>已参与：{selectedExamOverview.summary.participated_student_count}</p>
+                  <p>已交卷：{selectedExamOverview.summary.submitted_count}</p>
+                  <p>作答中：{selectedExamOverview.summary.in_progress_count}</p>
+                  <p>未开始：{selectedExamOverview.summary.absent_count}</p>
+                  <p>平均分：{formatScore(selectedExamOverview.summary.average_score)}</p>
+                  <p>最高分：{formatScore(selectedExamOverview.summary.highest_score)}</p>
+                  <p>最低分：{formatScore(selectedExamOverview.summary.lowest_score)}</p>
+                  <section aria-label="成绩列表">
+                    <h5>成绩列表</h5>
+                    {selectedExamOverview.students.items.length > 0 ? (
+                      <>
+                        <ul>
+                          {selectedExamOverview.students.items.map((student) => (
+                            <li key={student.student_user_id}>
+                              <p>{student.student_name}</p>
+                              <p>学号：{student.student_no ?? "-"}</p>
+                              <p>班级：{student.class_name ?? "-"}</p>
+                              <p>状态：{formatAttemptStatus(student.attempt_status)}</p>
+                              <p>得分：{formatNullableScore(student.final_score)}</p>
+                              <p>客观题：{formatNullableScore(student.objective_score)}</p>
+                              <p>交卷时间：{formatTime(student.submit_at)}</p>
+                            </li>
+                          ))}
+                        </ul>
+                        <p>
+                          第 {selectedExamOverview.students.page} /{" "}
+                          {Math.max(
+                            1,
+                            Math.ceil(selectedExamOverview.students.total / Math.max(1, selectedExamOverview.students.page_size))
+                          )}{" "}
+                          页
+                        </p>
+                        <button
+                          type="button"
+                          disabled={selectedExamOverview.students.page <= 1 || overviewLoading}
+                          onClick={() => void handleOverviewPageChange(overviewPage - 1)}
+                        >
+                          上一页
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            overviewLoading ||
+                            selectedExamOverview.students.page * selectedExamOverview.students.page_size >=
+                              selectedExamOverview.students.total
+                          }
+                          onClick={() => void handleOverviewPageChange(overviewPage + 1)}
+                        >
+                          下一页
+                        </button>
+                      </>
+                    ) : (
+                      <p>暂无学生成绩。</p>
+                    )}
+                  </section>
+                </>
+              ) : !overviewLoading ? (
+                <p>考试统计暂不可用。</p>
+              ) : null}
             </section>
           </>
         ) : (
@@ -518,4 +617,27 @@ function toLocalDateTime(value: string): string {
 
 function formatScore(value: number): string {
   return Number.isInteger(value) ? String(value) : String(value);
+}
+
+function formatNullableScore(value?: number | null): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  return formatScore(value);
+}
+
+function formatAttemptStatus(value: string): string {
+  if (value === "submitted") {
+    return "已交卷";
+  }
+  if (value === "timeout_submitted") {
+    return "超时交卷";
+  }
+  if (value === "in_progress") {
+    return "作答中";
+  }
+  if (value === "not_started") {
+    return "未开始";
+  }
+  return value;
 }

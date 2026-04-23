@@ -36,6 +36,53 @@ type ClassPracticeSummaryQuery struct {
 	PageSize int
 }
 
+const ExamAttemptStatusNotStarted = "not_started"
+
+type ExamOverviewQuery struct {
+	TenantID int64
+	ExamID   int64
+	Page     int
+	PageSize int
+}
+
+type ExamOverviewSummary struct {
+	ExamID                   int64      `json:"exam_id"`
+	ExamName                 string     `json:"exam_name"`
+	ExamMode                 string     `json:"exam_mode"`
+	Status                   string     `json:"status"`
+	StartTime                *time.Time `json:"start_time,omitempty"`
+	EndTime                  *time.Time `json:"end_time,omitempty"`
+	DurationMinutes          int        `json:"duration_minutes"`
+	TotalScore               float64    `json:"total_score"`
+	StudentCount             int        `json:"student_count"`
+	ParticipatedStudentCount int        `json:"participated_student_count"`
+	SubmittedCount           int        `json:"submitted_count"`
+	InProgressCount          int        `json:"in_progress_count"`
+	AbsentCount              int        `json:"absent_count"`
+	AverageScore             float64    `json:"average_score"`
+	HighestScore             float64    `json:"highest_score"`
+	LowestScore              float64    `json:"lowest_score"`
+}
+
+type ExamOverviewStudentItem struct {
+	StudentUserID  int64      `json:"student_user_id"`
+	StudentName    string     `json:"student_name"`
+	StudentNo      *string    `json:"student_no,omitempty"`
+	ClassID        *int64     `json:"class_id,omitempty"`
+	ClassName      *string    `json:"class_name,omitempty"`
+	AttemptID      *int64     `json:"attempt_id,omitempty"`
+	AttemptStatus  string     `json:"attempt_status"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	SubmitAt       *time.Time `json:"submit_at,omitempty"`
+	ObjectiveScore *float64   `json:"objective_score,omitempty"`
+	FinalScore     *float64   `json:"final_score,omitempty"`
+}
+
+type ExamOverviewResult struct {
+	Summary  ExamOverviewSummary                 `json:"summary"`
+	Students PageResult[ExamOverviewStudentItem] `json:"students"`
+}
+
 type ClassPracticeSummary struct {
 	ClassID                  int64      `json:"class_id"`
 	ClassName                string     `json:"class_name"`
@@ -229,16 +276,16 @@ type StudentPracticeSessionQuestionDetailQuery struct {
 }
 
 type StudentPracticeSessionQuestionReview struct {
-	ReviewID        int64      `json:"review_id"`
-	ReviewerUserID  int64      `json:"reviewer_user_id"`
-	ReviewComment   string     `json:"review_comment"`
-	LastUpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	ReviewID       int64      `json:"review_id"`
+	ReviewerUserID int64      `json:"reviewer_user_id"`
+	ReviewComment  string     `json:"review_comment"`
+	LastUpdatedAt  *time.Time `json:"updated_at,omitempty"`
 }
 
 type StudentPracticeSessionQuestionDetailResult struct {
-	StudentSummary StudentPracticeSessionStudentSummary `json:"student_summary"`
-	Session        StudentPracticeSessionSummary        `json:"session"`
-	QuestionDetail StudentPracticeSessionQuestionItem   `json:"question_detail"`
+	StudentSummary StudentPracticeSessionStudentSummary  `json:"student_summary"`
+	Session        StudentPracticeSessionSummary         `json:"session"`
+	QuestionDetail StudentPracticeSessionQuestionItem    `json:"question_detail"`
 	TeacherReview  *StudentPracticeSessionQuestionReview `json:"teacher_review,omitempty"`
 }
 
@@ -254,6 +301,9 @@ type UpsertStudentPracticeSessionQuestionReviewCommand struct {
 }
 
 type Repository interface {
+	ExamExists(ctx context.Context, tenantID int64, examID int64) (bool, error)
+	GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error)
+	ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error)
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
 	GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error)
@@ -314,6 +364,15 @@ func emptyPageResult[T any](page int, pageSize int) PageResult[T] {
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
 		if permission == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyPermission(permissions []string, targets ...string) bool {
+	for _, target := range targets {
+		if containsPermission(permissions, target) {
 			return true
 		}
 	}

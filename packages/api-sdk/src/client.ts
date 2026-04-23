@@ -105,6 +105,7 @@ export interface ApiClient {
   markPracticeQuestionMastered(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
+  getExamOverview(query: ExamOverviewQuery): Promise<ExamOverviewResult>;
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
   getStudentPracticeDetail(query: StudentPracticeDetailQuery): Promise<StudentPracticeDetailResult>;
   getStudentPracticeSessionDetail(query: StudentPracticeSessionDetailQuery): Promise<StudentPracticeSessionDetailResult>;
@@ -511,6 +512,44 @@ export interface ClassPracticeSummary {
   wrong_question_count: number;
   confused_question_count: number;
   last_practiced_at?: string | null;
+}
+
+export interface ExamOverviewSummary {
+  exam_id: number;
+  exam_name: string;
+  exam_mode: string;
+  status: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  duration_minutes: number;
+  total_score: number;
+  student_count: number;
+  participated_student_count: number;
+  submitted_count: number;
+  in_progress_count: number;
+  absent_count: number;
+  average_score: number;
+  highest_score: number;
+  lowest_score: number;
+}
+
+export interface ExamOverviewStudentItem {
+  student_user_id: number;
+  student_name: string;
+  student_no?: string | null;
+  class_id?: number | null;
+  class_name?: string | null;
+  attempt_id?: number | null;
+  attempt_status: string;
+  started_at?: string | null;
+  submit_at?: string | null;
+  objective_score?: number | null;
+  final_score?: number | null;
+}
+
+export interface ExamOverviewResult {
+  summary: ExamOverviewSummary;
+  students: PageResult<ExamOverviewStudentItem>;
 }
 
 export type StudentPracticeDetailTab = "sessions" | "wrong" | "confused";
@@ -1079,6 +1118,12 @@ export interface ClassPracticeSummaryQuery {
   page_size?: number;
 }
 
+export interface ExamOverviewQuery {
+  exam_id: number;
+  page?: number;
+  page_size?: number;
+}
+
 export interface StudentPracticeDetailQuery {
   class_id: number;
   course_id: number;
@@ -1233,6 +1278,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/practice/questions/${id}/mark-confused`, { method: "POST", body: JSON.stringify(body) }),
     listUserQuestionStates: (query) =>
       request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
+    getExamOverview: (query) =>
+      request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
     getClassPracticeSummary: (query) =>
       request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
     getStudentPracticeDetail: (query) =>

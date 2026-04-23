@@ -113,6 +113,75 @@ func TestHandler_TeacherCannotViewUnassignedClassCourse(t *testing.T) {
 	}
 }
 
+func TestHandler_ExamOverviewReturnsSummaryAndScoresForTeacherPublishPermission(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.examExists = true
+	repo.examOverviewSummary = ExamOverviewSummary{
+		ExamID:                   901,
+		ExamName:                 "期中测验",
+		ExamMode:                 "fixed",
+		Status:                   "published",
+		DurationMinutes:          60,
+		TotalScore:               100,
+		StudentCount:             2,
+		ParticipatedStudentCount: 1,
+		SubmittedCount:           1,
+		InProgressCount:          0,
+		AbsentCount:              1,
+		AverageScore:             86,
+		HighestScore:             86,
+		LowestScore:              86,
+	}
+	repo.examOverviewStudents = []ExamOverviewStudentItem{
+		{
+			StudentUserID:  501,
+			StudentName:    "张三",
+			StudentNo:      strPtr("S001"),
+			ClassName:      strPtr("七年级一班"),
+			AttemptID:      int64Ptr(8001),
+			AttemptStatus:  "submitted",
+			FinalScore:     float64Ptr(86),
+			ObjectiveScore: float64Ptr(86),
+		},
+		{
+			StudentUserID: 502,
+			StudentName:   "李四",
+			StudentNo:     strPtr("S002"),
+			ClassName:     strPtr("七年级一班"),
+			AttemptStatus: "not_started",
+		},
+	}
+
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/exam-overview?exam_id=901&page=1&page_size=20", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[ExamOverviewResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if body.Data.Summary.ExamName != "期中测验" || body.Data.Summary.StudentCount != 2 {
+		t.Fatalf("summary = %+v", body.Data.Summary)
+	}
+	if len(body.Data.Students.Items) != 2 {
+		t.Fatalf("student count = %d", len(body.Data.Students.Items))
+	}
+	if body.Data.Students.Items[0].AttemptStatus != "submitted" {
+		t.Fatalf("first student = %+v", body.Data.Students.Items[0])
+	}
+}
+
 func TestHandler_AdminCanViewTenantClassCourse(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -1531,36 +1600,40 @@ func newAnalyticsTestRouter(repo *memoryAnalyticsRepository, parser fakeAnalytic
 }
 
 type memoryAnalyticsRepository struct {
-	classCourseExists                     bool
-	teacherAllowed                        bool
-	summary                               ClassPracticeSummary
-	students                              []ClassPracticeStudentItem
-	lastQuery                             ClassPracticeSummaryQuery
-	options                               []ClassCourseOption
-	lastScope                             Scope
-	classCourseExistsCalls                int
-	teacherCanViewCalls                   int
-	studentBelongsToClass                 bool
-	studentPracticeSummary                StudentPracticeSummary
-	studentPracticeSessions               []StudentPracticeSessionItem
-	studentPracticeWrongQuestions         []StudentPracticeQuestionItem
-	studentPracticeConfusedQuestions      []StudentPracticeQuestionItem
-	lastStudentPracticeQuery              StudentPracticeDetailQuery
-	listStudentSessionsCalls              int
-	listStudentWrongCalls                 int
-	listStudentConfusedCalls              int
-	sessionBelongsToStudent               bool
-	studentPracticeSessionDetailResult    StudentPracticeSessionDetailResult
-	lastStudentPracticeSessionDetailQuery StudentPracticeSessionDetailQuery
-	getStudentPracticeSessionDetailCalls  int
-	sessionQuestionBelongsToSession       bool
-	studentPracticeSessionQuestionResult  StudentPracticeSessionQuestionDetailResult
-	lastStudentPracticeSessionQuestion    StudentPracticeSessionQuestionDetailQuery
-	getStudentPracticeSessionQuestionCall int
-	studentPracticeSessionQuestionReviewPtr *StudentPracticeSessionQuestionReview
-	studentPracticeSessionQuestionReview    StudentPracticeSessionQuestionReview
-	lastUpsertStudentPracticeSessionQuestionReview UpsertStudentPracticeSessionQuestionReviewCommand
+	classCourseExists                               bool
+	teacherAllowed                                  bool
+	summary                                         ClassPracticeSummary
+	students                                        []ClassPracticeStudentItem
+	lastQuery                                       ClassPracticeSummaryQuery
+	options                                         []ClassCourseOption
+	lastScope                                       Scope
+	classCourseExistsCalls                          int
+	teacherCanViewCalls                             int
+	studentBelongsToClass                           bool
+	studentPracticeSummary                          StudentPracticeSummary
+	studentPracticeSessions                         []StudentPracticeSessionItem
+	studentPracticeWrongQuestions                   []StudentPracticeQuestionItem
+	studentPracticeConfusedQuestions                []StudentPracticeQuestionItem
+	lastStudentPracticeQuery                        StudentPracticeDetailQuery
+	listStudentSessionsCalls                        int
+	listStudentWrongCalls                           int
+	listStudentConfusedCalls                        int
+	sessionBelongsToStudent                         bool
+	studentPracticeSessionDetailResult              StudentPracticeSessionDetailResult
+	lastStudentPracticeSessionDetailQuery           StudentPracticeSessionDetailQuery
+	getStudentPracticeSessionDetailCalls            int
+	sessionQuestionBelongsToSession                 bool
+	studentPracticeSessionQuestionResult            StudentPracticeSessionQuestionDetailResult
+	lastStudentPracticeSessionQuestion              StudentPracticeSessionQuestionDetailQuery
+	getStudentPracticeSessionQuestionCall           int
+	studentPracticeSessionQuestionReviewPtr         *StudentPracticeSessionQuestionReview
+	studentPracticeSessionQuestionReview            StudentPracticeSessionQuestionReview
+	lastUpsertStudentPracticeSessionQuestionReview  UpsertStudentPracticeSessionQuestionReviewCommand
 	upsertStudentPracticeSessionQuestionReviewCalls int
+	examExists                                      bool
+	examOverviewSummary                             ExamOverviewSummary
+	examOverviewStudents                            []ExamOverviewStudentItem
+	lastExamOverviewQuery                           ExamOverviewQuery
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
@@ -1647,6 +1720,20 @@ func (repo *memoryAnalyticsRepository) UpsertStudentPracticeSessionQuestionRevie
 	return repo.studentPracticeSessionQuestionReview, nil
 }
 
+func (repo *memoryAnalyticsRepository) ExamExists(_ context.Context, _ int64, _ int64) (bool, error) {
+	return repo.examExists, nil
+}
+
+func (repo *memoryAnalyticsRepository) GetExamOverviewSummary(_ context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error) {
+	repo.lastExamOverviewQuery = query
+	return repo.examOverviewSummary, nil
+}
+
+func (repo *memoryAnalyticsRepository) ListExamOverviewStudents(_ context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error) {
+	repo.lastExamOverviewQuery = query
+	return pageOf(repo.examOverviewStudents, query.Page, query.PageSize), nil
+}
+
 func performAnalyticsRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {
 	var requestBody []byte
 	if body != nil {
@@ -1684,5 +1771,13 @@ func timePtr(value time.Time) *time.Time {
 }
 
 func boolPtr(value bool) *bool {
+	return &value
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
+}
+
+func float64Ptr(value float64) *float64 {
 	return &value
 }

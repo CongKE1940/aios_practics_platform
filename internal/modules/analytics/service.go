@@ -17,6 +17,45 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo, now: time.Now}
 }
 
+func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query ExamOverviewQuery) (ExamOverviewResult, error) {
+	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+		return ExamOverviewResult{}, ErrForbidden
+	}
+	if query.ExamID <= 0 {
+		return ExamOverviewResult{}, ErrInvalidInput
+	}
+	switch scope.UserType {
+	case "teacher", "sys_admin", "school_admin":
+	default:
+		return ExamOverviewResult{}, ErrForbidden
+	}
+
+	query.TenantID = scope.TenantID
+	query.Page = normalizePage(query.Page)
+	query.PageSize = normalizePageSize(query.PageSize)
+
+	exists, err := service.repo.ExamExists(ctx, query.TenantID, query.ExamID)
+	if err != nil {
+		return ExamOverviewResult{}, err
+	}
+	if !exists {
+		return ExamOverviewResult{}, ErrNotFound
+	}
+
+	summary, err := service.repo.GetExamOverviewSummary(ctx, query)
+	if err != nil {
+		return ExamOverviewResult{}, err
+	}
+	students, err := service.repo.ListExamOverviewStudents(ctx, query)
+	if err != nil {
+		return ExamOverviewResult{}, err
+	}
+	return ExamOverviewResult{
+		Summary:  summary,
+		Students: students,
+	}, nil
+}
+
 func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope, query ClassPracticeSummaryQuery) (ClassPracticeSummaryResult, error) {
 	if !containsPermission(scope.Permissions, "analytics:view") {
 		return ClassPracticeSummaryResult{}, ErrForbidden

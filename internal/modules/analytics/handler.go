@@ -28,12 +28,31 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 }
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
+	router.GET("/analytics/exam-overview", handler.getExamOverview)
 	router.GET("/analytics/class-practice-summary", handler.getClassPracticeSummary)
 	router.GET("/analytics/class-course-options", handler.listClassCourseOptions)
 	router.GET("/analytics/student-practice-detail", handler.getStudentPracticeDetail)
 	router.GET("/analytics/student-practice-session-detail", handler.getStudentPracticeSessionDetail)
 	router.GET("/analytics/student-practice-session-question-detail", handler.getStudentPracticeSessionQuestionDetail)
 	router.PUT("/analytics/student-practice-session-question-review", handler.putStudentPracticeSessionQuestionReview)
+}
+
+func (handler *Handler) getExamOverview(ctx *gin.Context) {
+	scope, ok := handler.authorizeExamOverview(ctx)
+	if !ok {
+		return
+	}
+	query, ok := parseExamOverviewQuery(ctx)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.GetExamOverview(ctx.Request.Context(), scope, query)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -175,6 +194,41 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		UserID:      claims.UserID,
 		UserType:    claims.UserType,
 		Permissions: append([]string{}, claims.Permissions...),
+	}, true
+}
+
+func (handler *Handler) authorizeExamOverview(ctx *gin.Context) (Scope, bool) {
+	token := bearerToken(ctx.GetHeader("Authorization"))
+	if token == "" {
+		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
+		return Scope{}, false
+	}
+	claims, err := handler.parser.ParseToken(ctx.Request.Context(), token, auth.TokenTypeAccess)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
+		return Scope{}, false
+	}
+	if !containsAnyPermission(claims.Permissions, "analytics:view", "exam:publish") {
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
+		return Scope{}, false
+	}
+	return Scope{
+		TenantID:    claims.TenantID,
+		UserID:      claims.UserID,
+		UserType:    claims.UserType,
+		Permissions: append([]string{}, claims.Permissions...),
+	}, true
+}
+
+func parseExamOverviewQuery(ctx *gin.Context) (ExamOverviewQuery, bool) {
+	examID, ok := parsePositiveInt64(ctx.Query("exam_id"))
+	if !ok {
+		return ExamOverviewQuery{}, false
+	}
+	return ExamOverviewQuery{
+		ExamID:   examID,
+		Page:     parseInt(ctx.Query("page")),
+		PageSize: parseInt(ctx.Query("page_size")),
 	}, true
 }
 

@@ -242,6 +242,30 @@ describe("UserApp", () => {
             duration_minutes: 60,
             targets: [],
             fixed_questions: []
+          }),
+          getExamOverview: async () => ({
+            summary: {
+              exam_id: 1,
+              exam_name: "期中测验",
+              exam_mode: "fixed",
+              status: "draft",
+              duration_minutes: 60,
+              total_score: 100,
+              student_count: 0,
+              participated_student_count: 0,
+              submitted_count: 0,
+              in_progress_count: 0,
+              absent_count: 0,
+              average_score: 0,
+              highest_score: 0,
+              lowest_score: 0
+            },
+            students: {
+              items: [],
+              page: 1,
+              page_size: 20,
+              total: 0
+            }
           })
         }}
         sessionStore={createSessionStore(teacherSession)}

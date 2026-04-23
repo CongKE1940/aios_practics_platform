@@ -40,8 +40,207 @@ const latestPracticeAnswerWithPayloadSubquery = `
 )
 `
 
+const examTargetStudentsSubquery = `
+(
+  SELECT DISTINCT target_students.student_id
+  FROM (
+    SELECT et.target_id AS student_id
+    FROM exam_targets et
+    WHERE et.exam_id = ? AND et.target_type = 'user'
+    UNION
+    SELECT scm.student_id
+    FROM exam_targets et
+    JOIN exams e ON e.id = et.exam_id
+    JOIN student_class_memberships scm ON scm.tenant_id = e.tenant_id AND scm.class_id = et.target_id
+    WHERE et.exam_id = ? AND et.target_type = 'class'
+      AND scm.is_current = 1 AND scm.status = 'active'
+    UNION
+    SELECT scm.student_id
+    FROM exam_targets et
+    JOIN exams e ON e.id = et.exam_id
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = e.tenant_id AND tcca.course_id = et.target_id
+      AND tcca.is_current = 1 AND tcca.status = 'active'
+    JOIN student_class_memberships scm ON scm.tenant_id = tcca.tenant_id AND scm.class_id = tcca.class_id
+    WHERE et.exam_id = ? AND et.target_type = 'course'
+      AND scm.is_current = 1 AND scm.status = 'active'
+  ) target_students
+)
+`
+
 func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
+}
+
+func (repo *MySQLRepository) ExamExists(ctx context.Context, tenantID int64, examID int64) (bool, error) {
+	const query = `
+SELECT id
+FROM exams
+WHERE tenant_id = ? AND id = ?
+LIMIT 1
+`
+	var id int64
+	if err := repo.db.QueryRowContext(ctx, query, tenantID, examID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (repo *MySQLRepository) GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error) {
+	const statement = `
+SELECT
+  e.id,
+  e.name,
+  e.exam_mode,
+  e.status,
+  e.start_time,
+  e.end_time,
+  e.duration_minutes,
+  COALESCE(ep.total_score, 0) AS total_score,
+  COUNT(ts.student_id) AS student_count,
+  COUNT(ea.id) AS participated_student_count,
+  COALESCE(SUM(CASE WHEN ea.status IN ('submitted', 'timeout_submitted') THEN 1 ELSE 0 END), 0) AS submitted_count,
+  COALESCE(SUM(CASE WHEN ea.status = 'in_progress' THEN 1 ELSE 0 END), 0) AS in_progress_count,
+  COUNT(ts.student_id) - COUNT(ea.id) AS absent_count,
+  COALESCE(AVG(CASE WHEN ea.status IN ('submitted', 'timeout_submitted') THEN ea.final_score END), 0) AS average_score,
+  COALESCE(MAX(CASE WHEN ea.status IN ('submitted', 'timeout_submitted') THEN ea.final_score END), 0) AS highest_score,
+  COALESCE(MIN(CASE WHEN ea.status IN ('submitted', 'timeout_submitted') THEN ea.final_score END), 0) AS lowest_score
+FROM exams e
+LEFT JOIN (
+  SELECT exam_id, MAX(total_score) AS total_score
+  FROM exam_papers
+  WHERE exam_id = ?
+  GROUP BY exam_id
+) ep ON ep.exam_id = e.id
+LEFT JOIN ` + examTargetStudentsSubquery + ` ts ON 1 = 1
+LEFT JOIN exam_attempts ea ON ea.exam_id = e.id AND ea.user_id = ts.student_id AND ea.tenant_id = e.tenant_id
+WHERE e.tenant_id = ? AND e.id = ?
+GROUP BY e.id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, ep.total_score
+`
+	row := repo.db.QueryRowContext(
+		ctx,
+		statement,
+		query.ExamID,
+		query.ExamID,
+		query.ExamID,
+		query.ExamID,
+		query.TenantID,
+		query.ExamID,
+	)
+	var summary ExamOverviewSummary
+	var startAt sql.NullTime
+	var endAt sql.NullTime
+	if err := row.Scan(
+		&summary.ExamID,
+		&summary.ExamName,
+		&summary.ExamMode,
+		&summary.Status,
+		&startAt,
+		&endAt,
+		&summary.DurationMinutes,
+		&summary.TotalScore,
+		&summary.StudentCount,
+		&summary.ParticipatedStudentCount,
+		&summary.SubmittedCount,
+		&summary.InProgressCount,
+		&summary.AbsentCount,
+		&summary.AverageScore,
+		&summary.HighestScore,
+		&summary.LowestScore,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ExamOverviewSummary{}, ErrNotFound
+		}
+		return ExamOverviewSummary{}, err
+	}
+	if startAt.Valid {
+		summary.StartTime = &startAt.Time
+	}
+	if endAt.Valid {
+		summary.EndTime = &endAt.Time
+	}
+	return summary, nil
+}
+
+func (repo *MySQLRepository) ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error) {
+	page := normalizePage(query.Page)
+	pageSize := normalizePageSize(query.PageSize)
+
+	countQuery := `
+SELECT COUNT(*)
+FROM ` + examTargetStudentsSubquery + ` ts
+JOIN users u ON u.id = ts.student_id AND u.tenant_id = ?
+`
+	var total int
+	if err := repo.db.QueryRowContext(ctx, countQuery, query.ExamID, query.ExamID, query.ExamID, query.TenantID).Scan(&total); err != nil {
+		return PageResult[ExamOverviewStudentItem]{}, err
+	}
+
+	rowQuery := `
+SELECT
+  u.id AS student_user_id,
+  u.display_name AS student_name,
+  sp.student_no,
+  c.id AS class_id,
+  c.name AS class_name,
+  ea.id AS attempt_id,
+  COALESCE(ea.status, ?) AS attempt_status,
+  ea.start_at,
+  ea.submit_at,
+  ea.objective_score,
+  ea.final_score
+FROM ` + examTargetStudentsSubquery + ` ts
+JOIN users u ON u.id = ts.student_id AND u.tenant_id = ?
+LEFT JOIN student_profiles sp ON sp.tenant_id = u.tenant_id AND sp.user_id = u.id
+LEFT JOIN student_class_memberships scm ON scm.tenant_id = u.tenant_id AND scm.student_id = u.id
+  AND scm.is_current = 1 AND scm.status = 'active'
+LEFT JOIN classes c ON c.tenant_id = scm.tenant_id AND c.id = scm.class_id
+LEFT JOIN exam_attempts ea ON ea.exam_id = ? AND ea.user_id = u.id AND ea.tenant_id = u.tenant_id
+ORDER BY
+  CASE WHEN ea.final_score IS NULL THEN 1 ELSE 0 END ASC,
+  ea.final_score DESC,
+  ea.submit_at ASC,
+  u.display_name ASC,
+  u.id ASC
+LIMIT ? OFFSET ?
+`
+	rows, err := repo.db.QueryContext(
+		ctx,
+		rowQuery,
+		ExamAttemptStatusNotStarted,
+		query.ExamID,
+		query.ExamID,
+		query.ExamID,
+		query.TenantID,
+		query.ExamID,
+		pageSize,
+		(page-1)*pageSize,
+	)
+	if err != nil {
+		return PageResult[ExamOverviewStudentItem]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamOverviewStudentItem, 0)
+	for rows.Next() {
+		item, err := scanExamOverviewStudent(rows)
+		if err != nil {
+			return PageResult[ExamOverviewStudentItem]{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[ExamOverviewStudentItem]{}, err
+	}
+
+	return PageResult[ExamOverviewStudentItem]{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
 }
 
 func (repo *MySQLRepository) ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error) {
@@ -1301,6 +1500,60 @@ func scanClassPracticeStudent(scanner interface{ Scan(dest ...any) error }) (Cla
 		item.LastPracticedAt = &lastSessionStartedAt.Time
 	}
 	item.Accuracy = ratio(item.CorrectCount, item.AnsweredCount)
+	return item, nil
+}
+
+func scanExamOverviewStudent(scanner interface{ Scan(dest ...any) error }) (ExamOverviewStudentItem, error) {
+	var item ExamOverviewStudentItem
+	var (
+		studentNo      sql.NullString
+		classID        sql.NullInt64
+		className      sql.NullString
+		attemptID      sql.NullInt64
+		startedAt      sql.NullTime
+		submitAt       sql.NullTime
+		objectiveScore sql.NullFloat64
+		finalScore     sql.NullFloat64
+	)
+	if err := scanner.Scan(
+		&item.StudentUserID,
+		&item.StudentName,
+		&studentNo,
+		&classID,
+		&className,
+		&attemptID,
+		&item.AttemptStatus,
+		&startedAt,
+		&submitAt,
+		&objectiveScore,
+		&finalScore,
+	); err != nil {
+		return ExamOverviewStudentItem{}, err
+	}
+	if studentNo.Valid {
+		item.StudentNo = &studentNo.String
+	}
+	if classID.Valid {
+		item.ClassID = &classID.Int64
+	}
+	if className.Valid {
+		item.ClassName = &className.String
+	}
+	if attemptID.Valid {
+		item.AttemptID = &attemptID.Int64
+	}
+	if startedAt.Valid {
+		item.StartedAt = &startedAt.Time
+	}
+	if submitAt.Valid {
+		item.SubmitAt = &submitAt.Time
+	}
+	if objectiveScore.Valid {
+		item.ObjectiveScore = &objectiveScore.Float64
+	}
+	if finalScore.Valid {
+		item.FinalScore = &finalScore.Float64
+	}
 	return item, nil
 }
 

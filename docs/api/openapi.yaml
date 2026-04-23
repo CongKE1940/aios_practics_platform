@@ -1105,8 +1105,32 @@ paths:
     get:
       tags: [Analytics]
       summary: 考试概览
+      operationId: getExamOverview
+      parameters:
+        - in: query
+          name: exam_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 考试 ID。
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamOverviewOk' }
   /analytics/wrong-questions:
     get:
       tags: [Analytics]
@@ -1473,6 +1497,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ClassPracticeSummaryResponse'
+    ExamOverviewOk:
+      description: 考试概览和成绩列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamOverviewResponse'
     StudentPracticeDetailOk:
       description: 老师侧学生学习详情
       content:
@@ -2939,6 +2969,112 @@ components:
               type: integer
             total:
               type: integer
+    ExamOverviewSummary:
+      type: object
+      required: [exam_id, exam_name, exam_mode, status, duration_minutes, total_score, student_count, participated_student_count, submitted_count, in_progress_count, absent_count, average_score, highest_score, lowest_score]
+      properties:
+        exam_id:
+          type: integer
+          format: int64
+        exam_name:
+          type: string
+        exam_mode:
+          type: string
+        status:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+        duration_minutes:
+          type: integer
+        total_score:
+          type: number
+          format: double
+        student_count:
+          type: integer
+        participated_student_count:
+          type: integer
+        submitted_count:
+          type: integer
+        in_progress_count:
+          type: integer
+        absent_count:
+          type: integer
+        average_score:
+          type: number
+          format: double
+        highest_score:
+          type: number
+          format: double
+        lowest_score:
+          type: number
+          format: double
+    ExamOverviewStudentItem:
+      type: object
+      required: [student_user_id, student_name, attempt_status]
+      properties:
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+          nullable: true
+        class_name:
+          type: string
+          nullable: true
+        attempt_id:
+          type: integer
+          format: int64
+          nullable: true
+        attempt_status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_at:
+          type: string
+          format: date-time
+          nullable: true
+        objective_score:
+          type: number
+          format: double
+          nullable: true
+        final_score:
+          type: number
+          format: double
+          nullable: true
+    ExamOverviewResult:
+      type: object
+      required: [summary, students]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExamOverviewSummary'
+        students:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamOverviewStudentItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
     StudentPracticeSummary:
       type: object
       required: [student_user_id, student_name, class_id, class_name, course_id, course_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
@@ -3561,6 +3697,17 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/ClassPracticeSummaryResult'
+        request_id:
+          type: string
+    ExamOverviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamOverviewResult'
         request_id:
           type: string
     ClassCourseOptionsResponse:
