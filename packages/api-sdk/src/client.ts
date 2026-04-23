@@ -906,6 +906,8 @@ export interface ExamAttemptQuestion {
   question_version_id: number;
   display_order: number;
   score: number;
+  question_type?: string;
+  content?: Record<string, unknown>;
 }
 
 export interface ExamAttemptAnswer {

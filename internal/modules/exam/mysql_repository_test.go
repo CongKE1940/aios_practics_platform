@@ -43,7 +43,7 @@ ORDER BY id DESC
 			AddRow(int64(101), int64(7), "school", int64(7), int64(9), "七年级数学周测", "fixed", "draft", startTime, endTime, 90, createdAt, updatedAt).
 			AddRow(int64(102), int64(7), "school", int64(7), int64(9), "七年级英语周测", "fixed", "draft", startTime.Add(time.Hour), endTime.Add(time.Hour), 60, createdAt.Add(time.Hour), updatedAt.Add(time.Hour)))
 
-	result, err := repo.ListExams(context.Background(), Scope{TenantID: 7}, ExamListFilter{Page: 1, PageSize: 1})
+	result, err := repo.ListExams(context.Background(), Scope{TenantID: 7, Permissions: []string{"exam:publish"}}, ExamListFilter{Page: 1, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListExams() error = %v", err)
 	}
@@ -498,6 +498,52 @@ ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id =
 	}
 }
 
+func TestMySQLRepositoryGetAttemptIncludesQuestionContent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	expectAttemptByID(mock, 801, 9, 10001, 701, now, ExamAttemptStatusInProgress)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
+FROM exam_paper_questions epq
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+WHERE epq.paper_id = ?
+ORDER BY epq.order_no ASC
+`)).
+		WithArgs(int64(701)).
+		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score", "question_type", "content_json"}).
+			AddRow(int64(101), int64(1001), 1, "2.00", "single_choice", `{"stem":{"text":"1+1等于几？"},"options":[{"key":"A","text":"2"}]}`))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT attempt_id, question_id, question_version_id, display_order, answer_json, is_correct, score
+FROM exam_attempt_answers
+WHERE attempt_id = ?
+ORDER BY display_order ASC
+`)).
+		WithArgs(int64(801)).
+		WillReturnRows(sqlmock.NewRows([]string{"attempt_id", "question_id", "question_version_id", "display_order", "answer_json", "is_correct", "score"}))
+
+	result, err := repo.GetAttempt(context.Background(), Scope{TenantID: 9, UserID: 10001}, 801)
+	if err != nil {
+		t.Fatalf("GetAttempt() error = %v", err)
+	}
+	if len(result.Questions) != 1 || result.Questions[0].QuestionType != "single_choice" {
+		t.Fatalf("questions = %+v", result.Questions)
+	}
+	stem, _ := result.Questions[0].Content["stem"].(map[string]any)
+	if stem["text"] != "1+1等于几？" {
+		t.Fatalf("content = %+v", result.Questions[0].Content)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositorySubmitAttemptJudgesAndUpdatesExamWrongCount(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -554,6 +600,57 @@ ON DUPLICATE KEY UPDATE question_version_id = VALUES(question_version_id), exam_
 		t.Fatalf("SubmitAttempt() error = %v", err)
 	}
 	if result.FinalScore != 0 || result.Attempt.Status != ExamAttemptStatusSubmitted || len(result.Answers) != 1 || result.Answers[0].IsCorrect == nil || *result.Answers[0].IsCorrect {
+		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositoryListExamsFiltersPublishedStudentTargets(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.created_at, e.updated_at
+FROM exams e
+WHERE e.tenant_id = ? AND e.status = ?
+AND (
+  EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    WHERE et.exam_id = e.id AND et.target_type = 'user' AND et.target_id = ?
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.class_id = et.target_id
+    WHERE et.exam_id = e.id AND et.target_type = 'class' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.course_id = et.target_id
+    JOIN student_class_memberships scm ON scm.class_id = tcca.class_id
+    WHERE et.exam_id = e.id AND et.target_type = 'course' AND tcca.tenant_id = e.tenant_id AND tcca.is_current = 1 AND tcca.status = 'active' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+)
+ORDER BY e.id DESC
+`)).
+		WithArgs(int64(9), ExamStatusPublished, int64(10001), int64(10001), int64(10001)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at"}).
+			AddRow(int64(301), int64(9), OwnerOrgTypeSchool, int64(9), int64(7), "期中测验", ExamModeFixed, ExamStatusPublished, now, now.Add(time.Hour), 60, now, now))
+
+	result, err := repo.ListExams(context.Background(), Scope{TenantID: 9, UserID: 10001, UserType: "student"}, ExamListFilter{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("ListExams() error = %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Status != ExamStatusPublished {
 		t.Fatalf("result = %+v", result)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

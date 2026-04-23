@@ -1753,25 +1753,34 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "attempt_id": 90001,
-    "paper": {
+    "attempt": {
+      "id": 90001,
+      "exam_id": 70001,
       "paper_id": 801,
-      "questions": [
-        {
-          "question_id": 1001,
-          "question_version_id": 3001,
-          "display_order": 1,
-          "content": {
-            "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
-            "options": [
-              {"key": "B", "content_type": "text", "text": "2", "assets": []},
-              {"key": "A", "content_type": "text", "text": "1", "assets": []}
-            ]
-          },
-          "score": 2
-        }
-      ]
-    }
+      "tenant_id": 1,
+      "user_id": 10001,
+      "status": "in_progress",
+      "objective_score": 0,
+      "subjective_score": 0,
+      "final_score": 0
+    },
+    "questions": [
+      {
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "question_type": "single_choice",
+        "content": {
+          "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
+          "options": [
+            {"key": "B", "content_type": "text", "text": "2", "assets": []},
+            {"key": "A", "content_type": "text", "text": "1", "assets": []}
+          ]
+        },
+        "score": 2
+      }
+    ],
+    "answers": []
   },
   "request_id": "req_10"
 }
@@ -1786,22 +1795,34 @@ QuestionAnswer:
 ### Request Body
 ```json
 {
-  "answers": [
-    {
-      "question_id": 1001,
-      "question_version_id": 3001,
-      "display_order": 1,
-      "answer": {
-        "selected_keys": ["B"]
-      }
+  "display_order": 1,
+  "answer": {
+    "selected_keys": ["B"]
+  }
+}
+```
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "attempt_id": 90001,
+    "question_id": 1001,
+    "question_version_id": 3001,
+    "display_order": 1,
+    "answer": {
+      "selected_keys": ["B"]
     }
-  ]
+  },
+  "request_id": "req_11"
 }
 ```
 
 ### 说明
-- 服务端落库时应保存 `presented_options_json`
-- 考试答题与练题答题必须分离
+- `display_order` 用于定位当前试卷中的题目顺序。
+- 考试答题与练题答题必须分离。
 
 ---
 

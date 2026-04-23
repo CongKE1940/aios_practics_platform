@@ -145,6 +145,35 @@ func TestHandler_ExamEndpointsRequirePublishPermission(t *testing.T) {
 	}
 }
 
+func TestHandler_ListExamsAllowsStudentWithoutPublishPermission(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created := mustCreatePublishedFixedExam(t, repo)
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserID:    10001,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performExamAuthorizedRequest(router, http.MethodGet, "/api/v1/exams", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var payload examEnvelope[PageResult[Exam]]
+	decodeExamBody(t, rec, &payload)
+	if len(payload.Data.Items) != 1 || payload.Data.Items[0].ID != created.ID {
+		t.Fatalf("items = %+v", payload.Data.Items)
+	}
+}
+
 func TestHandler_GetExamDetailSuccess(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -476,6 +505,16 @@ func TestHandler_StartAttemptReturnsExistingAttempt(t *testing.T) {
 	if firstPayload.Data.Attempt.ID == 0 || firstPayload.Data.Attempt.ID != secondPayload.Data.Attempt.ID {
 		t.Fatalf("attempt ids = %d/%d", firstPayload.Data.Attempt.ID, secondPayload.Data.Attempt.ID)
 	}
+	if len(firstPayload.Data.Questions) != 1 {
+		t.Fatalf("questions len = %d", len(firstPayload.Data.Questions))
+	}
+	if firstPayload.Data.Questions[0].QuestionType != "single_choice" {
+		t.Fatalf("question_type = %q", firstPayload.Data.Questions[0].QuestionType)
+	}
+	stem, _ := firstPayload.Data.Questions[0].Content["stem"].(map[string]any)
+	if stem["text"] != "1+1等于几？" {
+		t.Fatalf("content = %+v", firstPayload.Data.Questions[0].Content)
+	}
 }
 
 func TestHandler_SaveAttemptAnswerIsIdempotent(t *testing.T) {
@@ -670,6 +709,9 @@ func (repo *memoryExamRepository) ListExams(_ context.Context, scope Scope, filt
 		if item.TenantID != scope.TenantID {
 			continue
 		}
+		if !containsPermission(scope.Permissions, "exam:publish") && item.Status != ExamStatusPublished {
+			continue
+		}
 		items = append(items, item.Exam)
 	}
 	return pageOf(items, filter.Page, filter.PageSize), nil
@@ -810,6 +852,14 @@ func (repo *memoryExamRepository) StartAttempt(_ context.Context, scope Scope, e
 			QuestionVersionID: question.QuestionVersionID,
 			DisplayOrder:      question.DisplayOrder,
 			Score:             question.Score,
+			QuestionType:      "single_choice",
+			Content: map[string]any{
+				"stem": map[string]any{"text": "1+1等于几？"},
+				"options": []any{
+					map[string]any{"key": "A", "text": "2"},
+					map[string]any{"key": "B", "text": "3"},
+				},
+			},
 		})
 	}
 	repo.attempts[detail.Attempt.ID] = detail

@@ -21,6 +21,9 @@ func (repo *MySQLRepository) ListExams(ctx context.Context, scope Scope, filter 
 	if repo == nil || repo.db == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
 	}
+	if !containsPermission(scope.Permissions, "exam:publish") {
+		return repo.listStudentExams(ctx, scope, filter)
+	}
 	const query = `
 SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at
 FROM exams
@@ -28,6 +31,53 @@ WHERE tenant_id = ?
 ORDER BY id DESC
 `
 	rows, err := repo.db.QueryContext(ctx, query, scope.TenantID)
+	if err != nil {
+		return PageResult[Exam]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]Exam, 0)
+	for rows.Next() {
+		item, err := scanExam(rows)
+		if err != nil {
+			return PageResult[Exam]{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[Exam]{}, err
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *MySQLRepository) listStudentExams(ctx context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error) {
+	const query = `
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.created_at, e.updated_at
+FROM exams e
+WHERE e.tenant_id = ? AND e.status = ?
+AND (
+  EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    WHERE et.exam_id = e.id AND et.target_type = 'user' AND et.target_id = ?
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.class_id = et.target_id
+    WHERE et.exam_id = e.id AND et.target_type = 'class' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.course_id = et.target_id
+    JOIN student_class_memberships scm ON scm.class_id = tcca.class_id
+    WHERE et.exam_id = e.id AND et.target_type = 'course' AND tcca.tenant_id = e.tenant_id AND tcca.is_current = 1 AND tcca.status = 'active' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+)
+ORDER BY e.id DESC
+`
+	rows, err := repo.db.QueryContext(ctx, query, scope.TenantID, ExamStatusPublished, scope.UserID, scope.UserID, scope.UserID)
 	if err != nil {
 		return PageResult[Exam]{}, err
 	}
@@ -776,10 +826,12 @@ LIMIT 1
 
 func (repo *MySQLRepository) listAttemptQuestions(ctx context.Context, paperID int64) ([]ExamAttemptQuestion, error) {
 	const query = `
-SELECT question_id, question_version_id, order_no, score
-FROM exam_paper_questions
-WHERE paper_id = ?
-ORDER BY order_no ASC
+SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
+FROM exam_paper_questions epq
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+WHERE epq.paper_id = ?
+ORDER BY epq.order_no ASC
 `
 	rows, err := repo.db.QueryContext(ctx, query, paperID)
 	if err != nil {
@@ -790,9 +842,15 @@ ORDER BY order_no ASC
 	items := make([]ExamAttemptQuestion, 0)
 	for rows.Next() {
 		var item ExamAttemptQuestion
-		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &item.Score); err != nil {
+		var contentJSON string
+		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &item.Score, &item.QuestionType, &contentJSON); err != nil {
 			return nil, err
 		}
+		content, err := decodeAnswer(contentJSON)
+		if err != nil {
+			return nil, err
+		}
+		item.Content = content
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {

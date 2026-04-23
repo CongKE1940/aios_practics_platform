@@ -135,10 +135,12 @@ type ExamAttempt struct {
 }
 
 type ExamAttemptQuestion struct {
-	QuestionID        int64   `json:"question_id"`
-	QuestionVersionID int64   `json:"question_version_id"`
-	DisplayOrder      int     `json:"display_order"`
-	Score             float64 `json:"score"`
+	QuestionID        int64          `json:"question_id"`
+	QuestionVersionID int64          `json:"question_version_id"`
+	DisplayOrder      int            `json:"display_order"`
+	Score             float64        `json:"score"`
+	QuestionType      string         `json:"question_type,omitempty"`
+	Content           map[string]any `json:"content,omitempty"`
 }
 
 type ExamAttemptAnswer struct {

@@ -176,6 +176,18 @@ describe("UserApp", () => {
       total: 1
     }));
 
+    const teacherSession = createSession([
+      { id: 21, name: "我的课程", path: "/app/courses", children: [] },
+      { id: 31, name: "考试管理", path: "/app/exams", children: [] }
+    ]);
+    teacherSession.user = {
+      ...teacherSession.user,
+      display_name: "张老师",
+      user_type: "teacher",
+      roles: ["teacher"],
+      permissions: ["exam:publish"]
+    };
+
     render(
       <UserApp
         authApi={createAuthApiMock()}
@@ -203,12 +215,7 @@ describe("UserApp", () => {
             fixed_questions: []
           })
         }}
-        sessionStore={createSessionStore(
-          createSession([
-            { id: 21, name: "我的课程", path: "/app/courses", children: [] },
-            { id: 31, name: "考试管理", path: "/app/exams", children: [] }
-          ])
-        )}
+        sessionStore={createSessionStore(teacherSession)}
       />
     );
 
@@ -218,6 +225,105 @@ describe("UserApp", () => {
       expect(screen.getByRole("heading", { name: "考试管理" })).toBeTruthy();
       expect(screen.getByText("期中测验")).toBeTruthy();
       expect(listExams).toHaveBeenCalledWith({ page: 1, page_size: 20 });
+    });
+  });
+
+  it("opens student exam entry from the user menu", async () => {
+    const listExams = vi.fn(async () => ({
+      items: [
+        {
+          id: 301,
+          tenant_id: 1,
+          name: "期中测验",
+          exam_mode: "fixed",
+          status: "published",
+          start_time: "2026-04-24T09:00:00+08:00",
+          end_time: "2026-04-24T10:00:00+08:00",
+          duration_minutes: 60
+        }
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1
+    }));
+
+    render(
+      <UserApp
+        authApi={createAuthApiMock()}
+        practiceApi={{
+          ...createPracticeApiMock(),
+          listExams,
+          startExamAttempt: async () => ({
+            attempt: {
+              id: 801,
+              exam_id: 301,
+              paper_id: 701,
+              tenant_id: 1,
+              user_id: 7,
+              status: "in_progress",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            questions: [],
+            answers: []
+          }),
+          saveExamAttemptAnswer: async (_attemptId, body) => ({
+            attempt_id: 801,
+            question_id: 101,
+            question_version_id: 1001,
+            display_order: body.display_order,
+            answer: body.answer,
+            score: 0
+          }),
+          submitExamAttempt: async () => ({
+            attempt: {
+              id: 801,
+              exam_id: 301,
+              paper_id: 701,
+              tenant_id: 1,
+              user_id: 7,
+              status: "submitted",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            answers: [],
+            objective_score: 0,
+            final_score: 0
+          }),
+          getExamAttemptResult: async () => ({
+            attempt: {
+              id: 801,
+              exam_id: 301,
+              paper_id: 701,
+              tenant_id: 1,
+              user_id: 7,
+              status: "submitted",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            answers: [],
+            objective_score: 0,
+            final_score: 0
+          })
+        }}
+        sessionStore={createSessionStore(
+          createSession([
+            { id: 21, name: "我的课程", path: "/app/courses", children: [] },
+            { id: 32, name: "考试入口", path: "/app/exams", children: [] }
+          ])
+        )}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "考试入口" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "考试入口" })).toBeTruthy();
+      expect(screen.getByText("期中测验")).toBeTruthy();
+      expect(listExams).toHaveBeenCalledWith({ page: 1, page_size: 20, status: "published" });
     });
   });
 

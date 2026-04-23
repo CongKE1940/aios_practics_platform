@@ -43,7 +43,7 @@ func (handler *Handler) listExams(ctx *gin.Context) {
 	if !handler.ready(ctx) {
 		return
 	}
-	scope, ok := handler.authorize(ctx)
+	scope, ok := handler.authorizeNoPermission(ctx)
 	if !ok {
 		return
 	}

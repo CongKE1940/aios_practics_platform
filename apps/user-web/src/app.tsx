@@ -24,6 +24,7 @@ import {
   PracticeStateListPage,
   type PracticeReviewApi
 } from "./practice-review-pages";
+import { StudentExamPage, type StudentExamApi } from "./student-exam-page";
 import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
 
 type UserPracticeApi = PracticePanelApi &
@@ -32,6 +33,7 @@ type UserPracticeApi = PracticePanelApi &
   Partial<StudentLearningDetailApi> &
   Partial<StudentPracticeSessionDetailApi> &
   Partial<StudentPracticeSessionQuestionDetailApi> &
+  Partial<StudentExamApi> &
   Partial<TeacherExamApi>;
 
 interface UserAppProps {
@@ -206,10 +208,12 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
               )
             ) : null}
             {selectedRoute === "/app/exams" ? (
-              currentPracticeApi && isTeacherExamApi(currentPracticeApi) ? (
+              session.user.user_type === "teacher" && currentPracticeApi && isTeacherExamApi(currentPracticeApi) ? (
                 <TeacherExamPage api={currentPracticeApi} />
+              ) : session.user.user_type === "student" && currentPracticeApi && isStudentExamApi(currentPracticeApi) ? (
+                <StudentExamPage api={currentPracticeApi} />
               ) : (
-                <p>当前考试管理功能暂不可用。</p>
+                <p>当前考试功能暂不可用。</p>
               )
             ) : null}
             {selectedRoute === "/app/practice" && currentPracticeApi ? (
@@ -306,6 +310,16 @@ function isTeacherExamApi(api: UserPracticeApi | undefined): api is UserPractice
     typeof api?.listExams === "function" &&
     typeof api?.createExam === "function" &&
     typeof api?.publishExam === "function"
+  );
+}
+
+function isStudentExamApi(api: UserPracticeApi | undefined): api is UserPracticeApi & StudentExamApi {
+  return (
+    typeof api?.listExams === "function" &&
+    typeof api?.startExamAttempt === "function" &&
+    typeof api?.saveExamAttemptAnswer === "function" &&
+    typeof api?.submitExamAttempt === "function" &&
+    typeof api?.getExamAttemptResult === "function"
   );
 }
 

@@ -19,7 +19,7 @@ func (service *Service) ListExams(ctx context.Context, scope Scope, filter ExamL
 	if service == nil || service.repo == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "student" && !containsPermission(scope.Permissions, "exam:publish") {
 		return PageResult[Exam]{}, ErrForbidden
 	}
 	filter.Page = normalizePage(filter.Page)
