@@ -18,6 +18,8 @@ const (
 	ExamStatusPublished = "published"
 
 	ExamAttemptStatusInProgress = "in_progress"
+	ExamAttemptStatusSubmitted  = "submitted"
+	ExamAttemptStatusTimeout    = "timeout_submitted"
 
 	ExamModeFixed  = "fixed"
 	ExamModeRandom = "random_assembly"
@@ -145,6 +147,7 @@ type ExamAttemptAnswer struct {
 	QuestionVersionID int64          `json:"question_version_id"`
 	DisplayOrder      int            `json:"display_order"`
 	Answer            map[string]any `json:"answer"`
+	IsCorrect         *bool          `json:"is_correct,omitempty"`
 	Score             float64        `json:"score"`
 }
 
@@ -157,6 +160,13 @@ type ExamAttemptDetail struct {
 type SaveAttemptAnswerInput struct {
 	DisplayOrder int            `json:"display_order"`
 	Answer       map[string]any `json:"answer"`
+}
+
+type ExamAttemptResult struct {
+	Attempt        ExamAttempt         `json:"attempt"`
+	Answers        []ExamAttemptAnswer `json:"answers"`
+	ObjectiveScore float64             `json:"objective_score"`
+	FinalScore     float64             `json:"final_score"`
 }
 
 type ExamListFilter struct {
@@ -180,6 +190,8 @@ type Repository interface {
 	StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error)
 	GetAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error)
 	SaveAttemptAnswer(ctx context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error)
+	SubmitAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error)
+	GetAttemptResult(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

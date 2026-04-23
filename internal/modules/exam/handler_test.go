@@ -522,6 +522,62 @@ func TestHandler_SaveAttemptAnswerIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestHandler_SubmitAttemptScoresAndKeepsMasteredUnchanged(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	created := mustCreatePublishedFixedExam(t, repo)
+	scope := Scope{TenantID: 1, UserID: 10001}
+	attempt, err := repo.StartAttempt(context.Background(), scope, created.ID)
+	if err != nil {
+		t.Fatalf("StartAttempt() error = %v", err)
+	}
+	if _, err := repo.SaveAttemptAnswer(context.Background(), scope, attempt.Attempt.ID, SaveAttemptAnswerInput{
+		DisplayOrder: 1,
+		Answer:       map[string]any{"selected_keys": []string{"B"}},
+	}); err != nil {
+		t.Fatalf("SaveAttemptAnswer() error = %v", err)
+	}
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserID:    10001,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exam-attempts/"+strconv.FormatInt(attempt.Attempt.ID, 10)+"/submit", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var payload examEnvelope[ExamAttemptResult]
+	decodeExamBody(t, rec, &payload)
+	if payload.Data.Attempt.Status != ExamAttemptStatusSubmitted {
+		t.Fatalf("status = %q", payload.Data.Attempt.Status)
+	}
+	if payload.Data.FinalScore != 0 || repo.examWrongCount[91] != 1 {
+		t.Fatalf("final_score = %.2f, wrong_count = %d", payload.Data.FinalScore, repo.examWrongCount[91])
+	}
+	if repo.markedMastered {
+		t.Fatal("exam submit should not mark mastered")
+	}
+
+	resultRec := performExamAuthorizedRequest(router, http.MethodGet, "/api/v1/exam-attempts/"+strconv.FormatInt(attempt.Attempt.ID, 10)+"/result", nil, "token")
+	if resultRec.Code != http.StatusOK {
+		t.Fatalf("result status = %d, body = %s", resultRec.Code, resultRec.Body.String())
+	}
+	var resultPayload examEnvelope[ExamAttemptResult]
+	decodeExamBody(t, resultRec, &resultPayload)
+	if resultPayload.Data.Attempt.Status != ExamAttemptStatusSubmitted {
+		t.Fatalf("result status = %q", resultPayload.Data.Attempt.Status)
+	}
+}
+
 func TestHandler_ListExamsRequiresAuthorization(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -586,20 +642,25 @@ func (parser fakeExamTokenParser) ParseToken(_ context.Context, token string, to
 }
 
 type memoryExamRepository struct {
-	nextID        int64
-	nextAttemptID int64
-	items         map[int64]ExamDetail
-	attempts      map[int64]ExamAttemptDetail
-	examAttempts  map[int64]int64
+	nextID         int64
+	nextAttemptID  int64
+	items          map[int64]ExamDetail
+	attempts       map[int64]ExamAttemptDetail
+	examAttempts   map[int64]int64
+	correctAnswers map[int64]map[string]any
+	examWrongCount map[int64]int
+	markedMastered bool
 }
 
 func newMemoryExamRepository() *memoryExamRepository {
 	return &memoryExamRepository{
-		nextID:        1,
-		nextAttemptID: 1,
-		items:         map[int64]ExamDetail{},
-		attempts:      map[int64]ExamAttemptDetail{},
-		examAttempts:  map[int64]int64{},
+		nextID:         1,
+		nextAttemptID:  1,
+		items:          map[int64]ExamDetail{},
+		attempts:       map[int64]ExamAttemptDetail{},
+		examAttempts:   map[int64]int64{},
+		correctAnswers: map[int64]map[string]any{},
+		examWrongCount: map[int64]int{},
 	}
 }
 
@@ -650,6 +711,10 @@ func (repo *memoryExamRepository) CreateExam(_ context.Context, scope Scope, inp
 			DisplayOrder:      question.DisplayOrder,
 			CreatedAt:         now,
 		})
+		repo.correctAnswers[question.QuestionID] = map[string]any{
+			"judge_mode":   "by_option_key",
+			"correct_keys": []any{"A"},
+		}
 	}
 	repo.items[item.ID] = item
 	repo.nextID++
@@ -799,6 +864,56 @@ func (repo *memoryExamRepository) SaveAttemptAnswer(_ context.Context, scope Sco
 	}
 	repo.attempts[attemptID] = detail
 	return answer, nil
+}
+
+func (repo *memoryExamRepository) SubmitAttempt(_ context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error) {
+	detail, ok := repo.attempts[attemptID]
+	if !ok || detail.Attempt.TenantID != scope.TenantID || detail.Attempt.UserID != scope.UserID {
+		return ExamAttemptResult{}, ErrNotFound
+	}
+	if detail.Attempt.Status != ExamAttemptStatusInProgress {
+		return repo.GetAttemptResult(context.Background(), scope, attemptID)
+	}
+	total := 0.0
+	for index := range detail.Answers {
+		correctAnswer := repo.correctAnswers[detail.Answers[index].QuestionID]
+		isCorrect, err := judgeExamAnswer(correctAnswer, detail.Answers[index].Answer)
+		if err != nil {
+			return ExamAttemptResult{}, err
+		}
+		detail.Answers[index].IsCorrect = &isCorrect
+		if isCorrect {
+			for _, question := range detail.Questions {
+				if question.DisplayOrder == detail.Answers[index].DisplayOrder {
+					detail.Answers[index].Score = question.Score
+					total += question.Score
+					break
+				}
+			}
+		} else {
+			repo.examWrongCount[detail.Answers[index].QuestionID]++
+		}
+	}
+	now := time.Date(2026, 4, 23, 9, 30, 0, 0, time.FixedZone("CST", 8*3600))
+	detail.Attempt.Status = ExamAttemptStatusSubmitted
+	detail.Attempt.SubmitAt = &now
+	detail.Attempt.ObjectiveScore = total
+	detail.Attempt.FinalScore = total
+	repo.attempts[attemptID] = detail
+	return repo.GetAttemptResult(context.Background(), scope, attemptID)
+}
+
+func (repo *memoryExamRepository) GetAttemptResult(_ context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error) {
+	detail, ok := repo.attempts[attemptID]
+	if !ok || detail.Attempt.TenantID != scope.TenantID || detail.Attempt.UserID != scope.UserID {
+		return ExamAttemptResult{}, ErrNotFound
+	}
+	return ExamAttemptResult{
+		Attempt:        detail.Attempt,
+		Answers:        append([]ExamAttemptAnswer{}, detail.Answers...),
+		ObjectiveScore: detail.Attempt.ObjectiveScore,
+		FinalScore:     detail.Attempt.FinalScore,
+	}, nil
 }
 
 func performExamJSONRequest(router http.Handler, method string, path string, body any) *httptest.ResponseRecorder {

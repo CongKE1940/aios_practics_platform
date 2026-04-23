@@ -361,6 +361,110 @@ ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id =
 	}, nil
 }
 
+func (repo *MySQLRepository) SubmitAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error) {
+	if repo == nil || repo.db == nil {
+		return ExamAttemptResult{}, ErrRepositoryUnavailable
+	}
+	attempt, durationMinutes, err := repo.getAttemptForSubmit(ctx, scope, attemptID)
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	if attempt.Status != ExamAttemptStatusInProgress {
+		return repo.GetAttemptResult(ctx, scope, attemptID)
+	}
+	answers, err := repo.listAttemptAnswersForSubmit(ctx, attempt.ID)
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	submitAt := time.Now().UTC()
+	status := ExamAttemptStatusSubmitted
+	if attempt.StartAt != nil && durationMinutes > 0 && submitAt.After(attempt.StartAt.Add(time.Duration(durationMinutes)*time.Minute)) {
+		status = ExamAttemptStatusTimeout
+	}
+
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	defer tx.Rollback()
+
+	totalScore := 0.0
+	resultAnswers := make([]ExamAttemptAnswer, 0, len(answers))
+	for _, answer := range answers {
+		isCorrect, err := judgeExamAnswer(answer.CorrectAnswer, answer.Answer.Answer)
+		if err != nil {
+			return ExamAttemptResult{}, err
+		}
+		score := 0.0
+		if isCorrect {
+			score = answer.QuestionScore
+			totalScore += score
+		}
+		if err := repo.updateAttemptAnswerJudgement(ctx, tx, attempt.ID, answer.Answer.DisplayOrder, isCorrect, score, submitAt); err != nil {
+			return ExamAttemptResult{}, err
+		}
+		answer.Answer.IsCorrect = &isCorrect
+		answer.Answer.Score = score
+		resultAnswers = append(resultAnswers, answer.Answer)
+		if !isCorrect {
+			if err := repo.upsertExamWrongState(ctx, tx, scope, answer.Answer, submitAt); err != nil {
+				return ExamAttemptResult{}, err
+			}
+		}
+	}
+
+	updateResult, err := tx.ExecContext(
+		ctx,
+		`UPDATE exam_attempts SET status = ?, submit_at = ?, objective_score = ?, final_score = ? WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = ?`,
+		status,
+		submitAt,
+		formatExamScore(totalScore),
+		formatExamScore(totalScore),
+		attempt.ID,
+		scope.TenantID,
+		scope.UserID,
+		ExamAttemptStatusInProgress,
+	)
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	rowsAffected, err := updateResult.RowsAffected()
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	if rowsAffected == 0 {
+		return ExamAttemptResult{}, ErrForbidden
+	}
+	if err := tx.Commit(); err != nil {
+		return ExamAttemptResult{}, err
+	}
+	attempt.Status = status
+	attempt.SubmitAt = &submitAt
+	attempt.ObjectiveScore = totalScore
+	attempt.FinalScore = totalScore
+	return ExamAttemptResult{Attempt: attempt, Answers: resultAnswers, ObjectiveScore: totalScore, FinalScore: totalScore}, nil
+}
+
+func (repo *MySQLRepository) GetAttemptResult(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error) {
+	if repo == nil || repo.db == nil {
+		return ExamAttemptResult{}, ErrRepositoryUnavailable
+	}
+	attempt, err := repo.getAttemptByID(ctx, scope, attemptID)
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	answers, err := repo.listAttemptAnswers(ctx, attempt.ID)
+	if err != nil {
+		return ExamAttemptResult{}, err
+	}
+	return ExamAttemptResult{
+		Attempt:        attempt,
+		Answers:        answers,
+		ObjectiveScore: attempt.ObjectiveScore,
+		FinalScore:     attempt.FinalScore,
+	}, nil
+}
+
 func (repo *MySQLRepository) replaceTargets(ctx context.Context, tx *sql.Tx, examID int64, targets []ExamTargetInput) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM exam_targets WHERE exam_id = ?`, examID); err != nil {
 		return err
@@ -617,6 +721,23 @@ LIMIT 1
 	return item, nil
 }
 
+func (repo *MySQLRepository) getAttemptForSubmit(ctx context.Context, scope Scope, attemptID int64) (ExamAttempt, int, error) {
+	const query = `
+SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id
+WHERE ea.id = ? AND ea.tenant_id = ? AND ea.user_id = ?
+LIMIT 1
+`
+	var durationMinutes int
+	row := repo.db.QueryRowContext(ctx, query, attemptID, scope.TenantID, scope.UserID)
+	item, err := scanAttemptWithDuration(row, &durationMinutes)
+	if err != nil {
+		return ExamAttempt{}, 0, wrapExamNotFound(err)
+	}
+	return item, durationMinutes, nil
+}
+
 func (repo *MySQLRepository) getPublishedPaperID(ctx context.Context, scope Scope, examID int64) (int64, error) {
 	const query = `
 SELECT ep.id
@@ -682,7 +803,7 @@ ORDER BY order_no ASC
 
 func (repo *MySQLRepository) listAttemptAnswers(ctx context.Context, attemptID int64) ([]ExamAttemptAnswer, error) {
 	const query = `
-SELECT attempt_id, question_id, question_version_id, display_order, answer_json, score
+SELECT attempt_id, question_id, question_version_id, display_order, answer_json, is_correct, score
 FROM exam_attempt_answers
 WHERE attempt_id = ?
 ORDER BY display_order ASC
@@ -697,7 +818,8 @@ ORDER BY display_order ASC
 	for rows.Next() {
 		var item ExamAttemptAnswer
 		var answerJSON string
-		if err := rows.Scan(&item.AttemptID, &item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &answerJSON, &item.Score); err != nil {
+		var isCorrect sql.NullBool
+		if err := rows.Scan(&item.AttemptID, &item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &answerJSON, &isCorrect, &item.Score); err != nil {
 			return nil, err
 		}
 		answer, err := decodeAnswer(answerJSON)
@@ -705,12 +827,96 @@ ORDER BY display_order ASC
 			return nil, err
 		}
 		item.Answer = answer
+		if isCorrect.Valid {
+			value := isCorrect.Bool
+			item.IsCorrect = &value
+		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return items, nil
+}
+
+type attemptAnswerForSubmit struct {
+	Answer        ExamAttemptAnswer
+	QuestionScore float64
+	CorrectAnswer map[string]any
+}
+
+func (repo *MySQLRepository) listAttemptAnswersForSubmit(ctx context.Context, attemptID int64) ([]attemptAnswerForSubmit, error) {
+	const query = `
+SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json
+FROM exam_attempt_answers eaa
+JOIN exam_attempts ea ON ea.id = eaa.attempt_id
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id AND epq.order_no = eaa.display_order
+JOIN question_versions qv ON qv.id = eaa.question_version_id
+WHERE eaa.attempt_id = ?
+ORDER BY eaa.display_order ASC
+`
+	rows, err := repo.db.QueryContext(ctx, query, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]attemptAnswerForSubmit, 0)
+	for rows.Next() {
+		var item attemptAnswerForSubmit
+		var answerJSON string
+		var correctAnswerJSON string
+		if err := rows.Scan(
+			&item.Answer.AttemptID,
+			&item.Answer.QuestionID,
+			&item.Answer.QuestionVersionID,
+			&item.Answer.DisplayOrder,
+			&answerJSON,
+			&item.QuestionScore,
+			&correctAnswerJSON,
+		); err != nil {
+			return nil, err
+		}
+		answer, err := decodeAnswer(answerJSON)
+		if err != nil {
+			return nil, err
+		}
+		correctAnswer, err := decodeAnswer(correctAnswerJSON)
+		if err != nil {
+			return nil, err
+		}
+		item.Answer.Answer = answer
+		item.CorrectAnswer = correctAnswer
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (repo *MySQLRepository) updateAttemptAnswerJudgement(ctx context.Context, tx *sql.Tx, attemptID int64, displayOrder int, isCorrect bool, score float64, judgedAt time.Time) error {
+	const query = `
+UPDATE exam_attempt_answers
+SET is_correct = ?, score = ?, judged_at = ?, judge_source = 'auto'
+WHERE attempt_id = ? AND display_order = ?
+`
+	_, err := tx.ExecContext(ctx, query, isCorrect, formatExamScore(score), judgedAt, attemptID, displayOrder)
+	return err
+}
+
+func (repo *MySQLRepository) upsertExamWrongState(ctx context.Context, tx *sql.Tx, scope Scope, answer ExamAttemptAnswer, wrongAt time.Time) error {
+	answerJSON, err := encodeAnswer(answer.Answer)
+	if err != nil {
+		return err
+	}
+	const query = `
+INSERT INTO user_question_states (tenant_id, user_id, question_id, question_version_id, exam_wrong_count, last_wrong_at, last_answer_json, last_result)
+VALUES (?, ?, ?, ?, 1, ?, ?, 'wrong')
+ON DUPLICATE KEY UPDATE question_version_id = VALUES(question_version_id), exam_wrong_count = exam_wrong_count + 1, last_wrong_at = VALUES(last_wrong_at), last_answer_json = VALUES(last_answer_json), last_result = VALUES(last_result)
+`
+	_, err = tx.ExecContext(ctx, query, scope.TenantID, scope.UserID, answer.QuestionID, answer.QuestionVersionID, wrongAt, answerJSON)
+	return err
 }
 
 func (repo *MySQLRepository) getPaperQuestionByDisplayOrder(ctx context.Context, paperID int64, displayOrder int) (ExamAttemptQuestion, error) {
@@ -784,6 +990,18 @@ func scanAttempt(scanner interface{ Scan(dest ...any) error }) (ExamAttempt, err
 	var item ExamAttempt
 	var startAt sql.NullTime
 	var submitAt sql.NullTime
+	err := scanAttemptFields(scanner, &item, &startAt, &submitAt)
+	if err != nil {
+		return ExamAttempt{}, err
+	}
+	applyAttemptNullableTimes(&item, startAt, submitAt)
+	return item, nil
+}
+
+func scanAttemptWithDuration(scanner interface{ Scan(dest ...any) error }, durationMinutes *int) (ExamAttempt, error) {
+	var item ExamAttempt
+	var startAt sql.NullTime
+	var submitAt sql.NullTime
 	err := scanner.Scan(
 		&item.ID,
 		&item.ExamID,
@@ -798,17 +1016,40 @@ func scanAttempt(scanner interface{ Scan(dest ...any) error }) (ExamAttempt, err
 		&item.FinalScore,
 		&item.CreatedAt,
 		&item.UpdatedAt,
+		durationMinutes,
 	)
 	if err != nil {
 		return ExamAttempt{}, err
 	}
+	applyAttemptNullableTimes(&item, startAt, submitAt)
+	return item, nil
+}
+
+func scanAttemptFields(scanner interface{ Scan(dest ...any) error }, item *ExamAttempt, startAt *sql.NullTime, submitAt *sql.NullTime) error {
+	return scanner.Scan(
+		&item.ID,
+		&item.ExamID,
+		&item.PaperID,
+		&item.TenantID,
+		&item.UserID,
+		startAt,
+		submitAt,
+		&item.Status,
+		&item.ObjectiveScore,
+		&item.SubjectiveScore,
+		&item.FinalScore,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+}
+
+func applyAttemptNullableTimes(item *ExamAttempt, startAt sql.NullTime, submitAt sql.NullTime) {
 	if startAt.Valid {
 		item.StartAt = &startAt.Time
 	}
 	if submitAt.Valid {
 		item.SubmitAt = &submitAt.Time
 	}
-	return item, nil
 }
 
 func wrapExamNotFound(err error) error {

@@ -498,6 +498,69 @@ ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id =
 	}
 }
 
+func TestMySQLRepositorySubmitAttemptJudgesAndUpdatesExamWrongCount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id
+WHERE ea.id = ? AND ea.tenant_id = ? AND ea.user_id = ?
+LIMIT 1
+`)).
+		WithArgs(int64(801), int64(9), int64(10001)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at", "duration_minutes"}).
+			AddRow(int64(801), int64(301), int64(701), int64(9), int64(10001), now, nil, ExamAttemptStatusInProgress, "0.00", "0.00", "0.00", now, now, 90))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json
+FROM exam_attempt_answers eaa
+JOIN exam_attempts ea ON ea.id = eaa.attempt_id
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id AND epq.order_no = eaa.display_order
+JOIN question_versions qv ON qv.id = eaa.question_version_id
+WHERE eaa.attempt_id = ?
+ORDER BY eaa.display_order ASC
+`)).
+		WithArgs(int64(801)).
+		WillReturnRows(sqlmock.NewRows([]string{"attempt_id", "question_id", "question_version_id", "display_order", "answer_json", "score", "answer_json"}).
+			AddRow(int64(801), int64(101), int64(1001), 1, `{"selected_keys":["B"]}`, "2.00", `{"judge_mode":"by_option_key","correct_keys":["A"]}`))
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`
+UPDATE exam_attempt_answers
+SET is_correct = ?, score = ?, judged_at = ?, judge_source = 'auto'
+WHERE attempt_id = ? AND display_order = ?
+`)).
+		WithArgs(false, "0.00", sqlmock.AnyArg(), int64(801), 1).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`
+INSERT INTO user_question_states (tenant_id, user_id, question_id, question_version_id, exam_wrong_count, last_wrong_at, last_answer_json, last_result)
+VALUES (?, ?, ?, ?, 1, ?, ?, 'wrong')
+ON DUPLICATE KEY UPDATE question_version_id = VALUES(question_version_id), exam_wrong_count = exam_wrong_count + 1, last_wrong_at = VALUES(last_wrong_at), last_answer_json = VALUES(last_answer_json), last_result = VALUES(last_result)
+`)).
+		WithArgs(int64(9), int64(10001), int64(101), int64(1001), sqlmock.AnyArg(), `{"selected_keys":["B"]}`).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exam_attempts SET status = ?, submit_at = ?, objective_score = ?, final_score = ? WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = ?`)).
+		WithArgs(ExamAttemptStatusSubmitted, sqlmock.AnyArg(), "0.00", "0.00", int64(801), int64(9), int64(10001), ExamAttemptStatusInProgress).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result, err := repo.SubmitAttempt(context.Background(), Scope{TenantID: 9, UserID: 10001}, 801)
+	if err != nil {
+		t.Fatalf("SubmitAttempt() error = %v", err)
+	}
+	if result.FinalScore != 0 || result.Attempt.Status != ExamAttemptStatusSubmitted || len(result.Answers) != 1 || result.Answers[0].IsCorrect == nil || *result.Answers[0].IsCorrect {
+		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryListExamsReturnsExplicitErrorWhenDBMissing(t *testing.T) {
 	var repo *MySQLRepository
 

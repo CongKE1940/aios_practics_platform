@@ -35,6 +35,8 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/exams/:id/attempts", handler.startAttempt)
 	router.GET("/exam-attempts/:id", handler.getAttempt)
 	router.POST("/exam-attempts/:id/answers", handler.saveAttemptAnswer)
+	router.POST("/exam-attempts/:id/submit", handler.submitAttempt)
+	router.GET("/exam-attempts/:id/result", handler.getAttemptResult)
 }
 
 func (handler *Handler) listExams(ctx *gin.Context) {
@@ -176,6 +178,38 @@ func (handler *Handler) saveAttemptAnswer(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.SaveAttemptAnswer(ctx.Request.Context(), scope, id, input)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) submitAttempt(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.SubmitAttempt(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) getAttemptResult(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.GetAttemptResult(ctx.Request.Context(), scope, id)
 	if err != nil {
 		writeExamError(ctx, err)
 		return

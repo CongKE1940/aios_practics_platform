@@ -2,6 +2,8 @@ package exam
 
 import (
 	"context"
+	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -112,6 +114,26 @@ func (service *Service) SaveAttemptAnswer(ctx context.Context, scope Scope, atte
 	return service.repo.SaveAttemptAnswer(ctx, scope, attemptID, input)
 }
 
+func (service *Service) SubmitAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error) {
+	if service == nil || service.repo == nil {
+		return ExamAttemptResult{}, ErrRepositoryUnavailable
+	}
+	if attemptID <= 0 || scope.UserID <= 0 || scope.TenantID <= 0 {
+		return ExamAttemptResult{}, ErrInvalidInput
+	}
+	return service.repo.SubmitAttempt(ctx, scope, attemptID)
+}
+
+func (service *Service) GetAttemptResult(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptResult, error) {
+	if service == nil || service.repo == nil {
+		return ExamAttemptResult{}, ErrRepositoryUnavailable
+	}
+	if attemptID <= 0 || scope.UserID <= 0 || scope.TenantID <= 0 {
+		return ExamAttemptResult{}, ErrInvalidInput
+	}
+	return service.repo.GetAttemptResult(ctx, scope, attemptID)
+}
+
 func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.ExamMode = strings.TrimSpace(strings.ToLower(input.ExamMode))
@@ -175,6 +197,63 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	}
 
 	return input, nil
+}
+
+func judgeExamAnswer(correctAnswer map[string]any, submitted map[string]any) (bool, error) {
+	mode, _ := correctAnswer["judge_mode"].(string)
+	switch mode {
+	case "by_option_key":
+		return sameExamStringSet(asExamStringSlice(correctAnswer["correct_keys"]), asExamStringSlice(submitted["selected_keys"])), nil
+	case "boolean":
+		correctValue, ok := asExamBool(correctAnswer["correct_value"])
+		if !ok {
+			return false, ErrInvalidInput
+		}
+		submittedValue, ok := asExamBool(submitted["value"])
+		if !ok {
+			return false, ErrInvalidInput
+		}
+		return correctValue == submittedValue, nil
+	default:
+		return false, ErrInvalidInput
+	}
+}
+
+func asExamStringSlice(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string{}, typed...)
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		return []string{}
+	}
+}
+
+func asExamBool(value any) (bool, bool) {
+	typed, ok := value.(bool)
+	return typed, ok
+}
+
+func sameExamStringSet(left []string, right []string) bool {
+	normalize := func(values []string) []string {
+		result := make([]string, 0, len(values))
+		for _, value := range values {
+			trimmed := strings.ToUpper(strings.TrimSpace(value))
+			if trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		sort.Strings(result)
+		return result
+	}
+	return reflect.DeepEqual(normalize(left), normalize(right))
 }
 
 func hasNonPositiveID(values []int64) bool {
