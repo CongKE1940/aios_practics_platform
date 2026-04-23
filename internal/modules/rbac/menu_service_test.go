@@ -53,6 +53,29 @@ func TestBuildMenusIncludesImportCenterEntry(t *testing.T) {
 	}
 }
 
+func TestBuildMenusIncludesAnalyticsAndHistoryEntries(t *testing.T) {
+	menus := BuildMenus("admin", []string{"analytics:view", "audit:view"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	if len(menus[0].Children) != 2 {
+		t.Fatalf("len(children) = %d", len(menus[0].Children))
+	}
+	if menus[0].Children[0].Path != "/admin/analytics" {
+		t.Fatalf("child[0].Path = %q", menus[0].Children[0].Path)
+	}
+	if menus[0].Children[0].Name != "数据看板" {
+		t.Fatalf("child[0].Name = %q", menus[0].Children[0].Name)
+	}
+	if menus[0].Children[1].Path != "/admin/history" {
+		t.Fatalf("child[1].Path = %q", menus[0].Children[1].Path)
+	}
+	if menus[0].Children[1].Name != "快照历史" {
+		t.Fatalf("child[1].Name = %q", menus[0].Children[1].Name)
+	}
+}
+
 func TestBuildUserMenusIncludesPracticeCenter(t *testing.T) {
 	menus := BuildMenus("user", []string{"practice:use"})
 

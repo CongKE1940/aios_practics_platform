@@ -48,6 +48,51 @@ type ExamOverviewQuery struct {
 	PageSize      int
 }
 
+type AdminOverviewSummary struct {
+	SchoolCount               int `json:"school_count"`
+	ClassCount                int `json:"class_count"`
+	CourseCount               int `json:"course_count"`
+	ActiveStudentCount        int `json:"active_student_count"`
+	ActiveTeacherCount        int `json:"active_teacher_count"`
+	PracticeSessionCount7d    int `json:"practice_session_count_7d"`
+	PublishedExamCount        int `json:"published_exam_count"`
+	SubmittedExamAttemptCount int `json:"submitted_exam_attempt_count"`
+	PendingReviewCount        int `json:"pending_review_count"`
+	RecentTransitionCount30d  int `json:"recent_transition_count_30d"`
+}
+
+type AdminOverviewRecentTransitionItem struct {
+	TransitionID   int64     `json:"transition_id"`
+	StudentID      int64     `json:"student_id"`
+	StudentName    string    `json:"student_name"`
+	TransitionType string    `json:"transition_type"`
+	FromClassID    *int64    `json:"from_class_id,omitempty"`
+	FromClassName  *string   `json:"from_class_name,omitempty"`
+	ToClassID      *int64    `json:"to_class_id,omitempty"`
+	ToClassName    *string   `json:"to_class_name,omitempty"`
+	OccurredAt     time.Time `json:"occurred_at"`
+	OperatorID     int64     `json:"operator_id"`
+	OperatorName   *string   `json:"operator_name,omitempty"`
+}
+
+type AdminOverviewRecentAuditLogItem struct {
+	ID             int64     `json:"id"`
+	ModuleName     string    `json:"module_name"`
+	ActionName     string    `json:"action_name"`
+	ResourceType   string    `json:"resource_type"`
+	ResourceID     *int64    `json:"resource_id,omitempty"`
+	OperatorUserID *int64    `json:"operator_user_id,omitempty"`
+	OperatorName   *string   `json:"operator_name,omitempty"`
+	Result         string    `json:"result"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type AdminOverviewResult struct {
+	Summary           AdminOverviewSummary                `json:"summary"`
+	RecentTransitions []AdminOverviewRecentTransitionItem `json:"recent_transitions"`
+	RecentAuditLogs   []AdminOverviewRecentAuditLogItem   `json:"recent_audit_logs"`
+}
+
 type ExamOverviewSummary struct {
 	ExamID                   int64      `json:"exam_id"`
 	ExamName                 string     `json:"exam_name"`
@@ -68,19 +113,19 @@ type ExamOverviewSummary struct {
 }
 
 type ExamOverviewStudentItem struct {
-	StudentUserID  int64      `json:"student_user_id"`
-	StudentName    string     `json:"student_name"`
-	StudentNo      *string    `json:"student_no,omitempty"`
-	ClassID        *int64     `json:"class_id,omitempty"`
-	ClassName      *string    `json:"class_name,omitempty"`
-	AttemptID      *int64     `json:"attempt_id,omitempty"`
-	AttemptStatus  string     `json:"attempt_status"`
-	ReviewStatus   string     `json:"review_status"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	SubmitAt       *time.Time `json:"submit_at,omitempty"`
-	ObjectiveScore *float64   `json:"objective_score,omitempty"`
-	SubjectiveScore *float64  `json:"subjective_score,omitempty"`
-	FinalScore     *float64   `json:"final_score,omitempty"`
+	StudentUserID   int64      `json:"student_user_id"`
+	StudentName     string     `json:"student_name"`
+	StudentNo       *string    `json:"student_no,omitempty"`
+	ClassID         *int64     `json:"class_id,omitempty"`
+	ClassName       *string    `json:"class_name,omitempty"`
+	AttemptID       *int64     `json:"attempt_id,omitempty"`
+	AttemptStatus   string     `json:"attempt_status"`
+	ReviewStatus    string     `json:"review_status"`
+	StartedAt       *time.Time `json:"started_at,omitempty"`
+	SubmitAt        *time.Time `json:"submit_at,omitempty"`
+	ObjectiveScore  *float64   `json:"objective_score,omitempty"`
+	SubjectiveScore *float64   `json:"subjective_score,omitempty"`
+	FinalScore      *float64   `json:"final_score,omitempty"`
 }
 
 type ExamOverviewResult struct {
@@ -369,6 +414,7 @@ type Repository interface {
 	GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error)
 	ListExamOverviewStudents(ctx context.Context, query ExamOverviewQuery) (PageResult[ExamOverviewStudentItem], error)
 	ListExamOverviewExportStudents(ctx context.Context, query ExamOverviewQuery) ([]ExamOverviewStudentItem, error)
+	GetAdminOverview(ctx context.Context, tenantID int64) (AdminOverviewResult, error)
 	GetExamAttemptReview(ctx context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error)
 	UpsertExamAttemptQuestionReview(ctx context.Context, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error)
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)

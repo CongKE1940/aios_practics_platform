@@ -478,26 +478,85 @@ paths:
       summary: 禁用用户
       responses:
         '200': { $ref: '#/components/responses/Ok' }
-  /students/transitions:
+  /student-transitions:
+    get:
+      tags: [Audit]
+      summary: 学籍变更列表
+      parameters:
+        - in: query
+          name: student_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: transition_type
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/StudentTransitionPageOk' }
     post:
-      tags: [User]
-      summary: 学生流转
+      tags: [Audit]
+      summary: 记录学籍变更
+      requestBody:
+        $ref: '#/components/requestBodies/StudentTransitionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
-  /teachers/assignments:
+        '200': { $ref: '#/components/responses/StudentTransitionOk' }
+  /teacher-assignment-histories:
+    get:
+      tags: [Audit]
+      summary: 任课变更历史列表
+      parameters:
+        - in: query
+          name: teacher_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: class_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/TeacherAssignmentHistoryPageOk' }
+  /teacher-assignment-changes:
     post:
-      tags: [User]
-      summary: 教师任课分配
+      tags: [Audit]
+      summary: 记录任课变更
+      requestBody:
+        $ref: '#/components/requestBodies/TeacherAssignmentChangeBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
-  /teachers/assignments/{id}/end:
-    parameters:
-      - $ref: '#/components/parameters/Id'
-    put:
-      tags: [User]
-      summary: 结束教师任课
-      responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/TeacherAssignmentHistoryOk' }
   /question-banks:
     get:
       tags: [QuestionBank]
@@ -1101,6 +1160,13 @@ paths:
       summary: 练题概览
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /analytics/admin-overview:
+    get:
+      tags: [Analytics]
+      summary: 管理端阶段六数据看板总览
+      operationId: getAdminOverview
+      responses:
+        '200': { $ref: '#/components/responses/AdminOverviewOk' }
   /analytics/exam-overview:
     get:
       tags: [Analytics]
@@ -1448,8 +1514,61 @@ paths:
     get:
       tags: [Audit]
       summary: 审计日志列表
+      operationId: listAuditLogs
+      parameters:
+        - in: query
+          name: module_name
+          schema:
+            type: string
+        - in: query
+          name: resource_type
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/AuditLogPageOk' }
+  /entity-snapshots:
+    get:
+      tags: [Audit]
+      summary: 实体快照列表
+      operationId: listEntitySnapshots
+      parameters:
+        - in: query
+          name: entity_type
+          schema:
+            type: string
+        - in: query
+          name: entity_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/EntitySnapshotPageOk' }
 components:
   securitySchemes:
     bearerAuth:
@@ -1573,6 +1692,48 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UserQuestionStatePageResponse'
+    AdminOverviewOk:
+      description: 管理端阶段六数据看板总览
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminOverviewResponse'
+    AuditLogPageOk:
+      description: 审计日志分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuditLogPageResponse'
+    EntitySnapshotPageOk:
+      description: 实体快照分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EntitySnapshotPageResponse'
+    StudentTransitionOk:
+      description: 学籍变更详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentTransitionResponse'
+    StudentTransitionPageOk:
+      description: 学籍变更分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentTransitionPageResponse'
+    TeacherAssignmentHistoryOk:
+      description: 任课变更详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeacherAssignmentHistoryResponse'
+    TeacherAssignmentHistoryPageOk:
+      description: 任课变更分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeacherAssignmentHistoryPageResponse'
     ClassCourseOptionsOk:
       description: 班级课程级联选项
       content:
@@ -1778,6 +1939,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/QuestionStateInput'
+    StudentTransitionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentTransitionInput'
+    TeacherAssignmentChangeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeacherAssignmentChangeInput'
     StudentPracticeSessionQuestionReviewBody:
       required: true
       content:
@@ -3913,6 +4086,419 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/UserQuestionState'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    AdminOverviewSummary:
+      type: object
+      required: [school_count, class_count, course_count, active_student_count, active_teacher_count, practice_session_count_7d, published_exam_count, submitted_exam_attempt_count, pending_review_count, recent_transition_count_30d]
+      properties:
+        school_count: { type: integer }
+        class_count: { type: integer }
+        course_count: { type: integer }
+        active_student_count: { type: integer }
+        active_teacher_count: { type: integer }
+        practice_session_count_7d: { type: integer }
+        published_exam_count: { type: integer }
+        submitted_exam_attempt_count: { type: integer }
+        pending_review_count: { type: integer }
+        recent_transition_count_30d: { type: integer }
+    AdminOverviewRecentTransitionItem:
+      type: object
+      required: [transition_id, student_id, student_name, transition_type, occurred_at, operator_id]
+      properties:
+        transition_id:
+          type: integer
+          format: int64
+        student_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        transition_type:
+          type: string
+        from_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        from_class_name:
+          type: string
+          nullable: true
+        to_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_class_name:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        operator_id:
+          type: integer
+          format: int64
+        operator_name:
+          type: string
+          nullable: true
+    AdminOverviewRecentAuditLogItem:
+      type: object
+      required: [id, module_name, action_name, resource_type, result, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        module_name:
+          type: string
+        action_name:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: integer
+          format: int64
+          nullable: true
+        operator_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        operator_name:
+          type: string
+          nullable: true
+        result:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AdminOverviewResult:
+      type: object
+      required: [summary, recent_transitions, recent_audit_logs]
+      properties:
+        summary:
+          $ref: '#/components/schemas/AdminOverviewSummary'
+        recent_transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverviewRecentTransitionItem'
+        recent_audit_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverviewRecentAuditLogItem'
+    AdminOverviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/AdminOverviewResult'
+        request_id:
+          type: string
+    AuditLogItem:
+      type: object
+      required: [id, tenant_id, module_name, action_name, resource_type, result, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        operator_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        module_name:
+          type: string
+        action_name:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: integer
+          format: int64
+          nullable: true
+        before_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        after_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        ip:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+        result:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    EntitySnapshotItem:
+      type: object
+      required: [id, tenant_id, entity_type, entity_id, snapshot_type, snapshot_json, version_no, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+          format: int64
+        snapshot_type:
+          type: string
+        snapshot_json:
+          type: object
+          additionalProperties: true
+        version_no:
+          type: integer
+        trigger_event_type:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    StudentTransitionInput:
+      type: object
+      required: [student_id, transition_type, occurred_at]
+      properties:
+        student_id:
+          type: integer
+          format: int64
+        transition_type:
+          type: string
+          enum: [class_change, promote, transfer_in, transfer_out, graduate, leave_school, re_enroll]
+        to_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        remark:
+          type: string
+          nullable: true
+    StudentTransitionItem:
+      type: object
+      required: [id, tenant_id, student_id, transition_type, occurred_at, operator_id, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        student_id:
+          type: integer
+          format: int64
+        transition_type:
+          type: string
+        from_school_id:
+          type: integer
+          format: int64
+          nullable: true
+        from_grade_id:
+          type: integer
+          format: int64
+          nullable: true
+        from_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_school_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_grade_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        operator_id:
+          type: integer
+          format: int64
+        remark:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    TeacherAssignmentChangeInput:
+      type: object
+      required: [teacher_id, class_id, course_id, change_type, effective_at]
+      properties:
+        teacher_id:
+          type: integer
+          format: int64
+        class_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        change_type:
+          type: string
+          enum: [assign, unassign]
+        effective_at:
+          type: string
+          format: date-time
+    TeacherAssignmentHistoryItem:
+      type: object
+      required: [id, tenant_id, teacher_id, class_id, course_id, change_type, effective_from, operator_id, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        teacher_id:
+          type: integer
+          format: int64
+        class_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        change_type:
+          type: string
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        operator_id:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+    AuditLogPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditLogItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    EntitySnapshotPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/EntitySnapshotItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    StudentTransitionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentTransitionItem'
+        request_id:
+          type: string
+    StudentTransitionPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentTransitionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    TeacherAssignmentHistoryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/TeacherAssignmentHistoryItem'
+        request_id:
+          type: string
+    TeacherAssignmentHistoryPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/TeacherAssignmentHistoryItem'
             page:
               type: integer
             page_size:

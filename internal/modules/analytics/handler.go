@@ -29,6 +29,7 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 }
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
+	router.GET("/analytics/admin-overview", handler.getAdminOverview)
 	router.GET("/analytics/exam-overview", handler.getExamOverview)
 	router.GET("/analytics/exam-overview-export", handler.exportExamOverviewCSV)
 	router.GET("/analytics/exam-attempt-review", handler.getExamAttemptReview)
@@ -39,6 +40,19 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/student-practice-session-detail", handler.getStudentPracticeSessionDetail)
 	router.GET("/analytics/student-practice-session-question-detail", handler.getStudentPracticeSessionQuestionDetail)
 	router.PUT("/analytics/student-practice-session-question-review", handler.putStudentPracticeSessionQuestionReview)
+}
+
+func (handler *Handler) getAdminOverview(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.GetAdminOverview(ctx.Request.Context(), scope)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
 func (handler *Handler) getExamOverview(ctx *gin.Context) {

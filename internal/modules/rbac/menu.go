@@ -86,6 +86,8 @@ var adminMenus = []menuDef{
 			{id: 15, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
 			{id: 16, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
 			{id: 17, name: "导入中心", path: "/admin/imports", requiredPermissions: []string{"import:manage"}},
+			{id: 18, name: "数据看板", path: "/admin/analytics", requiredPermissions: []string{"analytics:view"}},
+			{id: 19, name: "快照历史", path: "/admin/history", requiredPermissions: []string{"audit:view"}},
 		},
 	},
 }

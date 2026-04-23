@@ -92,6 +92,67 @@ func TestHandler_TeacherClassPracticeSummaryReturnsOverviewAndStudents(t *testin
 	}
 }
 
+func TestHandler_AdminOverviewReturnsSummaryAndRecentLists(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.adminOverviewResult = AdminOverviewResult{
+		Summary: AdminOverviewSummary{
+			SchoolCount:               2,
+			ClassCount:                8,
+			CourseCount:               5,
+			ActiveStudentCount:        320,
+			ActiveTeacherCount:        24,
+			PracticeSessionCount7d:    86,
+			PublishedExamCount:        6,
+			SubmittedExamAttemptCount: 102,
+			PendingReviewCount:        4,
+			RecentTransitionCount30d:  3,
+		},
+		RecentTransitions: []AdminOverviewRecentTransitionItem{
+			{
+				TransitionID:   1001,
+				StudentID:      501,
+				StudentName:    "张三",
+				TransitionType: "promote",
+				OccurredAt:     time.Date(2026, 4, 23, 9, 0, 0, 0, time.FixedZone("CST", 8*3600)),
+				OperatorID:     1,
+				OperatorName:   strPtr("系统管理员"),
+			},
+		},
+		RecentAuditLogs: []AdminOverviewRecentAuditLogItem{
+			{
+				ID:           9001,
+				ModuleName:   "snapshot",
+				ActionName:   "student_transition",
+				ResourceType: "student",
+				Result:       "success",
+				CreatedAt:    time.Date(2026, 4, 23, 9, 30, 0, 0, time.FixedZone("CST", 8*3600)),
+			},
+		},
+	}
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      1,
+			UserType:    "sys_admin",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/admin-overview", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[AdminOverviewResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if body.Data.Summary.ActiveStudentCount != 320 || len(body.Data.RecentTransitions) != 1 || len(body.Data.RecentAuditLogs) != 1 {
+		t.Fatalf("body = %+v", body.Data)
+	}
+}
+
 func TestHandler_TeacherCannotViewUnassignedClassCourse(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -137,15 +198,15 @@ func TestHandler_ExamOverviewReturnsSummaryAndScoresForTeacherPublishPermission(
 	}
 	repo.examOverviewStudents = []ExamOverviewStudentItem{
 		{
-			StudentUserID:  501,
-			StudentName:    "张三",
-			StudentNo:      strPtr("S001"),
-			ClassName:      strPtr("七年级一班"),
-			AttemptID:      int64Ptr(8001),
-			AttemptStatus:  "submitted",
-			ReviewStatus:   "reviewed",
-			FinalScore:     float64Ptr(86),
-			ObjectiveScore: float64Ptr(86),
+			StudentUserID:   501,
+			StudentName:     "张三",
+			StudentNo:       strPtr("S001"),
+			ClassName:       strPtr("七年级一班"),
+			AttemptID:       int64Ptr(8001),
+			AttemptStatus:   "submitted",
+			ReviewStatus:    "reviewed",
+			FinalScore:      float64Ptr(86),
+			ObjectiveScore:  float64Ptr(86),
 			SubjectiveScore: float64Ptr(0),
 		},
 		{
@@ -641,6 +702,22 @@ func TestService_ListClassCourseOptionsRejectsUnsupportedUserType(t *testing.T) 
 		TenantID: 1,
 		UserID:   7,
 		UserType: "student",
+		Permissions: []string{
+			"analytics:view",
+		},
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestService_GetAdminOverviewRejectsTeacherScope(t *testing.T) {
+	service := NewService(newMemoryAnalyticsRepository())
+
+	_, err := service.GetAdminOverview(context.Background(), Scope{
+		TenantID: 1,
+		UserID:   7,
+		UserType: "teacher",
 		Permissions: []string{
 			"analytics:view",
 		},
@@ -1861,6 +1938,7 @@ func newAnalyticsTestRouter(repo *memoryAnalyticsRepository, parser fakeAnalytic
 }
 
 type memoryAnalyticsRepository struct {
+	adminOverviewResult                             AdminOverviewResult
 	classCourseExists                               bool
 	teacherAllowed                                  bool
 	summary                                         ClassPracticeSummary
@@ -1904,6 +1982,10 @@ type memoryAnalyticsRepository struct {
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
 	return &memoryAnalyticsRepository{}
+}
+
+func (repo *memoryAnalyticsRepository) GetAdminOverview(_ context.Context, _ int64) (AdminOverviewResult, error) {
+	return repo.adminOverviewResult, nil
 }
 
 func (repo *memoryAnalyticsRepository) ClassCourseExists(_ context.Context, _ int64, _ int64, _ int64) (bool, error) {

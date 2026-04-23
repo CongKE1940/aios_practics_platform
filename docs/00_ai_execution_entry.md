@@ -43,6 +43,17 @@
 - 不得让低层级直接修改高层级原题；低层级只能质疑/纠错，经上级审核后生效。
 - 不得让跨租户数据在接口查询中泄漏。
 
+## 当前实施状态入口
+- 阶段 1：`docs/20_stage1_implementation_status.md`
+- 阶段 2A：`docs/21_stage2a_implementation_status.md`
+- 阶段 2B：`docs/22_stage2b_implementation_status.md`
+- 阶段 2C：`docs/23_stage2c_implementation_status.md`
+- 阶段 2D：`docs/24_stage2d_implementation_status.md`
+- 阶段 2E：`docs/25_stage2e_implementation_status.md`
+- 阶段 2F：`docs/26_stage2f_implementation_status.md`
+- 阶段 2G：`docs/27_stage2g_exam_main_flow_status.md`
+- 阶段 6：`docs/28_stage6_admin_analytics_snapshot_status.md`
+
 ## 你的交付步骤
 ### 阶段 1：搭建骨架
 - 初始化前端 monorepo 与后端服务骨架。

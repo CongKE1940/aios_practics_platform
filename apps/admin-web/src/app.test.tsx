@@ -573,6 +573,207 @@ describe("AdminApp", () => {
     expect(screen.getAllByText("question_bank").length).toBeGreaterThan(0);
   });
 
+  it("opens analytics panel after selecting analytics menu", async () => {
+    render(
+      <AdminApp
+        analyticsApi={{
+          getAdminOverview: async () => ({
+            summary: {
+              school_count: 2,
+              class_count: 8,
+              course_count: 5,
+              active_student_count: 320,
+              active_teacher_count: 24,
+              practice_session_count_7d: 86,
+              published_exam_count: 6,
+              submitted_exam_attempt_count: 102,
+              pending_review_count: 4,
+              recent_transition_count_30d: 3
+            },
+            recent_transitions: [
+              {
+                transition_id: 1001,
+                student_id: 501,
+                student_name: "张三",
+                transition_type: "promote",
+                occurred_at: "2026-04-23T09:00:00+08:00",
+                operator_id: 1,
+                operator_name: "系统管理员"
+              }
+            ],
+            recent_audit_logs: [
+              {
+                id: 9001,
+                module_name: "snapshot",
+                action_name: "student_transition",
+                resource_type: "student",
+                result: "success",
+                created_at: "2026-04-23T09:30:00+08:00"
+              }
+            ]
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 18, name: "数据看板", path: "/admin/analytics", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["analytics:view"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "数据看板" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "数据看板" })).toBeTruthy();
+    });
+    expect(screen.getByText("学校数")).toBeTruthy();
+    expect(screen.getByText("张三")).toBeTruthy();
+  });
+
+  it("opens history panel after selecting history menu", async () => {
+    render(
+      <AdminApp
+        historyApi={{
+          listAuditLogs: async () => ({
+            items: [
+              {
+                id: 1,
+                tenant_id: 1,
+                module_name: "snapshot",
+                action_name: "student_transition",
+                resource_type: "student",
+                result: "success",
+                created_at: "2026-04-23T09:30:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          listEntitySnapshots: async () => ({
+            items: [
+              {
+                id: 2,
+                tenant_id: 1,
+                entity_type: "student",
+                entity_id: 501,
+                snapshot_type: "transition",
+                snapshot_json: { transition_type: "promote" },
+                version_no: 1,
+                created_at: "2026-04-23T09:00:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          listStudentTransitions: async () => ({
+            items: [
+              {
+                id: 3,
+                tenant_id: 1,
+                student_id: 501,
+                transition_type: "promote",
+                to_class_id: 302,
+                occurred_at: "2026-04-23T09:00:00+08:00",
+                operator_id: 1,
+                created_at: "2026-04-23T09:00:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createStudentTransition: async (body) => ({
+            id: 4,
+            tenant_id: 1,
+            student_id: body.student_id,
+            transition_type: body.transition_type,
+            to_class_id: body.to_class_id,
+            occurred_at: body.occurred_at,
+            operator_id: 1,
+            remark: body.remark,
+            created_at: body.occurred_at
+          }),
+          listTeacherAssignmentHistories: async () => ({
+            items: [
+              {
+                id: 5,
+                tenant_id: 1,
+                teacher_id: 701,
+                class_id: 301,
+                course_id: 10,
+                change_type: "assign",
+                effective_from: "2026-04-23T11:00:00+08:00",
+                operator_id: 1,
+                created_at: "2026-04-23T11:00:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createTeacherAssignmentChange: async (body) => ({
+            id: 6,
+            tenant_id: 1,
+            teacher_id: body.teacher_id,
+            class_id: body.class_id,
+            course_id: body.course_id,
+            change_type: body.change_type,
+            effective_from: body.effective_at,
+            operator_id: 1,
+            created_at: body.effective_at
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 19, name: "快照历史", path: "/admin/history", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["audit:view", "org:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "快照历史" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "快照历史" })).toBeTruthy();
+    });
+    expect(screen.getByText("学籍变更登记")).toBeTruthy();
+    expect(screen.getAllByText("snapshot").length).toBeGreaterThan(0);
+  });
+
   it("opens user panel after selecting user menu", async () => {
     render(
       <AdminApp

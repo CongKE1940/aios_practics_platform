@@ -1406,6 +1406,68 @@ describe("createApiClient", () => {
     expect(init?.method).toBe("GET");
   });
 
+  it("queries admin overview analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              school_count: 2,
+              class_count: 8,
+              course_count: 5,
+              active_student_count: 320,
+              active_teacher_count: 24,
+              practice_session_count_7d: 86,
+              published_exam_count: 6,
+              submitted_exam_attempt_count: 102,
+              pending_review_count: 4,
+              recent_transition_count_30d: 3
+            },
+            recent_transitions: [
+              {
+                transition_id: 1001,
+                student_id: 501,
+                student_name: "张三",
+                transition_type: "promote",
+                occurred_at: "2026-04-23T09:00:00+08:00",
+                operator_id: 1,
+                operator_name: "系统管理员"
+              }
+            ],
+            recent_audit_logs: [
+              {
+                id: 9001,
+                module_name: "snapshot",
+                action_name: "student_transition",
+                resource_type: "student",
+                result: "success",
+                created_at: "2026-04-23T09:30:00+08:00"
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getAdminOverview();
+    expect(result.summary.active_student_count).toBe(320);
+    expect(result.recent_transitions[0].student_name).toBe("张三");
+    expect(result.recent_audit_logs[0].module_name).toBe("snapshot");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/admin-overview");
+    expect(init?.method).toBe("GET");
+  });
+
   it("exports filtered exam overview csv", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response("学生姓名,学号\n张三,S001\n", {
@@ -1933,6 +1995,202 @@ describe("createApiClient", () => {
         review_comment: "先列式再计算。"
       })
     );
+  });
+
+  it("queries snapshot and history collections", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 1,
+                  tenant_id: 1,
+                  module_name: "snapshot",
+                  action_name: "student_transition",
+                  resource_type: "student",
+                  result: "success",
+                  created_at: "2026-04-23T09:30:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 2,
+                  tenant_id: 1,
+                  entity_type: "student",
+                  entity_id: 501,
+                  snapshot_type: "transition",
+                  snapshot_json: { transition_type: "promote" },
+                  version_no: 1,
+                  created_at: "2026-04-23T09:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 3,
+                  tenant_id: 1,
+                  student_id: 501,
+                  transition_type: "promote",
+                  to_class_id: 302,
+                  occurred_at: "2026-04-23T09:00:00+08:00",
+                  operator_id: 1,
+                  created_at: "2026-04-23T09:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 4,
+              tenant_id: 1,
+              student_id: 501,
+              transition_type: "class_change",
+              to_class_id: 303,
+              occurred_at: "2026-04-23T10:00:00+08:00",
+              operator_id: 1,
+              created_at: "2026-04-23T10:00:00+08:00"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 5,
+                  tenant_id: 1,
+                  teacher_id: 701,
+                  class_id: 301,
+                  course_id: 10,
+                  change_type: "assign",
+                  effective_from: "2026-04-23T11:00:00+08:00",
+                  operator_id: 1,
+                  created_at: "2026-04-23T11:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 6,
+              tenant_id: 1,
+              teacher_id: 701,
+              class_id: 301,
+              course_id: 10,
+              change_type: "assign",
+              effective_from: "2026-04-23T11:00:00+08:00",
+              operator_id: 1,
+              created_at: "2026-04-23T11:00:00+08:00"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const auditLogs = await client.listAuditLogs({ module_name: "snapshot", page: 1, page_size: 20 });
+    const snapshots = await client.listEntitySnapshots({ entity_type: "student", entity_id: 501 });
+    const transitions = await client.listStudentTransitions({ student_id: 501 });
+    const createdTransition = await client.createStudentTransition({
+      student_id: 501,
+      transition_type: "class_change",
+      to_class_id: 303,
+      occurred_at: "2026-04-23T10:00:00+08:00",
+      remark: "调班"
+    });
+    const assignmentHistories = await client.listTeacherAssignmentHistories({ teacher_id: 701 });
+    const createdAssignment = await client.createTeacherAssignmentChange({
+      teacher_id: 701,
+      class_id: 301,
+      course_id: 10,
+      change_type: "assign",
+      effective_at: "2026-04-23T11:00:00+08:00"
+    });
+
+    expect(auditLogs.items[0].module_name).toBe("snapshot");
+    expect(snapshots.items[0].entity_type).toBe("student");
+    expect(transitions.items[0].transition_type).toBe("promote");
+    expect(createdTransition.transition_type).toBe("class_change");
+    expect(assignmentHistories.items[0].teacher_id).toBe(701);
+    expect(createdAssignment.change_type).toBe("assign");
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/audit-logs?module_name=snapshot&page=1&page_size=20");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/entity-snapshots?entity_type=student&entity_id=501");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/student-transitions?student_id=501");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/student-transitions");
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(
+      JSON.stringify({
+        student_id: 501,
+        transition_type: "class_change",
+        to_class_id: 303,
+        occurred_at: "2026-04-23T10:00:00+08:00",
+        remark: "调班"
+      })
+    );
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/teacher-assignment-histories?teacher_id=701");
+    expect(String(fetchMock.mock.calls[5][0])).toContain("/teacher-assignment-changes");
   });
 
   it("throws ApiError for error envelopes", async () => {

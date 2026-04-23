@@ -20,6 +20,18 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo, now: time.Now}
 }
 
+func (service *Service) GetAdminOverview(ctx context.Context, scope Scope) (AdminOverviewResult, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return AdminOverviewResult{}, ErrForbidden
+	}
+	switch scope.UserType {
+	case "sys_admin", "school_admin":
+	default:
+		return AdminOverviewResult{}, ErrForbidden
+	}
+	return service.repo.GetAdminOverview(ctx, scope.TenantID)
+}
+
 func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query ExamOverviewQuery) (ExamOverviewResult, error) {
 	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
 		return ExamOverviewResult{}, ErrForbidden

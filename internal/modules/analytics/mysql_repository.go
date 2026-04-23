@@ -71,6 +71,200 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+func (repo *MySQLRepository) GetAdminOverview(ctx context.Context, tenantID int64) (AdminOverviewResult, error) {
+	const summaryQuery = `
+SELECT
+  (SELECT COUNT(*) FROM schools s WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.status = 'active') AS school_count,
+  (SELECT COUNT(*) FROM classes c WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.status = 'active') AS class_count,
+  (SELECT COUNT(*) FROM courses c WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.status = 'active') AS course_count,
+  (
+    SELECT COUNT(*)
+    FROM student_profiles sp
+    JOIN users u ON u.id = sp.user_id AND u.tenant_id = sp.tenant_id
+    WHERE sp.tenant_id = ? AND sp.enrollment_status = 'active' AND u.status = 'active'
+  ) AS active_student_count,
+  (
+    SELECT COUNT(*)
+    FROM teacher_profiles tp
+    JOIN users u ON u.id = tp.user_id AND u.tenant_id = tp.tenant_id
+    WHERE tp.tenant_id = ? AND u.status = 'active'
+  ) AS active_teacher_count,
+  (
+    SELECT COUNT(DISTINCT ps.id)
+    FROM practice_sessions ps
+    WHERE ps.tenant_id = ? AND ps.started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+  ) AS practice_session_count_7d,
+  (
+    SELECT COUNT(*)
+    FROM exams e
+    WHERE e.tenant_id = ? AND e.status = 'published'
+  ) AS published_exam_count,
+  (
+    SELECT COUNT(*)
+    FROM exam_attempts ea
+    WHERE ea.tenant_id = ? AND ea.status IN ('submitted', 'timeout_submitted')
+  ) AS submitted_exam_attempt_count,
+  (
+    SELECT COUNT(*)
+    FROM exam_attempt_answers eaa
+    JOIN exam_attempts ea ON ea.id = eaa.attempt_id AND ea.tenant_id = eaa.tenant_id
+    JOIN questions q ON q.id = eaa.question_id AND q.tenant_id = eaa.tenant_id
+    WHERE eaa.tenant_id = ?
+      AND ea.status IN ('submitted', 'timeout_submitted')
+      AND q.question_type IN ('short_answer', 'essay')
+      AND (eaa.reviewer_user_id IS NULL OR eaa.reviewed_at IS NULL)
+  ) AS pending_review_count,
+  (
+    SELECT COUNT(*)
+    FROM student_transitions st
+    WHERE st.tenant_id = ? AND st.occurred_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+  ) AS recent_transition_count_30d
+`
+	result := AdminOverviewResult{}
+	if err := repo.db.QueryRowContext(
+		ctx,
+		summaryQuery,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+	).Scan(
+		&result.Summary.SchoolCount,
+		&result.Summary.ClassCount,
+		&result.Summary.CourseCount,
+		&result.Summary.ActiveStudentCount,
+		&result.Summary.ActiveTeacherCount,
+		&result.Summary.PracticeSessionCount7d,
+		&result.Summary.PublishedExamCount,
+		&result.Summary.SubmittedExamAttemptCount,
+		&result.Summary.PendingReviewCount,
+		&result.Summary.RecentTransitionCount30d,
+	); err != nil {
+		return AdminOverviewResult{}, err
+	}
+
+	const recentTransitionsQuery = `
+SELECT
+  st.id,
+  st.student_id,
+  u.display_name AS student_name,
+  st.transition_type,
+  st.from_class_id,
+  fc.name AS from_class_name,
+  st.to_class_id,
+  tc.name AS to_class_name,
+  st.occurred_at,
+  st.operator_id,
+  op.display_name AS operator_name
+FROM student_transitions st
+JOIN users u ON u.id = st.student_id
+LEFT JOIN classes fc ON fc.id = st.from_class_id
+LEFT JOIN classes tc ON tc.id = st.to_class_id
+LEFT JOIN users op ON op.id = st.operator_id
+WHERE st.tenant_id = ?
+ORDER BY st.occurred_at DESC, st.id DESC
+LIMIT 8
+`
+	transitionRows, err := repo.db.QueryContext(ctx, recentTransitionsQuery, tenantID)
+	if err != nil {
+		return AdminOverviewResult{}, err
+	}
+	defer transitionRows.Close()
+
+	result.RecentTransitions = make([]AdminOverviewRecentTransitionItem, 0)
+	for transitionRows.Next() {
+		var item AdminOverviewRecentTransitionItem
+		var fromClassID sql.NullInt64
+		var fromClassName sql.NullString
+		var toClassID sql.NullInt64
+		var toClassName sql.NullString
+		var operatorName sql.NullString
+		if err := transitionRows.Scan(
+			&item.TransitionID,
+			&item.StudentID,
+			&item.StudentName,
+			&item.TransitionType,
+			&fromClassID,
+			&fromClassName,
+			&toClassID,
+			&toClassName,
+			&item.OccurredAt,
+			&item.OperatorID,
+			&operatorName,
+		); err != nil {
+			return AdminOverviewResult{}, err
+		}
+		item.FromClassID = nullableInt64(fromClassID)
+		item.FromClassName = nullableStringPtr(fromClassName)
+		item.ToClassID = nullableInt64(toClassID)
+		item.ToClassName = nullableStringPtr(toClassName)
+		item.OperatorName = nullableStringPtr(operatorName)
+		result.RecentTransitions = append(result.RecentTransitions, item)
+	}
+	if err := transitionRows.Err(); err != nil {
+		return AdminOverviewResult{}, err
+	}
+
+	const recentAuditLogsQuery = `
+SELECT
+  al.id,
+  al.module_name,
+  al.action_name,
+  al.resource_type,
+  al.resource_id,
+  al.operator_user_id,
+  u.display_name AS operator_name,
+  al.result,
+  al.created_at
+FROM audit_logs al
+LEFT JOIN users u ON u.id = al.operator_user_id
+WHERE al.tenant_id = ?
+ORDER BY al.created_at DESC, al.id DESC
+LIMIT 8
+`
+	logRows, err := repo.db.QueryContext(ctx, recentAuditLogsQuery, tenantID)
+	if err != nil {
+		return AdminOverviewResult{}, err
+	}
+	defer logRows.Close()
+
+	result.RecentAuditLogs = make([]AdminOverviewRecentAuditLogItem, 0)
+	for logRows.Next() {
+		var item AdminOverviewRecentAuditLogItem
+		var resourceID sql.NullInt64
+		var operatorUserID sql.NullInt64
+		var operatorName sql.NullString
+		if err := logRows.Scan(
+			&item.ID,
+			&item.ModuleName,
+			&item.ActionName,
+			&item.ResourceType,
+			&resourceID,
+			&operatorUserID,
+			&operatorName,
+			&item.Result,
+			&item.CreatedAt,
+		); err != nil {
+			return AdminOverviewResult{}, err
+		}
+		item.ResourceID = nullableInt64(resourceID)
+		item.OperatorUserID = nullableInt64(operatorUserID)
+		item.OperatorName = nullableStringPtr(operatorName)
+		result.RecentAuditLogs = append(result.RecentAuditLogs, item)
+	}
+	if err := logRows.Err(); err != nil {
+		return AdminOverviewResult{}, err
+	}
+
+	return result, nil
+}
+
 func (repo *MySQLRepository) ExamExists(ctx context.Context, tenantID int64, examID int64) (bool, error) {
 	const query = `
 SELECT id
@@ -2149,4 +2343,20 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+func nullableInt64(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Int64
+	return &result
+}
+
+func nullableStringPtr(value sql.NullString) *string {
+	if !value.Valid || strings.TrimSpace(value.String) == "" {
+		return nil
+	}
+	result := value.String
+	return &result
 }

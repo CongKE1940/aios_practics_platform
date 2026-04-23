@@ -105,6 +105,7 @@ export interface ApiClient {
   markPracticeQuestionMastered(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
+  getAdminOverview(): Promise<AdminOverviewResult>;
   getExamOverview(query: ExamOverviewQuery): Promise<ExamOverviewResult>;
   exportExamOverviewCsv(query: ExamOverviewQuery): Promise<string>;
   getExamAttemptReview(query: ExamAttemptReviewQuery): Promise<ExamAttemptReviewResult>;
@@ -119,6 +120,14 @@ export interface ApiClient {
     body: StudentPracticeSessionQuestionReviewInput
   ): Promise<StudentPracticeSessionQuestionReview>;
   listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
+  listAuditLogs(query?: AuditLogListQuery): Promise<PageResult<AuditLogItem>>;
+  listEntitySnapshots(query?: EntitySnapshotListQuery): Promise<PageResult<EntitySnapshotItem>>;
+  listStudentTransitions(query?: StudentTransitionListQuery): Promise<PageResult<StudentTransitionItem>>;
+  createStudentTransition(body: StudentTransitionInput): Promise<StudentTransitionItem>;
+  listTeacherAssignmentHistories(
+    query?: TeacherAssignmentHistoryListQuery
+  ): Promise<PageResult<TeacherAssignmentHistoryItem>>;
+  createTeacherAssignmentChange(body: TeacherAssignmentChangeInput): Promise<TeacherAssignmentHistoryItem>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
   updateRole(id: number, body: RoleInput): Promise<RoleItem>;
@@ -536,6 +545,51 @@ export interface ExamOverviewSummary {
   lowest_score: number;
 }
 
+export interface AdminOverviewSummary {
+  school_count: number;
+  class_count: number;
+  course_count: number;
+  active_student_count: number;
+  active_teacher_count: number;
+  practice_session_count_7d: number;
+  published_exam_count: number;
+  submitted_exam_attempt_count: number;
+  pending_review_count: number;
+  recent_transition_count_30d: number;
+}
+
+export interface AdminOverviewRecentTransitionItem {
+  transition_id: number;
+  student_id: number;
+  student_name: string;
+  transition_type: string;
+  from_class_id?: number | null;
+  from_class_name?: string | null;
+  to_class_id?: number | null;
+  to_class_name?: string | null;
+  occurred_at: string;
+  operator_id: number;
+  operator_name?: string | null;
+}
+
+export interface AdminOverviewRecentAuditLogItem {
+  id: number;
+  module_name: string;
+  action_name: string;
+  resource_type: string;
+  resource_id?: number | null;
+  operator_user_id?: number | null;
+  operator_name?: string | null;
+  result: string;
+  created_at: string;
+}
+
+export interface AdminOverviewResult {
+  summary: AdminOverviewSummary;
+  recent_transitions: AdminOverviewRecentTransitionItem[];
+  recent_audit_logs: AdminOverviewRecentAuditLogItem[];
+}
+
 export interface ExamOverviewStudentItem {
   student_user_id: number;
   student_name: string;
@@ -736,6 +790,81 @@ export interface StudentPracticeSessionQuestionReview {
   reviewer_user_id: number;
   review_comment: string;
   updated_at?: string | null;
+}
+
+export interface AuditLogItem {
+  id: number;
+  tenant_id: number;
+  operator_user_id?: number | null;
+  module_name: string;
+  action_name: string;
+  resource_type: string;
+  resource_id?: number | null;
+  before_json?: Record<string, unknown> | null;
+  after_json?: Record<string, unknown> | null;
+  request_id?: string | null;
+  ip?: string | null;
+  user_agent?: string | null;
+  result: string;
+  created_at: string;
+}
+
+export interface EntitySnapshotItem {
+  id: number;
+  tenant_id: number;
+  entity_type: string;
+  entity_id: number;
+  snapshot_type: string;
+  snapshot_json: Record<string, unknown>;
+  version_no: number;
+  trigger_event_type?: string | null;
+  created_at: string;
+}
+
+export interface StudentTransitionItem {
+  id: number;
+  tenant_id: number;
+  student_id: number;
+  transition_type: string;
+  from_school_id?: number | null;
+  from_grade_id?: number | null;
+  from_class_id?: number | null;
+  to_school_id?: number | null;
+  to_grade_id?: number | null;
+  to_class_id?: number | null;
+  occurred_at: string;
+  operator_id: number;
+  remark?: string | null;
+  created_at: string;
+}
+
+export interface TeacherAssignmentHistoryItem {
+  id: number;
+  tenant_id: number;
+  teacher_id: number;
+  class_id: number;
+  course_id: number;
+  change_type: string;
+  effective_from: string;
+  effective_to?: string | null;
+  operator_id: number;
+  created_at: string;
+}
+
+export interface StudentTransitionInput {
+  student_id: number;
+  transition_type: string;
+  to_class_id?: number;
+  occurred_at: string;
+  remark?: string;
+}
+
+export interface TeacherAssignmentChangeInput {
+  teacher_id: number;
+  class_id: number;
+  course_id: number;
+  change_type: string;
+  effective_at: string;
 }
 
 export interface StudentPracticeSessionQuestionReviewInput {
@@ -1199,6 +1328,35 @@ export interface StudentPracticeDetailQuery {
   page_size?: number;
 }
 
+export interface AuditLogListQuery {
+  module_name?: string;
+  resource_type?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface EntitySnapshotListQuery {
+  entity_type?: string;
+  entity_id?: number;
+  page?: number;
+  page_size?: number;
+}
+
+export interface StudentTransitionListQuery {
+  student_id?: number;
+  transition_type?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface TeacherAssignmentHistoryListQuery {
+  teacher_id?: number;
+  class_id?: number;
+  course_id?: number;
+  page?: number;
+  page_size?: number;
+}
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const fetcher = options.fetch ?? globalThis.fetch;
   if (!fetcher) {
@@ -1340,14 +1498,16 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/practice/questions/${id}/mark-mastered`, { method: "POST", body: JSON.stringify(body) }),
     markPracticeQuestionConfused: (id, body) =>
       request(fetcher, options, `/practice/questions/${id}/mark-confused`, { method: "POST", body: JSON.stringify(body) }),
-      listUserQuestionStates: (query) =>
-        request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
-      getExamOverview: (query) =>
-        request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
-      exportExamOverviewCsv: (query) =>
-        rawTextRequest(fetcher, options, buildPath("/analytics/exam-overview-export", query), { method: "GET" }),
-      getExamAttemptReview: (query) =>
-        request(fetcher, options, buildPath("/analytics/exam-attempt-review", query), { method: "GET" }),
+    listUserQuestionStates: (query) =>
+      request(fetcher, options, buildPath("/user-question-states", query), { method: "GET" }),
+    getAdminOverview: () =>
+      request(fetcher, options, "/analytics/admin-overview", { method: "GET" }),
+    getExamOverview: (query) =>
+      request(fetcher, options, buildPath("/analytics/exam-overview", query), { method: "GET" }),
+    exportExamOverviewCsv: (query) =>
+      rawTextRequest(fetcher, options, buildPath("/analytics/exam-overview-export", query), { method: "GET" }),
+    getExamAttemptReview: (query) =>
+      request(fetcher, options, buildPath("/analytics/exam-attempt-review", query), { method: "GET" }),
     reviewExamAttemptQuestion: (body) =>
       request(fetcher, options, "/analytics/exam-attempt-question-review", {
         method: "PUT",
@@ -1370,6 +1530,17 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       }),
     listClassCourseOptions: () =>
       request(fetcher, options, "/analytics/class-course-options", { method: "GET" }),
+    listAuditLogs: (query) => request(fetcher, options, buildPath("/audit-logs", query), { method: "GET" }),
+    listEntitySnapshots: (query) =>
+      request(fetcher, options, buildPath("/entity-snapshots", query), { method: "GET" }),
+    listStudentTransitions: (query) =>
+      request(fetcher, options, buildPath("/student-transitions", query), { method: "GET" }),
+    createStudentTransition: (body) =>
+      request(fetcher, options, "/student-transitions", { method: "POST", body: JSON.stringify(body) }),
+    listTeacherAssignmentHistories: (query) =>
+      request(fetcher, options, buildPath("/teacher-assignment-histories", query), { method: "GET" }),
+    createTeacherAssignmentChange: (body) =>
+      request(fetcher, options, "/teacher-assignment-changes", { method: "POST", body: JSON.stringify(body) }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),
     createRole: (body) => request(fetcher, options, "/roles", { method: "POST", body: JSON.stringify(body) }),
     updateRole: (id, body) =>

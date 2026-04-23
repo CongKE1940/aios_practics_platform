@@ -401,6 +401,7 @@ QuestionAnswer:
 - `GET /api/v1/files/{id}`
 
 ### 统计分析
+- `GET /api/v1/analytics/admin-overview`
 - `GET /api/v1/analytics/practice-overview`
 - `GET /api/v1/analytics/exam-overview`
 - `GET /api/v1/analytics/wrong-questions`
@@ -2999,6 +3000,126 @@ QuestionAnswer:
 
 ### 说明
 - 建议仅系统管理员或租户管理员可访问
+
+### 当前正式实现补充
+- 当前正式接口支持 `module_name`、`resource_type`、`page`、`page_size`。
+- 返回统一分页结构，供管理端阶段六“快照历史”页面直接消费。
+
+## 17.2 管理端阶段六总览
+
+### GET `/api/v1/analytics/admin-overview`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type` 允许 `sys_admin`、`school_admin`。
+
+### 说明
+- 返回阶段六管理端首页所需的聚合指标与最近动态。
+- 当前返回以下核心指标：
+  - 学校数
+  - 班级数
+  - 课程数
+  - 在校学生数
+  - 活跃教师数
+  - 近 7 天练题会话数
+  - 已发布考试数
+  - 已交卷次数
+  - 待批阅主观题数
+  - 近 30 天学籍变更数
+- 同时返回：
+  - `recent_transitions`：最近学籍变更
+  - `recent_audit_logs`：最近审计日志
+
+## 17.3 实体快照列表
+
+### GET `/api/v1/entity-snapshots`
+
+### 权限
+- 需要登录态。
+- 需要 `audit:view` 权限。
+
+### Query
+- `entity_type`
+- `entity_id`
+- `page`
+- `page_size`
+
+### 说明
+- 用于管理端查看快照留痕。
+- 当前阶段主要承载：
+  - 学籍变更快照
+  - 任课变更事件快照
+
+## 17.4 学籍变更列表与登记
+
+### GET `/api/v1/student-transitions`
+
+### 权限
+- 需要登录态。
+- 需要 `audit:view` 权限。
+
+### Query
+- `student_id`
+- `transition_type`
+- `page`
+- `page_size`
+
+### POST `/api/v1/student-transitions`
+
+### 权限
+- 需要登录态。
+- 需要 `org:manage` 权限。
+
+### Body
+- `student_id`
+- `transition_type`
+- `to_class_id`
+- `occurred_at`
+- `remark`
+
+### 说明
+- 服务端在保存记录的同时：
+  - 更新当前学生班级归属
+  - 写入 `student_transitions`
+  - 写入 `entity_snapshots`
+  - 写入 `audit_logs`
+
+## 17.5 任课变更历史与登记
+
+### GET `/api/v1/teacher-assignment-histories`
+
+### 权限
+- 需要登录态。
+- 需要 `audit:view` 权限。
+
+### Query
+- `teacher_id`
+- `class_id`
+- `course_id`
+- `page`
+- `page_size`
+
+### POST `/api/v1/teacher-assignment-changes`
+
+### 权限
+- 需要登录态。
+- 需要 `org:manage` 权限。
+
+### Body
+- `teacher_id`
+- `class_id`
+- `course_id`
+- `change_type`
+- `effective_at`
+
+### 说明
+- `change_type` 当前支持 `assign` / `unassign`。
+- 保存时同步维护：
+  - `teacher_class_course_assignments`
+  - `teacher_assignment_histories`
+  - `entity_snapshots`
+  - `audit_logs`
 
 ---
 

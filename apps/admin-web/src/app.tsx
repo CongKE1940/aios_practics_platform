@@ -3,6 +3,8 @@ import { useMemo, useState, type FormEvent } from "react";
 import { createApiClient, type LoginRequest, type LoginResponse, type MenuItem } from "@aios/api-sdk";
 import { PermissionButton } from "@aios/ui-web";
 
+import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
+import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
 import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
 import { OrganizationPanel, type OrganizationApi } from "./organization-panel";
@@ -26,6 +28,8 @@ interface AdminAppProps {
   importApi?: ImportPanelApi;
   userApi?: UserPanelApi;
   rbacApi?: RbacPanelApi;
+  analyticsApi?: AnalyticsPanelApi;
+  historyApi?: HistoryPanelApi;
   sessionStore?: SessionStore;
 }
 
@@ -58,6 +62,8 @@ export function AdminApp({
   importApi,
   userApi,
   rbacApi,
+  analyticsApi,
+  historyApi,
   sessionStore
 }: AdminAppProps) {
   const [form, setForm] = useState<LoginRequest>(defaultForm);
@@ -165,6 +171,30 @@ export function AdminApp({
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [importApi, session]);
+
+  const currentAnalyticsApi = useMemo<AnalyticsPanelApi | undefined>(() => {
+    if (analyticsApi) {
+      return analyticsApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [analyticsApi, session]);
+
+  const currentHistoryApi = useMemo<HistoryPanelApi | undefined>(() => {
+    if (historyApi) {
+      return historyApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [historyApi, session]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -290,13 +320,17 @@ export function AdminApp({
         ) : null}
         {selectedPath === "/admin/questions" && currentQuestionApi ? <QuestionPanel api={currentQuestionApi} /> : null}
         {selectedPath === "/admin/imports" && currentImportApi ? <ImportPanel api={currentImportApi} /> : null}
+        {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
+        {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
         {selectedPath !== "/admin/org" &&
         selectedPath !== "/admin/users" &&
         selectedPath !== "/admin/roles" &&
         selectedPath !== "/admin/notices" &&
         selectedPath !== "/admin/question-banks" &&
         selectedPath !== "/admin/questions" &&
-        selectedPath !== "/admin/imports" ? (
+        selectedPath !== "/admin/imports" &&
+        selectedPath !== "/admin/analytics" &&
+        selectedPath !== "/admin/history" ? (
           <p>请选择左侧功能入口。</p>
         ) : null}
       </section>
