@@ -157,6 +157,70 @@ describe("UserApp", () => {
     expect(screen.getByRole("button", { name: "疑惑题" })).toBeTruthy();
   });
 
+  it("opens teacher exam management from the user menu", async () => {
+    const listExams = vi.fn(async () => ({
+      items: [
+        {
+          id: 1,
+          tenant_id: 1,
+          name: "期中测验",
+          exam_mode: "fixed",
+          status: "draft",
+          start_time: "2026-04-24T09:00:00+08:00",
+          end_time: "2026-04-24T10:00:00+08:00",
+          duration_minutes: 60
+        }
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1
+    }));
+
+    render(
+      <UserApp
+        authApi={createAuthApiMock()}
+        practiceApi={{
+          ...createPracticeApiMock(),
+          listExams,
+          createExam: async (body) => ({
+            id: 2,
+            tenant_id: 1,
+            status: "draft",
+            ...body,
+            fixed_questions: body.fixed_questions ?? [],
+            targets: body.targets
+          }),
+          publishExam: async (id) => ({
+            id,
+            tenant_id: 1,
+            name: "期中测验",
+            exam_mode: "fixed",
+            status: "published",
+            start_time: "2026-04-24T09:00:00+08:00",
+            end_time: "2026-04-24T10:00:00+08:00",
+            duration_minutes: 60,
+            targets: [],
+            fixed_questions: []
+          })
+        }}
+        sessionStore={createSessionStore(
+          createSession([
+            { id: 21, name: "我的课程", path: "/app/courses", children: [] },
+            { id: 31, name: "考试管理", path: "/app/exams", children: [] }
+          ])
+        )}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "考试管理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "考试管理" })).toBeTruthy();
+      expect(screen.getByText("期中测验")).toBeTruthy();
+      expect(listExams).toHaveBeenCalledWith({ page: 1, page_size: 20 });
+    });
+  });
+
   it("renders user menus from session and defaults to the first available menu", () => {
     render(
       <UserApp

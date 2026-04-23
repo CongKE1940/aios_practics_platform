@@ -24,15 +24,19 @@ import {
   PracticeStateListPage,
   type PracticeReviewApi
 } from "./practice-review-pages";
+import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
+
+type UserPracticeApi = PracticePanelApi &
+  PracticeReviewApi &
+  Partial<ClassLearningApi> &
+  Partial<StudentLearningDetailApi> &
+  Partial<StudentPracticeSessionDetailApi> &
+  Partial<StudentPracticeSessionQuestionDetailApi> &
+  Partial<TeacherExamApi>;
 
 interface UserAppProps {
   authApi?: UserAuthApi;
-  practiceApi?: PracticePanelApi &
-    PracticeReviewApi &
-    Partial<ClassLearningApi> &
-    Partial<StudentLearningDetailApi> &
-    Partial<StudentPracticeSessionDetailApi> &
-    Partial<StudentPracticeSessionQuestionDetailApi>;
+  practiceApi?: UserPracticeApi;
   sessionStore?: UserSessionStore;
 }
 
@@ -55,15 +59,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     setErrorMessage("登录已失效，请重新登录");
   }
 
-  const currentPracticeApi = useMemo<
-    | (PracticePanelApi &
-        PracticeReviewApi &
-        Partial<ClassLearningApi> &
-        Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi> &
-        Partial<StudentPracticeSessionQuestionDetailApi>)
-    | undefined
-  >(() => {
+  const currentPracticeApi = useMemo<UserPracticeApi | undefined>(() => {
     if (practiceApi) {
       return wrapUnauthorizedApi(practiceApi, handleUnauthorized);
     }
@@ -209,6 +205,13 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
                 <p>当前班级学习功能暂不可用。</p>
               )
             ) : null}
+            {selectedRoute === "/app/exams" ? (
+              currentPracticeApi && isTeacherExamApi(currentPracticeApi) ? (
+                <TeacherExamPage api={currentPracticeApi} />
+              ) : (
+                <p>当前考试管理功能暂不可用。</p>
+              )
+            ) : null}
             {selectedRoute === "/app/practice" && currentPracticeApi ? (
               <PracticePanel
                 api={currentPracticeApi}
@@ -275,81 +278,34 @@ function getRoutePath(path: string): string {
   return path.split("?")[0];
 }
 
-function isClassLearningApi(
-  api:
-    | (PracticePanelApi &
-        PracticeReviewApi &
-        Partial<ClassLearningApi> &
-        Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi> &
-        Partial<StudentPracticeSessionQuestionDetailApi>)
-    | undefined
-): api is
-  | (PracticePanelApi &
-      PracticeReviewApi &
-      ClassLearningApi &
-      Partial<StudentLearningDetailApi> &
-      Partial<StudentPracticeSessionDetailApi> &
-      Partial<StudentPracticeSessionQuestionDetailApi>) {
+function isClassLearningApi(api: UserPracticeApi | undefined): api is UserPracticeApi & ClassLearningApi {
   return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
 }
 
-function isStudentLearningDetailApi(
-  api:
-    | (PracticePanelApi &
-        PracticeReviewApi &
-        Partial<ClassLearningApi> &
-        Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi> &
-        Partial<StudentPracticeSessionQuestionDetailApi>)
-    | undefined
-): api is
-  | (PracticePanelApi &
-      PracticeReviewApi &
-      Partial<ClassLearningApi> &
-      StudentLearningDetailApi &
-      Partial<StudentPracticeSessionDetailApi> &
-      Partial<StudentPracticeSessionQuestionDetailApi>) {
+function isStudentLearningDetailApi(api: UserPracticeApi | undefined): api is UserPracticeApi & StudentLearningDetailApi {
   return typeof api?.getStudentPracticeDetail === "function";
 }
 
 function isStudentPracticeSessionDetailApi(
-  api:
-    | (PracticePanelApi &
-        PracticeReviewApi &
-        Partial<ClassLearningApi> &
-        Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi> &
-        Partial<StudentPracticeSessionQuestionDetailApi>)
-    | undefined
-): api is
-  | (PracticePanelApi &
-      PracticeReviewApi &
-      Partial<ClassLearningApi> &
-      Partial<StudentLearningDetailApi> &
-      StudentPracticeSessionDetailApi) {
+  api: UserPracticeApi | undefined
+): api is UserPracticeApi & StudentPracticeSessionDetailApi {
   return typeof api?.getStudentPracticeSessionDetail === "function";
 }
 
 function isStudentPracticeSessionQuestionDetailApi(
-  api:
-    | (PracticePanelApi &
-        PracticeReviewApi &
-        Partial<ClassLearningApi> &
-        Partial<StudentLearningDetailApi> &
-        Partial<StudentPracticeSessionDetailApi> &
-        Partial<StudentPracticeSessionQuestionDetailApi>)
-    | undefined
-): api is
-  | (PracticePanelApi &
-      PracticeReviewApi &
-      Partial<ClassLearningApi> &
-      Partial<StudentLearningDetailApi> &
-      Partial<StudentPracticeSessionDetailApi> &
-      StudentPracticeSessionQuestionDetailApi) {
+  api: UserPracticeApi | undefined
+): api is UserPracticeApi & StudentPracticeSessionQuestionDetailApi {
   return (
     typeof api?.getStudentPracticeSessionQuestionDetail === "function" &&
     typeof api?.upsertStudentPracticeSessionQuestionReview === "function"
+  );
+}
+
+function isTeacherExamApi(api: UserPracticeApi | undefined): api is UserPracticeApi & TeacherExamApi {
+  return (
+    typeof api?.listExams === "function" &&
+    typeof api?.createExam === "function" &&
+    typeof api?.publishExam === "function"
   );
 }
 
