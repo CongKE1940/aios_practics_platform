@@ -12,6 +12,7 @@ import (
 	"aios_practice_platform/internal/common/config"
 	"aios_practice_platform/internal/modules/analytics"
 	"aios_practice_platform/internal/modules/auth"
+	"aios_practice_platform/internal/modules/exam"
 	"aios_practice_platform/internal/modules/fileasset"
 	"aios_practice_platform/internal/modules/importjob"
 	"aios_practice_platform/internal/modules/notice"
@@ -74,6 +75,10 @@ func main() {
 			notice.NewService(notice.NewMySQLRepository(db)),
 			issuer,
 		)
+		examHandler := exam.NewHandler(
+			exam.NewService(exam.NewMySQLRepository(db)),
+			issuer,
+		)
 		userHandler := usermgmt.NewHandler(usermgmt.NewService(usermgmt.NewMySQLRepository(db)), issuer)
 		options = append(options,
 			bootstrap.WithAPIV1Routes(authHandler.RegisterRoutes),
@@ -87,6 +92,7 @@ func main() {
 			bootstrap.WithAPIV1Routes(menuHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(rbacAdminHandler.RegisterAdminRoutes),
 			bootstrap.WithAPIV1Routes(fileHandler.RegisterRoutes),
+			bootstrap.WithAPIV1Routes(examHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(userHandler.RegisterRoutes),
 		)
 	}

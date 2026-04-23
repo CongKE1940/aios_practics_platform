@@ -11,6 +11,17 @@ const (
 	CodeInvalidInput = 40000
 	CodeForbidden    = 40300
 	CodeNotFound     = 40400
+
+	OwnerOrgTypeSchool = "school"
+
+	ExamStatusDraft = "draft"
+
+	ExamModeFixed  = "fixed"
+	ExamModeRandom = "random_assembly"
+
+	TargetTypeClass  = "class"
+	TargetTypeCourse = "course"
+	TargetTypeUser   = "user"
 )
 
 var (
@@ -28,12 +39,61 @@ type Scope struct {
 }
 
 type Exam struct {
-	ID        int64     `json:"id"`
-	TenantID  int64     `json:"tenant_id"`
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	ID              int64     `json:"id"`
+	TenantID        int64     `json:"tenant_id"`
+	OwnerOrgType    string    `json:"owner_org_type"`
+	OwnerOrgID      int64     `json:"owner_org_id"`
+	CreatorID       int64     `json:"creator_id"`
+	Name            string    `json:"name"`
+	ExamMode        string    `json:"exam_mode"`
+	Status          string    `json:"status"`
+	StartTime       time.Time `json:"start_time"`
+	EndTime         time.Time `json:"end_time"`
+	DurationMinutes int       `json:"duration_minutes"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+}
+
+type ExamTarget struct {
+	TargetType string    `json:"target_type"`
+	TargetID   int64     `json:"target_id"`
+	CreatedAt  time.Time `json:"created_at,omitempty"`
+}
+
+type ExamFixedQuestion struct {
+	QuestionID        int64     `json:"question_id"`
+	QuestionVersionID int64     `json:"question_version_id"`
+	Score             float64   `json:"score"`
+	DisplayOrder      int       `json:"display_order"`
+	CreatedAt         time.Time `json:"created_at,omitempty"`
+}
+
+type ExamDetail struct {
+	Exam
+	Targets        []ExamTarget        `json:"targets"`
+	FixedQuestions []ExamFixedQuestion `json:"fixed_questions"`
+}
+
+type ExamTargetInput struct {
+	TargetType string `json:"target_type"`
+	TargetID   int64  `json:"target_id"`
+}
+
+type ExamFixedQuestionInput struct {
+	QuestionID        int64   `json:"question_id"`
+	QuestionVersionID int64   `json:"question_version_id"`
+	Score             float64 `json:"score"`
+	DisplayOrder      int     `json:"display_order"`
+}
+
+type ExamInput struct {
+	Name            string                   `json:"name"`
+	ExamMode        string                   `json:"exam_mode"`
+	StartTime       time.Time                `json:"start_time"`
+	EndTime         time.Time                `json:"end_time"`
+	DurationMinutes int                      `json:"duration_minutes"`
+	Targets         []ExamTargetInput        `json:"targets"`
+	FixedQuestions  []ExamFixedQuestionInput `json:"fixed_questions"`
 }
 
 type ExamListFilter struct {
@@ -50,6 +110,9 @@ type PageResult[T any] struct {
 
 type Repository interface {
 	ListExams(ctx context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error)
+	CreateExam(ctx context.Context, scope Scope, input ExamInput) (ExamDetail, error)
+	GetExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
+	UpdateExam(ctx context.Context, scope Scope, id int64, input ExamInput) (ExamDetail, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {
