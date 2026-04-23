@@ -13,6 +13,8 @@ import type {
 export interface TeacherExamApi {
   listExams(query?: { page?: number; page_size?: number; status?: string; keyword?: string }): Promise<PageResult<Exam>>;
   createExam(body: ExamInput): Promise<ExamDetail>;
+  getExam(id: number): Promise<ExamDetail>;
+  updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
 }
 
@@ -34,6 +36,11 @@ const defaultForm = {
 export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [form, setForm] = useState(defaultForm);
   const [exams, setExams] = useState<Exam[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
+  const [selectedExamDetail, setSelectedExamDetail] = useState<ExamDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
+  const [editingExamId, setEditingExamId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishingId, setPublishingId] = useState<number | null>(null);
@@ -57,7 +64,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     }
   }
 
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const payload = buildExamPayload(form);
@@ -67,15 +74,61 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     }
 
     setSaving(true);
-    setMessage("正在保存考试草稿...");
+    setMessage(formMode === "edit" ? "正在更新考试草稿..." : "正在保存考试草稿...");
     try {
-      const created = await api.createExam(payload);
-      setForm(defaultForm);
-      await loadExams(`草稿已保存：${created.name}`);
+      if (formMode === "edit" && editingExamId) {
+        const updated = await api.updateExam(editingExamId, payload);
+        setSelectedExamId(updated.id);
+        setSelectedExamDetail(updated);
+        setForm(buildFormFromDetail(updated));
+        await loadExams(`草稿已更新：${updated.name}`);
+      } else {
+        const created = await api.createExam(payload);
+        setSelectedExamId(created.id);
+        setSelectedExamDetail(created);
+        setForm(defaultForm);
+        setFormMode("create");
+        setEditingExamId(null);
+        await loadExams(`草稿已保存：${created.name}`);
+      }
     } catch {
-      setMessage("考试草稿保存失败，请稍后重试。");
+      setMessage(formMode === "edit" ? "考试草稿更新失败，请稍后重试。" : "考试草稿保存失败，请稍后重试。");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleView(id: number) {
+    setDetailLoading(true);
+    setSelectedExamId(id);
+    setMessage("正在加载考试详情...");
+    try {
+      const detail = await api.getExam(id);
+      setSelectedExamDetail(detail);
+      setMessage("");
+    } catch {
+      setSelectedExamDetail(null);
+      setMessage("考试详情加载失败，请稍后重试。");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function handleEdit(id: number) {
+    setDetailLoading(true);
+    setSelectedExamId(id);
+    setMessage("正在载入草稿...");
+    try {
+      const detail = await api.getExam(id);
+      setSelectedExamDetail(detail);
+      setForm(buildFormFromDetail(detail));
+      setFormMode("edit");
+      setEditingExamId(id);
+      setMessage("");
+    } catch {
+      setMessage("考试草稿加载失败，请稍后重试。");
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -84,6 +137,9 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     setMessage("正在发布考试...");
     try {
       const published = await api.publishExam(id);
+      if (selectedExamId === id) {
+        setSelectedExamDetail(published);
+      }
       await loadExams(`考试已发布：${published.name}`);
     } catch {
       setMessage("考试发布失败，请稍后重试。");
@@ -96,7 +152,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     <section aria-label="考试管理页">
       <h2>考试管理</h2>
 
-      <form onSubmit={(event) => void handleCreate(event)}>
+      <form onSubmit={(event) => void handleSubmit(event)}>
         <label htmlFor="teacher_exam_name">考试名称</label>
         <input
           id="teacher_exam_name"
@@ -166,7 +222,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
         )}
 
         <button type="submit" disabled={saving}>
-          {saving ? "保存中..." : "保存草稿"}
+          {saving ? "保存中..." : formMode === "edit" ? "更新草稿" : "保存草稿"}
         </button>
       </form>
 
@@ -187,6 +243,14 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                   {formatTime(exam.start_time)} 至 {formatTime(exam.end_time)}
                 </p>
                 <p>时长：{exam.duration_minutes ?? "-"} 分钟</p>
+                <button type="button" onClick={() => void handleView(exam.id)}>
+                  查看详情
+                </button>
+                {exam.status === "draft" ? (
+                  <button type="button" onClick={() => void handleEdit(exam.id)}>
+                    编辑草稿
+                  </button>
+                ) : null}
                 {exam.status === "draft" ? (
                   <button type="button" disabled={publishingId === exam.id} onClick={() => void handlePublish(exam.id)}>
                     {publishingId === exam.id ? "发布中..." : "发布"}
@@ -197,8 +261,84 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
           </ul>
         ) : null}
       </section>
+
+      <section aria-label="考试详情区">
+        <h3>考试详情</h3>
+        {detailLoading ? <p>正在加载详情...</p> : null}
+        {!detailLoading && selectedExamDetail ? (
+          <>
+            <p>考试名称：{selectedExamDetail.name}</p>
+            <p>发布范围：{formatTargets(selectedExamDetail.targets)}</p>
+            <p>
+              时间：{formatTime(selectedExamDetail.start_time)} 至 {formatTime(selectedExamDetail.end_time)}
+            </p>
+            <p>时长：{selectedExamDetail.duration_minutes} 分钟</p>
+            <section aria-label="试卷预览">
+              <h4>试卷预览</h4>
+              {selectedExamDetail.exam_mode === "fixed" ? (
+                selectedExamDetail.fixed_questions && selectedExamDetail.fixed_questions.length > 0 ? (
+                  <ul>
+                    {selectedExamDetail.fixed_questions
+                      .slice()
+                      .sort((left, right) => left.display_order - right.display_order)
+                      .map((item) => (
+                        <li key={`${item.question_id}-${item.display_order}`}>
+                          <p>第 {item.display_order} 题</p>
+                          <p>
+                            题目 {item.question_id} / 版本 {item.question_version_id} / {formatScore(item.score)} 分
+                          </p>
+                        </li>
+                      ))}
+                  </ul>
+                ) : (
+                  <p>暂无固定题目。</p>
+                )
+              ) : selectedExamDetail.paper_rules && selectedExamDetail.paper_rules.length > 0 ? (
+                <ul>
+                  {selectedExamDetail.paper_rules.map((rule, index) => (
+                    <li key={`${rule.question_type}-${index}`}>
+                      <p>规则 {index + 1}</p>
+                      <p>题型：{rule.question_type}</p>
+                      <p>题量：{rule.question_count}</p>
+                      <p>单题分值：{formatScore(rule.score_per_question)}</p>
+                      <p>题库范围：{rule.bank_ids?.join(", ") || "-"}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>暂无组卷规则。</p>
+              )}
+            </section>
+          </>
+        ) : (
+          !detailLoading ? <p>请选择一场考试查看详情。</p> : null
+        )}
+      </section>
     </section>
   );
+}
+
+function buildFormFromDetail(detail: ExamDetail): typeof defaultForm {
+  return {
+    name: detail.name,
+    examMode: detail.exam_mode,
+    startTime: detail.start_time ? toLocalDateTime(detail.start_time) : "",
+    endTime: detail.end_time ? toLocalDateTime(detail.end_time) : "",
+    durationMinutes: String(detail.duration_minutes),
+    targetsText: detail.targets.map((item) => `${item.target_type}:${item.target_id}`).join("\n"),
+    fixedQuestionsText: (detail.fixed_questions ?? [])
+      .slice()
+      .sort((left, right) => left.display_order - right.display_order)
+      .map((item) => `${item.question_id}:${item.question_version_id}:${formatScore(item.score)}:${item.display_order}`)
+      .join("\n"),
+    paperRulesText: (detail.paper_rules ?? [])
+      .map((item) =>
+        [item.question_type, formatScore(item.score_per_question), item.question_count, item.bank_ids?.join("|") ?? ""].join(
+          ":"
+        )
+      )
+      .join("\n")
+  };
 }
 
 function buildExamPayload(form: typeof defaultForm): ExamInput | string {
@@ -363,4 +503,19 @@ function formatStatus(value: string): string {
 
 function formatTime(value?: string | null): string {
   return value ?? "-";
+}
+
+function formatTargets(targets: ExamTarget[]): string {
+  if (targets.length === 0) {
+    return "-";
+  }
+  return targets.map((item) => `${item.target_type}:${item.target_id}`).join(", ");
+}
+
+function toLocalDateTime(value: string): string {
+  return value.slice(0, 16);
+}
+
+function formatScore(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(value);
 }

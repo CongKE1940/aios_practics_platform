@@ -57,7 +57,7 @@ func BuildMenus(appType string, permissions []string) []MenuItem {
 	case "", "admin":
 		menus = adminMenus
 	case "user":
-		menus = userMenus
+		return buildUserMenus(permissions)
 	default:
 		return []MenuItem{}
 	}
@@ -107,6 +107,42 @@ var userMenus = []menuDef{
 	},
 }
 
+func buildUserMenus(permissions []string) []MenuItem {
+	menus := filterMenus(userMenus, permissions)
+	if len(menus) == 0 && containsAnyPermission(permissions, "exam:publish") {
+		menus = []MenuItem{{
+			ID:       2,
+			Name:     "学习中心",
+			Path:     "/app",
+			Children: []MenuItem{},
+		}}
+	}
+	if len(menus) == 0 {
+		return []MenuItem{}
+	}
+
+	if containsAnyPermission(permissions, "exam:publish") {
+		menus[0].Children = append(menus[0].Children, MenuItem{
+			ID:       28,
+			Name:     "考试管理",
+			Path:     "/app/exams",
+			Children: []MenuItem{},
+		})
+		return menus
+	}
+
+	if containsAnyPermission(permissions, "practice:use") {
+		menus[0].Children = append(menus[0].Children, MenuItem{
+			ID:       29,
+			Name:     "考试入口",
+			Path:     "/app/exams",
+			Children: []MenuItem{},
+		})
+	}
+
+	return menus
+}
+
 func filterMenus(menus []menuDef, permissions []string) []MenuItem {
 	permissionSet := make(map[string]struct{}, len(permissions))
 	for _, permission := range permissions {
@@ -142,6 +178,17 @@ func hasPermissions(permissionSet map[string]struct{}, required []string) bool {
 		}
 	}
 	return true
+}
+
+func containsAnyPermission(permissions []string, targets ...string) bool {
+	for _, permission := range permissions {
+		for _, target := range targets {
+			if permission == target {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func bearerToken(header string) string {

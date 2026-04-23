@@ -1214,6 +1214,8 @@ describe("createApiClient", () => {
     const fetchMock = vi
       .fn<FetchLike>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测", exam_mode: "fixed", status: "draft", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测", exam_mode: "fixed", status: "draft", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测（调整）", exam_mode: "fixed", status: "draft", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测", exam_mode: "fixed", status: "published", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { attempt: { id: 8001, exam_id: 9001, paper_id: 7001, tenant_id: 1, user_id: 7, status: "in_progress", objective_score: 0, subjective_score: 0, final_score: 0 }, questions: [], answers: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { attempt_id: 8001, question_id: 1001, question_version_id: 3001, display_order: 1, answer: { selected_keys: ["A"] }, score: 0 } }), { status: 200, headers: { "content-type": "application/json" } }))
@@ -1230,6 +1232,16 @@ describe("createApiClient", () => {
       targets: [{ target_type: "class", target_id: 301 }],
       fixed_questions: [{ question_id: 1001, question_version_id: 3001, score: 2, display_order: 1 }]
     });
+    await client.getExam(9001);
+    await client.updateExam(9001, {
+      name: "周测（调整）",
+      exam_mode: "fixed",
+      start_time: "2026-04-24T09:00:00+08:00",
+      end_time: "2026-04-24T10:00:00+08:00",
+      duration_minutes: 60,
+      targets: [{ target_type: "class", target_id: 301 }],
+      fixed_questions: [{ question_id: 1001, question_version_id: 3001, score: 2, display_order: 1 }]
+    });
     await client.publishExam(9001);
     await client.startExamAttempt(9001);
     await client.saveExamAttemptAnswer(8001, { display_order: 1, answer: { selected_keys: ["A"] } });
@@ -1238,11 +1250,15 @@ describe("createApiClient", () => {
 
     expect(result.final_score).toBe(2);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/exams");
-    expect(String(fetchMock.mock.calls[1][0])).toContain("/exams/9001/publish");
-    expect(String(fetchMock.mock.calls[2][0])).toContain("/exams/9001/attempts");
-    expect(String(fetchMock.mock.calls[3][0])).toContain("/exam-attempts/8001/answers");
-    expect(String(fetchMock.mock.calls[4][0])).toContain("/exam-attempts/8001/submit");
-    expect(String(fetchMock.mock.calls[5][0])).toContain("/exam-attempts/8001/result");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/exams/9001");
+    expect(fetchMock.mock.calls[1][1]?.method).toBe("GET");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/exams/9001");
+    expect(fetchMock.mock.calls[2][1]?.method).toBe("PUT");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/exams/9001/publish");
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/exams/9001/attempts");
+    expect(String(fetchMock.mock.calls[5][0])).toContain("/exam-attempts/8001/answers");
+    expect(String(fetchMock.mock.calls[6][0])).toContain("/exam-attempts/8001/submit");
+    expect(String(fetchMock.mock.calls[7][0])).toContain("/exam-attempts/8001/result");
   });
 
   it("queries class practice summary analytics", async () => {

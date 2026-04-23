@@ -59,7 +59,7 @@ func TestBuildUserMenusIncludesPracticeCenter(t *testing.T) {
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 6 {
+	if len(menus[0].Children) != 7 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
 	if menus[0].Children[1].Path != "/app/practice" {
@@ -73,11 +73,11 @@ func TestBuildUserMenusIncludesPracticeReviewEntries(t *testing.T) {
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 6 {
+	if len(menus[0].Children) != 7 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
-	wantPaths := []string{"/app/courses", "/app/practice", "/app/practice/history", "/app/practice/wrong", "/app/practice/mastered", "/app/practice/confused"}
-	wantNames := []string{"我的课程", "练题中心", "练题记录", "错题本", "熟题本", "疑惑题"}
+	wantPaths := []string{"/app/courses", "/app/practice", "/app/practice/history", "/app/practice/wrong", "/app/practice/mastered", "/app/practice/confused", "/app/exams"}
+	wantNames := []string{"我的课程", "练题中心", "练题记录", "错题本", "熟题本", "疑惑题", "考试入口"}
 	for i := range wantPaths {
 		if menus[0].Children[i].Path != wantPaths[i] {
 			t.Fatalf("child[%d].Path = %q", i, menus[0].Children[i].Path)
@@ -94,7 +94,7 @@ func TestBuildUserMenusIncludesClassLearningWithAnalyticsPermission(t *testing.T
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 7 {
+	if len(menus[0].Children) != 8 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
 	if menus[0].Children[6].Path != "/app/class-learning" {
@@ -102,6 +102,12 @@ func TestBuildUserMenusIncludesClassLearningWithAnalyticsPermission(t *testing.T
 	}
 	if menus[0].Children[6].Name != "班级学习" {
 		t.Fatalf("class learning name = %q", menus[0].Children[6].Name)
+	}
+	if menus[0].Children[7].Path != "/app/exams" {
+		t.Fatalf("exam path = %q", menus[0].Children[7].Path)
+	}
+	if menus[0].Children[7].Name != "考试入口" {
+		t.Fatalf("exam name = %q", menus[0].Children[7].Name)
 	}
 }
 
@@ -111,9 +117,33 @@ func TestBuildUserMenusHidesClassLearningWithoutAnalyticsPermission(t *testing.T
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
+	foundExam := false
 	for _, child := range menus[0].Children {
 		if child.Path == "/app/class-learning" {
 			t.Fatalf("class learning should be hidden without analytics:view")
 		}
+		if child.Path == "/app/exams" {
+			foundExam = true
+		}
+	}
+	if !foundExam {
+		t.Fatalf("exam entry should be visible with practice:use")
+	}
+}
+
+func TestBuildUserMenusIncludesTeacherExamManagementWithPublishPermission(t *testing.T) {
+	menus := BuildMenus("user", []string{"exam:publish"})
+
+	if len(menus) != 1 {
+		t.Fatalf("len(menus) = %d", len(menus))
+	}
+	if len(menus[0].Children) != 1 {
+		t.Fatalf("len(children) = %d", len(menus[0].Children))
+	}
+	if menus[0].Children[0].Path != "/app/exams" {
+		t.Fatalf("exam path = %q", menus[0].Children[0].Path)
+	}
+	if menus[0].Children[0].Name != "考试管理" {
+		t.Fatalf("exam name = %q", menus[0].Children[0].Name)
 	}
 }

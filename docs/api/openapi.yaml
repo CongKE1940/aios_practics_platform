@@ -809,21 +809,47 @@ paths:
     get:
       tags: [Exam]
       summary: 考试列表
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: keyword
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamPageOk' }
     post:
       tags: [Exam]
       summary: 创建考试
+      requestBody:
+        $ref: '#/components/requestBodies/ExamBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
   /exams/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Exam]
+      summary: 考试详情
+      responses:
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
     put:
       tags: [Exam]
       summary: 更新考试
+      requestBody:
+        $ref: '#/components/requestBodies/ExamBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
   /exams/{id}/publish:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -831,7 +857,7 @@ paths:
       tags: [Exam]
       summary: 发布考试
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
   /exams/{id}/generate-paper:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -839,7 +865,7 @@ paths:
       tags: [Exam]
       summary: 生成试卷
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamPaperGenerationOk' }
   /exams/{id}/attempts:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -847,15 +873,25 @@ paths:
       tags: [Exam]
       summary: 开始考试
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptDetailOk' }
+  /exam-attempts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Exam]
+      summary: 考试作答详情
+      responses:
+        '200': { $ref: '#/components/responses/ExamAttemptDetailOk' }
   /exam-attempts/{id}/answers:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Exam]
       summary: 保存考试作答
+      requestBody:
+        $ref: '#/components/requestBodies/ExamAttemptAnswerBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptAnswerOk' }
   /exam-attempts/{id}/submit:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -863,7 +899,7 @@ paths:
       tags: [Exam]
       summary: 交卷
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptResultOk' }
   /exam-attempts/{id}/result:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -871,7 +907,7 @@ paths:
       tags: [Exam]
       summary: 考试结果
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptResultOk' }
   /notices:
     get:
       tags: [Notice]
@@ -1461,6 +1497,42 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentPracticeSessionQuestionReviewResponse'
+    ExamPageOk:
+      description: 考试分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamPageResponse'
+    ExamDetailOk:
+      description: 考试详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamDetailResponse'
+    ExamPaperGenerationOk:
+      description: 试卷生成结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamPaperGenerationResponse'
+    ExamAttemptDetailOk:
+      description: 考试作答详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptDetailResponse'
+    ExamAttemptAnswerOk:
+      description: 考试单题作答保存结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptAnswerResponse'
+    ExamAttemptResultOk:
+      description: 考试结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptResultResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -1582,6 +1654,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentPracticeSessionQuestionReviewInput'
+    ExamBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamInput'
+    ExamAttemptAnswerBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptAnswerInput'
   schemas:
     BaseResponse:
       type: object
@@ -2099,6 +2183,321 @@ components:
         created_at:
           type: string
           format: date-time
+    Exam:
+      type: object
+      required: [id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        owner_org_type:
+          type: string
+        owner_org_id:
+          type: integer
+          format: int64
+        creator_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        exam_mode:
+          type: string
+          enum: [fixed, random_assembly]
+        status:
+          type: string
+          enum: [draft, published]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExamTarget:
+      type: object
+      required: [target_type, target_id]
+      properties:
+        target_type:
+          type: string
+          enum: [class, course, user]
+        target_id:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+    ExamFixedQuestion:
+      type: object
+      required: [question_id, question_version_id, score, display_order]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+        display_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    ExamPaperRule:
+      type: object
+      required: [question_type, score_per_question, question_count]
+      properties:
+        question_type:
+          type: string
+        score_per_question:
+          type: number
+          format: double
+        question_count:
+          type: integer
+        knowledge_tag_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        difficulty_range:
+          type: array
+          items:
+            type: string
+        per_knowledge_count:
+          type: object
+          additionalProperties:
+            type: integer
+    ExamDetail:
+      allOf:
+        - $ref: '#/components/schemas/Exam'
+        - type: object
+          required: [targets, fixed_questions, paper_rules]
+          properties:
+            targets:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamTarget'
+            fixed_questions:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamFixedQuestion'
+            paper_rules:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamPaperRule'
+    ExamTargetInput:
+      type: object
+      required: [target_type, target_id]
+      properties:
+        target_type:
+          type: string
+          enum: [class, course, user]
+        target_id:
+          type: integer
+          format: int64
+    ExamFixedQuestionInput:
+      type: object
+      required: [question_id, question_version_id, score, display_order]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+        display_order:
+          type: integer
+    ExamInput:
+      type: object
+      required: [name, exam_mode, start_time, end_time, duration_minutes, targets]
+      properties:
+        name:
+          type: string
+        exam_mode:
+          type: string
+          enum: [fixed, random_assembly]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamTargetInput'
+        fixed_questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamFixedQuestionInput'
+        paper_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamPaperRule'
+    ExamPaperGenerationResult:
+      type: object
+      required: [paper_id, question_count, total_score]
+      properties:
+        paper_id:
+          type: integer
+          format: int64
+        question_count:
+          type: integer
+        total_score:
+          type: number
+          format: double
+    ExamAttempt:
+      type: object
+      required: [id, exam_id, paper_id, tenant_id, user_id, status, objective_score, subjective_score, final_score]
+      properties:
+        id:
+          type: integer
+          format: int64
+        exam_id:
+          type: integer
+          format: int64
+        paper_id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [not_started, in_progress, submitted, timeout_submitted]
+        objective_score:
+          type: number
+          format: double
+        subjective_score:
+          type: number
+          format: double
+        final_score:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExamAttemptQuestion:
+      type: object
+      required: [question_id, question_version_id, display_order, score]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        score:
+          type: number
+          format: double
+        question_type:
+          type: string
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+    ExamAttemptAnswerInput:
+      type: object
+      required: [display_order, answer]
+      properties:
+        display_order:
+          type: integer
+        answer:
+          type: object
+          additionalProperties: true
+    ExamAttemptAnswer:
+      type: object
+      required: [attempt_id, question_id, question_version_id, display_order, answer, score]
+      properties:
+        attempt_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        answer:
+          type: object
+          additionalProperties: true
+        is_correct:
+          type: boolean
+          nullable: true
+        score:
+          type: number
+          format: double
+    ExamAttemptDetail:
+      type: object
+      required: [attempt, questions, answers]
+      properties:
+        attempt:
+          $ref: '#/components/schemas/ExamAttempt'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptQuestion'
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptAnswer'
+    ExamAttemptResult:
+      type: object
+      required: [attempt, answers, objective_score, final_score]
+      properties:
+        attempt:
+          $ref: '#/components/schemas/ExamAttempt'
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptAnswer'
+        objective_score:
+          type: number
+          format: double
+        final_score:
+          type: number
+          format: double
     PracticeSessionInput:
       type: object
       required: [source_mode, bank_ids]
@@ -3173,5 +3572,82 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/ClassCourseOptionsResult'
+        request_id:
+          type: string
+    ExamPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Exam'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    ExamDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamDetail'
+        request_id:
+          type: string
+    ExamPaperGenerationResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamPaperGenerationResult'
+        request_id:
+          type: string
+    ExamAttemptDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptDetail'
+        request_id:
+          type: string
+    ExamAttemptAnswerResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptAnswer'
+        request_id:
+          type: string
+    ExamAttemptResultResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptResult'
         request_id:
           type: string

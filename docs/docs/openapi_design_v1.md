@@ -1696,12 +1696,51 @@ QuestionAnswer:
 
 ### 说明
 - 满足按题型、分值、数量、知识点随机组卷的要求。
+- 正式 OpenAPI 使用 `ExamDetailResponse`，返回强类型 `ExamDetail`。
+
+---
+
+## 12.2A 获取考试详情
+
+### GET `/api/v1/exams/{id}`
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "id": 70001,
+    "tenant_id": 1,
+    "owner_org_type": "school",
+    "owner_org_id": 1,
+    "creator_id": 2001,
+    "name": "高一数学周测1",
+    "exam_mode": "fixed",
+    "status": "draft",
+    "start_time": "2026-04-25T09:00:00+08:00",
+    "end_time": "2026-04-25T10:00:00+08:00",
+    "duration_minutes": 60,
+    "targets": [
+      {"target_type": "class", "target_id": 301}
+    ],
+    "fixed_questions": [
+      {"question_id": 1001, "question_version_id": 3001, "score": 2, "display_order": 1}
+    ],
+    "paper_rules": []
+  },
+  "request_id": "req_exam_detail"
+}
+```
 
 ---
 
 ## 12.3 更新考试
 
 ### PUT `/api/v1/exams/{id}`
+
+### Response
+- 正式 OpenAPI 使用 `ExamDetailResponse`，返回更新后的完整 `ExamDetail`。
 
 ---
 
@@ -1720,6 +1759,7 @@ QuestionAnswer:
 - 更新 `exams.status`
 - 根据规则生成试卷
 - 写 `notifications`
+- 正式 OpenAPI 使用 `ExamDetailResponse`。
 
 ---
 
@@ -1786,6 +1826,9 @@ QuestionAnswer:
 }
 ```
 
+### 说明
+- 正式 OpenAPI 使用 `ExamAttemptDetailResponse`。
+
 ---
 
 ## 12.7 提交考试作答
@@ -1823,6 +1866,7 @@ QuestionAnswer:
 ### 说明
 - `display_order` 用于定位当前试卷中的题目顺序。
 - 考试答题与练题答题必须分离。
+- 正式 OpenAPI 使用 `ExamAttemptAnswerResponse`。
 
 ---
 
@@ -1836,9 +1880,30 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "attempt_id": 90001,
-    "status": "submitted",
-    "objective_score": 96
+    "attempt": {
+      "id": 90001,
+      "exam_id": 70001,
+      "paper_id": 801,
+      "tenant_id": 1,
+      "user_id": 10001,
+      "status": "submitted",
+      "objective_score": 96,
+      "subjective_score": 0,
+      "final_score": 96
+    },
+    "answers": [
+      {
+        "attempt_id": 90001,
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "answer": {"selected_keys": ["B"]},
+        "is_correct": true,
+        "score": 2
+      }
+    ],
+    "objective_score": 96,
+    "final_score": 96
   },
   "request_id": "req_11"
 }
@@ -1871,6 +1936,9 @@ QuestionAnswer:
   "request_id": "req_12"
 }
 ```
+
+### 说明
+- 正式 OpenAPI 使用 `ExamAttemptResultResponse`。
 
 ---
 

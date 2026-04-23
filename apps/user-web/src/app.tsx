@@ -309,6 +309,8 @@ function isTeacherExamApi(api: UserPracticeApi | undefined): api is UserPractice
   return (
     typeof api?.listExams === "function" &&
     typeof api?.createExam === "function" &&
+    typeof api?.getExam === "function" &&
+    typeof api?.updateExam === "function" &&
     typeof api?.publishExam === "function"
   );
 }
