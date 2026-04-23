@@ -100,6 +100,9 @@ func TestHandler_CreateRandomAssemblyExamSuccess(t *testing.T) {
 		"targets": []map[string]any{
 			{"target_type": "class", "target_id": 101},
 		},
+		"paper_rules": []map[string]any{
+			{"question_type": "single_choice", "score_per_question": 2, "question_count": 5, "bank_ids": []int{11, 12}},
+		},
 	})
 
 	if rec.Code != http.StatusOK {
@@ -113,6 +116,9 @@ func TestHandler_CreateRandomAssemblyExamSuccess(t *testing.T) {
 	}
 	if len(payload.Data.FixedQuestions) != 0 {
 		t.Fatalf("fixed_questions len = %d", len(payload.Data.FixedQuestions))
+	}
+	if len(payload.Data.PaperRules) != 1 || payload.Data.PaperRules[0].QuestionType != "single_choice" {
+		t.Fatalf("paper_rules = %+v", payload.Data.PaperRules)
 	}
 }
 
@@ -519,6 +525,7 @@ func (repo *memoryExamRepository) CreateExam(_ context.Context, scope Scope, inp
 		},
 		Targets:        make([]ExamTarget, 0, len(input.Targets)),
 		FixedQuestions: make([]ExamFixedQuestion, 0, len(input.FixedQuestions)),
+		PaperRules:     append([]ExamPaperRule{}, input.PaperRules...),
 	}
 	for _, target := range input.Targets {
 		item.Targets = append(item.Targets, ExamTarget{
@@ -563,6 +570,7 @@ func (repo *memoryExamRepository) UpdateExam(_ context.Context, scope Scope, id 
 	current.DurationMinutes = input.DurationMinutes
 	current.Targets = current.Targets[:0]
 	current.FixedQuestions = current.FixedQuestions[:0]
+	current.PaperRules = current.PaperRules[:0]
 	for _, target := range input.Targets {
 		current.Targets = append(current.Targets, ExamTarget{
 			TargetType: target.TargetType,
@@ -578,6 +586,7 @@ func (repo *memoryExamRepository) UpdateExam(_ context.Context, scope Scope, id 
 			CreatedAt:         current.CreatedAt,
 		})
 	}
+	current.PaperRules = append(current.PaperRules, input.PaperRules...)
 	repo.items[id] = current
 	return current, nil
 }

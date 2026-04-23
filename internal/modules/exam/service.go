@@ -111,6 +111,12 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	if input.ExamMode != ExamModeFixed && len(input.FixedQuestions) > 0 {
 		return ExamInput{}, ErrInvalidInput
 	}
+	if input.ExamMode != ExamModeRandom && len(input.PaperRules) > 0 {
+		return ExamInput{}, ErrInvalidInput
+	}
+	if input.ExamMode == ExamModeRandom && len(input.PaperRules) == 0 {
+		return ExamInput{}, ErrInvalidInput
+	}
 	input.FixedQuestions = append([]ExamFixedQuestionInput{}, input.FixedQuestions...)
 	for index := range input.FixedQuestions {
 		item := &input.FixedQuestions[index]
@@ -118,6 +124,34 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 			return ExamInput{}, ErrInvalidInput
 		}
 	}
+	input.PaperRules = append([]ExamPaperRule{}, input.PaperRules...)
+	for index := range input.PaperRules {
+		item := &input.PaperRules[index]
+		item.QuestionType = strings.TrimSpace(strings.ToLower(item.QuestionType))
+		if item.QuestionType == "" || item.ScorePerQuestion <= 0 || item.QuestionCount <= 0 {
+			return ExamInput{}, ErrInvalidInput
+		}
+		if item.CourseID != nil && *item.CourseID <= 0 {
+			return ExamInput{}, ErrInvalidInput
+		}
+		if hasNonPositiveID(item.KnowledgeTagIDs) || hasNonPositiveID(item.BankIDs) {
+			return ExamInput{}, ErrInvalidInput
+		}
+		for _, count := range item.PerKnowledgeCount {
+			if count <= 0 {
+				return ExamInput{}, ErrInvalidInput
+			}
+		}
+	}
 
 	return input, nil
+}
+
+func hasNonPositiveID(values []int64) bool {
+	for _, value := range values {
+		if value <= 0 {
+			return true
+		}
+	}
+	return false
 }

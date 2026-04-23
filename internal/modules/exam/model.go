@@ -20,7 +20,8 @@ const (
 	ExamModeFixed  = "fixed"
 	ExamModeRandom = "random_assembly"
 
-	ExamPaperTypeFixed = "fixed"
+	ExamPaperTypeFixed      = "fixed"
+	ExamPaperTypeRandomRule = "random_rule"
 
 	TargetTypeClass  = "class"
 	TargetTypeCourse = "course"
@@ -28,10 +29,11 @@ const (
 )
 
 var (
-	ErrInvalidInput          = errors.New("invalid input")
-	ErrForbidden             = errors.New("forbidden")
-	ErrNotFound              = errors.New("resource not found")
-	ErrRepositoryUnavailable = errors.New("repository unavailable")
+	ErrInvalidInput             = errors.New("invalid input")
+	ErrForbidden                = errors.New("forbidden")
+	ErrNotFound                 = errors.New("resource not found")
+	ErrRepositoryUnavailable    = errors.New("repository unavailable")
+	ErrQuestionPoolInsufficient = errors.New("question pool insufficient")
 )
 
 type Scope struct {
@@ -71,10 +73,22 @@ type ExamFixedQuestion struct {
 	CreatedAt         time.Time `json:"created_at,omitempty"`
 }
 
+type ExamPaperRule struct {
+	QuestionType      string         `json:"question_type"`
+	ScorePerQuestion  float64        `json:"score_per_question"`
+	QuestionCount     int            `json:"question_count"`
+	KnowledgeTagIDs   []int64        `json:"knowledge_tag_ids,omitempty"`
+	BankIDs           []int64        `json:"bank_ids,omitempty"`
+	CourseID          *int64         `json:"course_id,omitempty"`
+	DifficultyRange   []string       `json:"difficulty_range,omitempty"`
+	PerKnowledgeCount map[string]int `json:"per_knowledge_count,omitempty"`
+}
+
 type ExamDetail struct {
 	Exam
 	Targets        []ExamTarget        `json:"targets"`
 	FixedQuestions []ExamFixedQuestion `json:"fixed_questions"`
+	PaperRules     []ExamPaperRule     `json:"paper_rules"`
 }
 
 type ExamTargetInput struct {
@@ -97,6 +111,7 @@ type ExamInput struct {
 	DurationMinutes int                      `json:"duration_minutes"`
 	Targets         []ExamTargetInput        `json:"targets"`
 	FixedQuestions  []ExamFixedQuestionInput `json:"fixed_questions"`
+	PaperRules      []ExamPaperRule          `json:"paper_rules"`
 }
 
 type ExamListFilter struct {
