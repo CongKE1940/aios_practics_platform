@@ -1,6 +1,12 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import { createApiClient, type LoginRequest, type LoginResponse, type MenuItem } from "@aios/api-sdk";
+import {
+  createApiClient,
+  type LoginOrganization,
+  type LoginRequest,
+  type LoginResponse,
+  type MenuItem
+} from "@aios/api-sdk";
 import { PermissionButton } from "@aios/ui-web";
 
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
@@ -14,6 +20,7 @@ import { RbacPanel, type RbacPanelApi } from "./rbac-panel";
 import { UserPanel, type UserPanelApi } from "./user-panel";
 
 interface AuthApi {
+  listLoginOrganizations(): Promise<LoginOrganization[]>;
   login(body: LoginRequest): Promise<LoginResponse>;
   logout(): Promise<boolean>;
   menus(accessToken: string): Promise<MenuItem[]>;
@@ -48,7 +55,7 @@ export interface SessionStore {
 }
 
 const defaultForm: LoginRequest = {
-  tenant_code: "platform",
+  tenant_code: "",
   username: "admin",
   password: ""
 };
@@ -72,6 +79,9 @@ export function AdminApp({
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedPath, setSelectedPath] = useState("");
+  const [organizations, setOrganizations] = useState<LoginOrganization[]>([]);
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationsError, setOrganizationsError] = useState("");
 
   const api = useMemo<AuthApi>(() => {
     if (authApi) {
@@ -82,11 +92,48 @@ export function AdminApp({
     const anonymous = createApiClient({ baseUrl });
 
     return {
+      listLoginOrganizations: () => anonymous.listLoginOrganizations(),
       login: (body) => anonymous.login(body),
       logout: async () => true,
       menus: (accessToken) => createApiClient({ baseUrl, accessToken }).menus("admin")
     };
   }, [authApi]);
+
+  useEffect(() => {
+    if (session) {
+      return;
+    }
+
+    let active = true;
+    setOrganizationsLoading(true);
+    setOrganizationsError("");
+
+    api
+      .listLoginOrganizations()
+      .then((items) => {
+        if (!active) {
+          return;
+        }
+        setOrganizations(items);
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        setOrganizations([]);
+        setOrganizationsError(error instanceof Error ? error.message : "组织列表加载失败");
+      })
+      .finally(() => {
+        if (!active) {
+          return;
+        }
+        setOrganizationsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [api, session]);
 
   const organizationApi = useMemo<OrganizationApi | undefined>(() => {
     if (orgApi) {
@@ -235,14 +282,23 @@ export function AdminApp({
         <h1>AIOS 管理端</h1>
         <form onSubmit={handleSubmit} aria-label="登录表单">
           <div>
-            <label htmlFor="tenant_code">租户编码</label>
-            <input
+            <label htmlFor="tenant_code">组织</label>
+            <select
               id="tenant_code"
               name="tenant_code"
               value={form.tenant_code}
               onChange={(event) => setForm((current) => ({ ...current, tenant_code: event.target.value }))}
-            />
+              disabled={organizationsLoading}
+            >
+              <option value="">{organizationsLoading ? "组织加载中..." : "请选择组织"}</option>
+              {organizations.map((organization) => (
+                <option key={organization.tenant_code} value={organization.tenant_code}>
+                  {formatOrganizationLabel(organization)}
+                </option>
+              ))}
+            </select>
           </div>
+          {organizationsError ? <p>{organizationsError}</p> : null}
           <div>
             <label htmlFor="username">用户名</label>
             <input
@@ -263,7 +319,7 @@ export function AdminApp({
             />
           </div>
           {errorMessage ? <p>{errorMessage}</p> : null}
-          <button type="submit" disabled={submitting}>
+          <button type="submit" disabled={submitting || organizationsLoading || !form.tenant_code}>
             登录
           </button>
         </form>
@@ -336,6 +392,10 @@ export function AdminApp({
       </section>
     </main>
   );
+}
+
+function formatOrganizationLabel(organization: LoginOrganization): string {
+  return `${organization.tenant_name}（${organization.tenant_code}）`;
 }
 
 function createBrowserSessionStore(): SessionStore {

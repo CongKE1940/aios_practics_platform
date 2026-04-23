@@ -1,6 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { createApiClient, type LoginRequest, type MenuItem, type PracticeSessionDetail } from "@aios/api-sdk";
+import {
+  createApiClient,
+  type LoginOrganization,
+  type LoginRequest,
+  type MenuItem,
+  type PracticeSessionDetail
+} from "@aios/api-sdk";
 
 import { createBrowserSessionStore } from "./auth-store";
 import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-types";
@@ -50,6 +56,9 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   const [pendingPracticeSession, setPendingPracticeSession] = useState<PracticeSessionDetail | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [organizations, setOrganizations] = useState<LoginOrganization[]>([]);
+  const [organizationsLoading, setOrganizationsLoading] = useState(false);
+  const [organizationsError, setOrganizationsError] = useState("");
   const selectedRoute = getRoutePath(selectedPath);
 
   function handleUnauthorized() {
@@ -86,11 +95,48 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     const anonymous = createApiClient({ baseUrl });
 
     return {
+      listLoginOrganizations: () => anonymous.listLoginOrganizations(),
       login: (body) => anonymous.login(body),
       logout: (accessToken) => createApiClient({ baseUrl, accessToken }).logout(),
       menus: (accessToken) => createApiClient({ baseUrl, accessToken, onUnauthorized: handleUnauthorized }).menus("user")
     };
   }, [authApi, store]);
+
+  useEffect(() => {
+    if (session) {
+      return;
+    }
+
+    let active = true;
+    setOrganizationsLoading(true);
+    setOrganizationsError("");
+
+    auth
+      .listLoginOrganizations()
+      .then((items) => {
+        if (!active) {
+          return;
+        }
+        setOrganizations(items);
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        setOrganizations([]);
+        setOrganizationsError(error instanceof Error ? error.message : "组织列表加载失败");
+      })
+      .finally(() => {
+        if (!active) {
+          return;
+        }
+        setOrganizationsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [auth, session]);
 
   const isStudentSessionQuestionRoute = selectedRoute.startsWith("/app/class-learning/student/session/question");
   const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
@@ -149,7 +195,14 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     return (
       <main>
         <h1>AIOS 学生端</h1>
-        <LoginPage submitting={submitting} errorMessage={errorMessage} onSubmit={handleLogin} />
+        <LoginPage
+          organizations={organizations}
+          organizationsLoading={organizationsLoading}
+          organizationsError={organizationsError}
+          submitting={submitting}
+          errorMessage={errorMessage}
+          onSubmit={handleLogin}
+        />
       </main>
     );
   }

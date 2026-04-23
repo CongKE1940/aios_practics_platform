@@ -15,6 +15,7 @@ var (
 
 type UserRepository interface {
 	FindByTenantCodeAndUsername(ctx context.Context, tenantCode string, username string) (User, error)
+	ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error)
 	MarkLastLogin(ctx context.Context, userID int64) error
 }
 
@@ -74,6 +75,10 @@ func (service *Service) Login(ctx context.Context, command LoginCommand) (LoginR
 			Permissions: user.Permissions,
 		},
 	}, nil
+}
+
+func (service *Service) ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error) {
+	return service.users.ListLoginOrganizations(ctx)
 }
 
 func (service *Service) Refresh(ctx context.Context, command RefreshCommand) (LoginResult, error) {

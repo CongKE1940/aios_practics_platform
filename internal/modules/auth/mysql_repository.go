@@ -14,6 +14,36 @@ func NewMySQLUserRepository(db *sql.DB) *MySQLUserRepository {
 	return &MySQLUserRepository{db: db}
 }
 
+func (repo *MySQLUserRepository) ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error) {
+	const query = `
+SELECT id, code, name, tenant_type
+FROM tenants
+WHERE status = 'active' AND deleted_at IS NULL
+ORDER BY CASE WHEN code = 'platform' THEN 0 ELSE 1 END, id
+`
+
+	rows, err := repo.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]LoginOrganization, 0)
+	for rows.Next() {
+		var item LoginOrganization
+		if err := rows.Scan(&item.TenantID, &item.TenantCode, &item.TenantName, &item.TenantType); err != nil {
+			return nil, err
+		}
+		item.IsDefault = item.TenantCode == "platform"
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 func (repo *MySQLUserRepository) FindByTenantCodeAndUsername(ctx context.Context, tenantCode string, username string) (User, error) {
 	const query = `
 SELECT

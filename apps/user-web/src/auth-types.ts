@@ -1,4 +1,4 @@
-import type { LoginRequest, LoginResponse, MenuItem } from "@aios/api-sdk";
+import type { LoginOrganization, LoginRequest, LoginResponse, MenuItem } from "@aios/api-sdk";
 
 export interface UserSessionState {
   accessToken: string;
@@ -15,6 +15,7 @@ export interface UserSessionStore {
 }
 
 export interface UserAuthApi {
+  listLoginOrganizations(): Promise<LoginOrganization[]>;
   login(body: LoginRequest): Promise<LoginResponse>;
   logout(accessToken: string): Promise<boolean>;
   menus(accessToken: string): Promise<MenuItem[]>;

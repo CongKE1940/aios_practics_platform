@@ -24,6 +24,13 @@ tags:
   - name: Analytics
   - name: Audit
 paths:
+  /auth/login-organizations:
+    get:
+      tags: [Auth]
+      summary: 登录组织列表
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/LoginOrganizationListOk' }
   /auth/login:
     post:
       tags: [Auth]
@@ -1590,6 +1597,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/BaseResponse'
+    LoginOrganizationListOk:
+      description: 登录组织列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginOrganizationListResponse'
     QuestionBankOk:
       description: 题库详情
       content:
@@ -1983,6 +1996,31 @@ components:
           nullable: true
         request_id:
           type: string
+    LoginOrganization:
+      type: object
+      required: [tenant_id, tenant_code, tenant_name, tenant_type]
+      properties:
+        tenant_id:
+          type: integer
+          format: int64
+        tenant_code:
+          type: string
+        tenant_name:
+          type: string
+        tenant_type:
+          type: string
+        is_default:
+          type: boolean
+    LoginOrganizationListResponse:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/LoginOrganization'
     SchoolInput:
       type: object
       required: [code, name]

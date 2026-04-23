@@ -10,10 +10,21 @@ afterEach(() => {
 
 describe("AdminApp", () => {
   it("renders login form before authentication", () => {
-    render(<AdminApp />);
+    render(
+      <AdminApp
+        authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
+          login: async () => {
+            throw new Error("should not login");
+          },
+          logout: async () => true,
+          menus: async () => []
+        }}
+      />
+    );
 
     expect(screen.getByRole("heading", { name: "AIOS 管理端" })).toBeTruthy();
-    expect(screen.getByLabelText("租户编码")).toBeTruthy();
+    expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
     expect(screen.getByLabelText("密码")).toBeTruthy();
     expect(screen.getByRole("button", { name: "登录" })).toBeTruthy();
@@ -25,6 +36,7 @@ describe("AdminApp", () => {
       <AdminApp
         sessionStore={sessionStore}
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => ({
             access_token: "access_token",
             refresh_token: "refresh_token",
@@ -54,7 +66,10 @@ describe("AdminApp", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "platform" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "平台管理（platform）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "platform" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Test@123456" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -75,6 +90,7 @@ describe("AdminApp", () => {
       <AdminApp
         sessionStore={sessionStore}
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => ({
             access_token: "access_token",
             refresh_token: "refresh_token",
@@ -101,7 +117,10 @@ describe("AdminApp", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "platform" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "平台管理（platform）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "platform" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Test@123456" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -976,4 +995,22 @@ function createMemorySessionStore(initialSession: SessionState | null = null): S
       savedSession = null;
     }
   };
+}
+
+function createLoginOrganizations() {
+  return [
+    {
+      tenant_id: 1,
+      tenant_code: "platform",
+      tenant_name: "平台管理",
+      tenant_type: "platform",
+      is_default: true
+    },
+    {
+      tenant_id: 2,
+      tenant_code: "demo_school",
+      tenant_name: "演示学校",
+      tenant_type: "school"
+    }
+  ];
 }

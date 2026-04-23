@@ -18,11 +18,11 @@ beforeEach(() => {
 
 describe("UserApp", () => {
   it("shows login form when no session exists", () => {
-    render(<UserApp />);
+    render(<UserApp authApi={createAuthApiMock()} />);
 
     expect(screen.getByRole("heading", { name: "AIOS 学生端" })).toBeTruthy();
     expect(screen.getByRole("form", { name: "登录表单" })).toBeTruthy();
-    expect(screen.getByLabelText("租户编码")).toBeTruthy();
+    expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
     expect(screen.getByLabelText("密码")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "练题中心" })).toBeNull();
@@ -34,7 +34,7 @@ describe("UserApp", () => {
       { id: 22, name: "练题中心", path: "/app/practice", children: [] }
     ])));
 
-    render(<UserApp practiceApi={createPracticeApiMock()} />);
+    render(<UserApp authApi={createAuthApiMock()} practiceApi={createPracticeApiMock()} />);
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
@@ -50,7 +50,7 @@ describe("UserApp", () => {
     delete (sessionWithoutPermissions.user as { permissions?: string[] }).permissions;
     window.localStorage.setItem("aios.user.session", JSON.stringify(sessionWithoutPermissions));
 
-    render(<UserApp practiceApi={createPracticeApiMock()} />);
+    render(<UserApp authApi={createAuthApiMock()} practiceApi={createPracticeApiMock()} />);
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
@@ -68,7 +68,7 @@ describe("UserApp", () => {
       })
     );
 
-    render(<UserApp practiceApi={createPracticeApiMock()} />);
+    render(<UserApp authApi={createAuthApiMock()} practiceApi={createPracticeApiMock()} />);
 
     await waitFor(() => {
       expect(screen.getByRole("form", { name: "登录表单" })).toBeTruthy();
@@ -438,6 +438,7 @@ describe("UserApp", () => {
     render(
       <UserApp
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => {
             throw new Error("should not login");
           },
@@ -479,6 +480,7 @@ describe("UserApp", () => {
       }
 
       return {
+        listLoginOrganizations: async () => createLoginOrganizations(),
         login: async () => ({
           access_token: "access-1",
           refresh_token: "refresh-1",
@@ -516,6 +518,7 @@ describe("UserApp", () => {
     render(
       <UserApp
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => {
             throw new Error("should not login");
           },
@@ -1310,6 +1313,7 @@ describe("UserApp", () => {
     render(
       <UserApp
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => ({
             access_token: "access-1",
             refresh_token: "refresh-1",
@@ -1339,7 +1343,10 @@ describe("UserApp", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "school-a" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "示例学校（school-a）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "school-a" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "teacher01" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "pass123" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -1360,13 +1367,17 @@ describe("UserApp", () => {
             error.status = 401;
             throw error;
           },
+          listLoginOrganizations: async () => createLoginOrganizations(),
           logout: async (_accessToken: string) => true,
           menus: async () => []
         }}
       />
     );
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "school-a" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "示例学校（school-a）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "school-a" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "teacher01" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "wrong-pass" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -1383,6 +1394,7 @@ describe("UserApp", () => {
     const createApiClientSpy = vi.spyOn(apiSdk, "createApiClient").mockImplementation(({ accessToken }) => {
       if (!accessToken) {
         return {
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => ({
             access_token: "access-1",
             refresh_token: "refresh-1",
@@ -1417,7 +1429,10 @@ describe("UserApp", () => {
 
     render(<UserApp />);
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "school-a" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "示例学校（school-a）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "school-a" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "teacher01" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "pass123" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -1563,12 +1578,31 @@ function createSession(menus: UserSessionState["menus"]): UserSessionState {
 
 function createAuthApiMock() {
   return {
+    listLoginOrganizations: async () => createLoginOrganizations(),
     login: async () => {
       throw new Error("should not login");
     },
     logout: async (_accessToken: string) => true,
     menus: async () => []
   };
+}
+
+function createLoginOrganizations() {
+  return [
+    {
+      tenant_id: 1,
+      tenant_code: "platform",
+      tenant_name: "平台管理",
+      tenant_type: "platform",
+      is_default: true
+    },
+    {
+      tenant_id: 2,
+      tenant_code: "school-a",
+      tenant_name: "示例学校",
+      tenant_type: "school"
+    }
+  ];
 }
 
 function createPracticeApiMock() {

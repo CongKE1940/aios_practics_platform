@@ -411,7 +411,43 @@ QuestionAnswer:
 
 ## 6. 认证接口
 
-## 6.1 登录
+## 6.1 登录组织列表
+
+### GET `/api/v1/auth/login-organizations`
+
+**Tag**: Auth
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": [
+    {
+      "tenant_id": 1,
+      "tenant_code": "platform",
+      "tenant_name": "平台管理",
+      "tenant_type": "platform",
+      "is_default": true
+    },
+    {
+      "tenant_id": 2,
+      "tenant_code": "school_alpha",
+      "tenant_name": "示例学校",
+      "tenant_type": "school"
+    }
+  ],
+  "request_id": "req_orgs"
+}
+```
+
+### 说明
+- 登录页先调用该接口加载组织下拉选项。
+- 前端仍然向登录接口提交 `tenant_code`，只是录入方式从手输改为选择。
+
+---
+
+## 6.2 登录
 
 ### POST `/api/v1/auth/login`
 
@@ -454,7 +490,7 @@ QuestionAnswer:
 
 ---
 
-## 6.2 登出
+## 6.3 登出
 
 ### POST `/api/v1/auth/logout`
 

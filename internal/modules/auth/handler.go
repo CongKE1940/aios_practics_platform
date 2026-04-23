@@ -12,6 +12,7 @@ import (
 )
 
 type AuthService interface {
+	ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error)
 	Login(ctx context.Context, command LoginCommand) (LoginResult, error)
 	Refresh(ctx context.Context, command RefreshCommand) (LoginResult, error)
 	CurrentUser(ctx context.Context, accessToken string) (CurrentUser, error)
@@ -27,10 +28,20 @@ func NewHandler(service AuthService) *Handler {
 }
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
+	router.GET("/auth/login-organizations", handler.listLoginOrganizations)
 	router.POST("/auth/login", handler.login)
 	router.POST("/auth/refresh", handler.refresh)
 	router.GET("/auth/me", handler.me)
 	router.POST("/auth/logout", handler.logout)
+}
+
+func (handler *Handler) listLoginOrganizations(ctx *gin.Context) {
+	items, err := handler.service.ListLoginOrganizations(ctx.Request.Context())
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, response.Failure(50000, "服务异常", requestID(ctx)))
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(items, requestID(ctx)))
 }
 
 func (handler *Handler) login(ctx *gin.Context) {

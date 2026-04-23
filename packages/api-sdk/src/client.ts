@@ -33,6 +33,7 @@ export interface ApiClient {
   get<TData>(path: string, init?: RequestInit): Promise<TData>;
   post<TData, TBody = unknown>(path: string, body?: TBody, init?: RequestInit): Promise<TData>;
   put<TData, TBody = unknown>(path: string, body?: TBody, init?: RequestInit): Promise<TData>;
+  listLoginOrganizations(): Promise<LoginOrganization[]>;
   login(body: LoginRequest): Promise<LoginResponse>;
   refresh(body: RefreshRequest): Promise<LoginResponse>;
   me(): Promise<CurrentUser>;
@@ -145,6 +146,14 @@ export interface LoginRequest {
   tenant_code: string;
   username: string;
   password: string;
+}
+
+export interface LoginOrganization {
+  tenant_id: number;
+  tenant_code: string;
+  tenant_name: string;
+  tenant_type: string;
+  is_default?: boolean;
 }
 
 export interface LoginResponse {
@@ -1376,6 +1385,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         ...init,
         method: "PUT",
         body: body === undefined ? undefined : JSON.stringify(body)
+      }),
+    listLoginOrganizations: () =>
+      request(fetcher, options, "/auth/login-organizations", {
+        method: "GET"
       }),
     login: (body) =>
       request(fetcher, options, "/auth/login", {

@@ -82,6 +82,48 @@ describe("createApiClient", () => {
     );
   });
 
+  it("requests login organization options without authentication", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: [
+            {
+              tenant_id: 1,
+              tenant_code: "platform",
+              tenant_name: "平台管理",
+              tenant_type: "platform",
+              is_default: true
+            },
+            {
+              tenant_id: 2,
+              tenant_code: "demo_school",
+              tenant_name: "演示学校",
+              tenant_type: "school"
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      fetch: fetchMock
+    });
+
+    const items = await client.listLoginOrganizations();
+    expect(items[0].tenant_code).toBe("platform");
+    expect(items[0].is_default).toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/auth/login-organizations");
+    expect(init?.method).toBe("GET");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBeNull();
+  });
+
   it("posts refresh token to refresh endpoint", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
