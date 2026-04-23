@@ -92,6 +92,16 @@ export interface ApiClient {
   nextPracticeQuestion(id: number): Promise<NextPracticeQuestionResult>;
   submitPracticeAnswer(id: number, body: PracticeAnswerInput): Promise<PracticeAnswerResult>;
   finishPracticeSession(id: number): Promise<PracticeSessionSummary>;
+  listExams(query?: ExamListQuery): Promise<PageResult<Exam>>;
+  createExam(body: ExamInput): Promise<ExamDetail>;
+  getExam(id: number): Promise<ExamDetail>;
+  updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
+  publishExam(id: number): Promise<ExamDetail>;
+  startExamAttempt(id: number): Promise<ExamAttemptDetail>;
+  getExamAttempt(id: number): Promise<ExamAttemptDetail>;
+  saveExamAttemptAnswer(id: number, body: ExamAttemptAnswerInput): Promise<ExamAttemptAnswer>;
+  submitExamAttempt(id: number): Promise<ExamAttemptResult>;
+  getExamAttemptResult(id: number): Promise<ExamAttemptResult>;
   markPracticeQuestionMastered(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   markPracticeQuestionConfused(id: number, body: QuestionStateInput): Promise<UserQuestionState>;
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
@@ -378,6 +388,15 @@ export interface PracticeSessionListQuery {
   flow_mode?: string;
   practice_mode?: string;
   course_id?: number;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ExamListQuery {
+  status?: string;
+  keyword?: string;
+  target_type?: string;
+  target_id?: number;
   page?: number;
   page_size?: number;
 }
@@ -808,6 +827,115 @@ export interface PracticeAnswerInput {
   answer: Record<string, unknown>;
 }
 
+export interface Exam {
+  id: number;
+  tenant_id?: number;
+  owner_org_type?: string;
+  owner_org_id?: number;
+  creator_id?: number;
+  name: string;
+  exam_mode: string;
+  status: string;
+  start_time?: string;
+  end_time?: string;
+  duration_minutes?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ExamTarget {
+  target_type: string;
+  target_id: number;
+  created_at?: string;
+}
+
+export interface ExamFixedQuestion {
+  question_id: number;
+  question_version_id: number;
+  score: number;
+  display_order: number;
+  created_at?: string;
+}
+
+export interface ExamPaperRule {
+  question_type: string;
+  score_per_question: number;
+  question_count: number;
+  knowledge_tag_ids?: number[];
+  bank_ids?: number[];
+  course_id?: number | null;
+  difficulty_range?: string[];
+  per_knowledge_count?: Record<string, number>;
+}
+
+export interface ExamDetail extends Exam {
+  targets: ExamTarget[];
+  fixed_questions: ExamFixedQuestion[];
+  paper_rules?: ExamPaperRule[];
+}
+
+export interface ExamInput {
+  name: string;
+  exam_mode: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  targets: ExamTarget[];
+  fixed_questions?: ExamFixedQuestion[];
+  paper_rules?: ExamPaperRule[];
+}
+
+export interface ExamAttempt {
+  id: number;
+  exam_id: number;
+  paper_id: number;
+  tenant_id: number;
+  user_id: number;
+  start_at?: string | null;
+  submit_at?: string | null;
+  status: string;
+  objective_score: number;
+  subjective_score: number;
+  final_score: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ExamAttemptQuestion {
+  question_id: number;
+  question_version_id: number;
+  display_order: number;
+  score: number;
+}
+
+export interface ExamAttemptAnswer {
+  attempt_id: number;
+  question_id: number;
+  question_version_id: number;
+  display_order: number;
+  answer: Record<string, unknown>;
+  is_correct?: boolean | null;
+  score: number;
+}
+
+export interface ExamAttemptDetail {
+  attempt: ExamAttempt;
+  questions: ExamAttemptQuestion[];
+  answers: ExamAttemptAnswer[];
+}
+
+export interface ExamAttemptAnswerInput {
+  display_order: number;
+  answer: Record<string, unknown>;
+}
+
+export interface ExamAttemptResult {
+  attempt: ExamAttempt;
+  answers: ExamAttemptAnswer[];
+  objective_score: number;
+  final_score: number;
+}
+
 export interface QuestionStateInput {
   value: boolean;
 }
@@ -1086,6 +1214,17 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/practice/sessions/${id}/answer`, { method: "POST", body: JSON.stringify(body) }),
     finishPracticeSession: (id) =>
       request(fetcher, options, `/practice/sessions/${id}/finish`, { method: "POST" }),
+    listExams: (query) => request(fetcher, options, buildPath("/exams", query), { method: "GET" }),
+    createExam: (body) => request(fetcher, options, "/exams", { method: "POST", body: JSON.stringify(body) }),
+    getExam: (id) => request(fetcher, options, `/exams/${id}`, { method: "GET" }),
+    updateExam: (id, body) => request(fetcher, options, `/exams/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    publishExam: (id) => request(fetcher, options, `/exams/${id}/publish`, { method: "POST" }),
+    startExamAttempt: (id) => request(fetcher, options, `/exams/${id}/attempts`, { method: "POST" }),
+    getExamAttempt: (id) => request(fetcher, options, `/exam-attempts/${id}`, { method: "GET" }),
+    saveExamAttemptAnswer: (id, body) =>
+      request(fetcher, options, `/exam-attempts/${id}/answers`, { method: "POST", body: JSON.stringify(body) }),
+    submitExamAttempt: (id) => request(fetcher, options, `/exam-attempts/${id}/submit`, { method: "POST" }),
+    getExamAttemptResult: (id) => request(fetcher, options, `/exam-attempts/${id}/result`, { method: "GET" }),
     markPracticeQuestionMastered: (id, body) =>
       request(fetcher, options, `/practice/questions/${id}/mark-mastered`, { method: "POST", body: JSON.stringify(body) }),
     markPracticeQuestionConfused: (id, body) =>
