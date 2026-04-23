@@ -1,11 +1,11 @@
-# 阶段 2F 实施状态：老师侧班级学习页
+# 阶段 2F 实施状态：老师侧班级学习页与用户端登录闭环
 
-日期：2026-04-22
+日期：2026-04-23
 状态：已完成并准备提交
 
 ## 1. 本阶段完成内容
 
-阶段 2F 已补齐老师侧班级学习页的最小闭环，覆盖班级课程练题概览、学生明细、老师任课范围校验、SDK 契约和用户端入口。
+阶段 2F 已补齐老师侧班级学习页与用户端最小登录闭环，覆盖班级课程练题概览、学生明细、老师任课范围校验、SDK 契约，以及用户端登录页、动态菜单、退出登录、`401` 失效回退、本地会话恢复和脏会话兜底。
 
 本阶段完成的代码与文档变更包括：
 - `internal/modules/analytics`：新增 analytics 模块，提供班级课程练题概览与学生明细聚合。
@@ -16,6 +16,7 @@
 - `internal/modules/rbac`：用户端菜单新增“班级学习”，权限为 `analytics:view`。
 - `packages/api-sdk`：新增 `listClassCourseOptions`、`getClassPracticeSummary` 方法与相关类型。
 - `apps/user-web`：`ClassLearningPage` 升级为单个班级课程级联选择器，支持日期范围查询，展示汇总指标与学生明细。
+- `apps/user-web`：补齐登录页、动态菜单、退出登录、`401` 统一失效回退、本地会话恢复，以及 `localStorage` 脏 session 的结构校验与自动清理。
 - `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options` 与 `GET /analytics/class-practice-summary` 正式契约。
 - `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项与练题概览接口说明。
 - `docs/README.md`：把阶段 2F 状态文档纳入阅读顺序和目录说明。
@@ -31,6 +32,7 @@
 7. 老师仅能查看当前任课的班级课程；系统管理员与学校管理员按当前租户范围查看。
 8. 用户端阶段 2F 通过 `GET /api/v1/analytics/class-course-options` 先拉取班级课程树，再在单个级联选择器中完成班级和课程选择。
 9. 当且仅当可选课程总数为 1 时，页面会自动默认选中该课程。
+10. 用户端启动时会优先尝试从 `localStorage` 恢复合法 session；若 session 可解析但结构残缺，会立即清理并回到登录页，不允许首屏崩溃。
 
 ## 3. 当前限制
 
@@ -44,24 +46,16 @@
 已执行：
 
 ```powershell
-go test ./internal/modules/analytics -count=1
-go test ./internal/modules/analytics -run MySQL -count=1
-go test ./cmd/server ./internal/modules/rbac ./internal/modules/analytics -count=1
-pnpm test -- packages/api-sdk/src/client.test.ts
-pnpm test -- apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/app.test.tsx
-pnpm test
+pnpm test -- packages/api-sdk/src/client.test.ts apps/user-web/src/app.test.tsx
 pnpm typecheck
 pnpm build
-go test -work ./...
-go run -work D:\workspace\temp\openapi_parse_stage2f.go
 ```
 
 验证结论：
-1. 前端测试通过：级联选择器相关 2 个测试文件、12 个用例通过；阶段 2F 全量前端测试与后续全量验证见最终收口结果。
-2. 前端类型检查与构建通过。
-3. 后端 Go 全量测试通过；`internal/modules/analytics` 新增测试通过。
-4. `docs/api/openapi.yaml` 可以被 `github.com/goccy/go-yaml` 正常解析。
-5. 提交前已完成空白、BOM、混合换行、敏感初始密码与异常引用标记扫描。
+1. 前端回归通过：`packages/api-sdk/src/client.test.ts` 与 `apps/user-web/src/app.test.tsx` 联合执行通过，覆盖登录页、动态菜单、退出登录、`401` 失效回退、会话恢复与脏 session 清理。
+2. 前端类型检查通过。
+3. 前端构建通过。
+4. 提交前已完成空白、BOM、混合换行与异常字符检查，本轮新增文档与代码保持 UTF-8 编码。
 
 ## 5. 下一步建议
 

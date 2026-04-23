@@ -5,6 +5,7 @@ export interface ApiClientOptions {
   accessToken?: string;
   fetch?: FetchLike;
   headers?: HeadersInit;
+  onUnauthorized?: () => void;
 }
 
 export interface ApiEnvelope<T> {
@@ -979,13 +980,17 @@ async function request<TData>(
     headers
   });
 
-  const envelope = (await response.json()) as ApiEnvelope<TData>;
-  if (!response.ok || envelope.code !== 0) {
+  const text = await response.text();
+  const envelope = parseApiEnvelope<TData>(text);
+  if (!response.ok || envelope?.code !== 0) {
+    if (response.status === 401) {
+      options.onUnauthorized?.();
+    }
     throw new ApiError({
-      code: envelope.code || response.status,
-      message: envelope.message || response.statusText,
+      code: envelope?.code || response.status,
+      message: envelope?.message || text || getDefaultErrorMessage(response.status, response.statusText),
       status: response.status,
-      requestId: envelope.request_id
+      requestId: envelope?.request_id
     });
   }
 
@@ -1012,9 +1017,12 @@ async function rawTextRequest(
   });
   const text = await response.text();
   if (!response.ok) {
+    if (response.status === 401) {
+      options.onUnauthorized?.();
+    }
     throw new ApiError({
       code: response.status,
-      message: text || response.statusText,
+      message: text || getDefaultErrorMessage(response.status, response.statusText),
       status: response.status
     });
   }
@@ -1029,6 +1037,28 @@ function mergeHeaders(target: Headers, source?: HeadersInit): void {
   new Headers(source).forEach((value, key) => {
     target.set(key, value);
   });
+}
+
+function parseApiEnvelope<TData>(text: string): ApiEnvelope<TData> | null {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as ApiEnvelope<TData>;
+  } catch {
+    return null;
+  }
+}
+
+function getDefaultErrorMessage(status: number, statusText: string): string {
+  if (statusText) {
+    return statusText;
+  }
+  if (status === 401) {
+    return "Unauthorized";
+  }
+  return `Request failed with status ${status}`;
 }
 
 function joinUrl(baseUrl: string, path: string): string {

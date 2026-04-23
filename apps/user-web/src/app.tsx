@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 
-import { createApiClient, type PracticeSessionDetail } from "@aios/api-sdk";
+import { createApiClient, type LoginRequest, type MenuItem, type PracticeSessionDetail } from "@aios/api-sdk";
 
+import { createBrowserSessionStore } from "./auth-store";
+import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-types";
+import { MenuNav } from "./menu-nav";
+import { LoginPage } from "./login-page";
 import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
 import { PracticePanel, type PracticePanelApi } from "./practice-panel";
 import {
@@ -13,105 +17,195 @@ import {
 } from "./practice-review-pages";
 
 interface UserAppProps {
+  authApi?: UserAuthApi;
   practiceApi?: PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>;
+  sessionStore?: UserSessionStore;
 }
 
-export function UserApp({ practiceApi }: UserAppProps) {
-  const [selectedPath, setSelectedPath] = useState("/app/courses");
+export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
+  const store = useMemo(() => sessionStore ?? createBrowserSessionStore(), [sessionStore]);
+  const initialSession = useMemo(() => store.load(), [store]);
+  const [session, setSession] = useState<UserSessionState | null>(initialSession);
+  const [selectedPath, setSelectedPath] = useState(() => getFirstAvailablePath(initialSession?.menus ?? []));
   const [pendingPracticeSession, setPendingPracticeSession] = useState<PracticeSessionDetail | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  function handleUnauthorized() {
+    store.clear();
+    setSession(null);
+    setSelectedPath("/app/courses");
+    setPendingPracticeSession(null);
+    setSubmitting(false);
+    setErrorMessage("登录已失效，请重新登录");
+  }
+
   const currentPracticeApi = useMemo<(PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined>(() => {
     if (practiceApi) {
-      return practiceApi;
+      return wrapUnauthorizedApi(practiceApi, handleUnauthorized);
     }
+
+    if (!session) {
+      return undefined;
+    }
+
+    return createApiClient({
+      baseUrl: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1",
+      accessToken: session.accessToken,
+      onUnauthorized: handleUnauthorized
+    });
+  }, [practiceApi, session, store]);
+
+  const auth = useMemo<UserAuthApi>(() => {
+    if (authApi) {
+      return authApi;
+    }
+
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
-    return createApiClient({ baseUrl });
-  }, [practiceApi]);
+    const anonymous = createApiClient({ baseUrl });
+
+    return {
+      login: (body) => anonymous.login(body),
+      logout: (accessToken) => createApiClient({ baseUrl, accessToken }).logout(),
+      menus: (accessToken) => createApiClient({ baseUrl, accessToken, onUnauthorized: handleUnauthorized }).menus("user")
+    };
+  }, [authApi, store]);
+
+  async function handleLogin(form: LoginRequest) {
+    setSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      let result;
+      try {
+        result = await auth.login(form);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "登录失败");
+        return;
+      }
+
+      const menus = await auth.menus(result.access_token);
+      const nextSession: UserSessionState = {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+        expiresIn: result.expires_in,
+        menus,
+        user: result.user
+      };
+      store.save(nextSession);
+      setSession(nextSession);
+      setSelectedPath(getFirstAvailablePath(menus));
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorized();
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : "登录失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleLogout() {
+    if (!session) {
+      return;
+    }
+
+    try {
+      await auth.logout(session.accessToken);
+    } finally {
+      store.clear();
+      setSession(null);
+      setSelectedPath("/app/courses");
+      setPendingPracticeSession(null);
+    }
+  }
+
+  if (!session) {
+    return (
+      <main>
+        <h1>AIOS 学生端</h1>
+        <LoginPage submitting={submitting} errorMessage={errorMessage} onSubmit={handleLogin} />
+      </main>
+    );
+  }
 
   return (
     <main>
       <h1>AIOS 学生端</h1>
-      <nav aria-label="学习菜单">
-        <button type="button" onClick={() => setSelectedPath("/app/courses")}>
-          我的课程
+      <section aria-label="当前用户">
+        <h2>{session.user.display_name}</h2>
+        <p>{session.user.user_type}</p>
+        <button type="button" onClick={handleLogout}>
+          退出登录
         </button>
-        <button type="button" onClick={() => setSelectedPath("/app/practice")}>
-          练题中心
-        </button>
-        <button type="button" onClick={() => setSelectedPath("/app/class-learning")}>
-          班级学习
-        </button>
-        <button type="button" onClick={() => setSelectedPath("/app/practice/history")}>
-          练题记录
-        </button>
-        <button type="button" onClick={() => setSelectedPath("/app/practice/wrong")}>
-          错题本
-        </button>
-        <button type="button" onClick={() => setSelectedPath("/app/practice/mastered")}>
-          熟题本
-        </button>
-        <button type="button" onClick={() => setSelectedPath("/app/practice/confused")}>
-          疑惑题
-        </button>
-      </nav>
+      </section>
+      <MenuNav menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />
       <section aria-label="学习入口">
-        {selectedPath === "/app/courses" ? <h2>我的课程</h2> : null}
-        {selectedPath === "/app/class-learning" ? (
-          currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
-            <ClassLearningPage api={currentPracticeApi} />
-          ) : (
-            <p>当前班级学习功能暂不可用。</p>
-          )
-        ) : null}
-        {selectedPath === "/app/practice" && currentPracticeApi ? (
-          <PracticePanel
-            api={currentPracticeApi}
-            initialSession={pendingPracticeSession}
-            onInitialSessionConsumed={() => setPendingPracticeSession(null)}
-            onFinished={(summary) => setSelectedPath(`/app/practice/results/${summary.id}`)}
-          />
-        ) : null}
-        {selectedPath.startsWith("/app/practice/results/") && currentPracticeApi ? (
-          <PracticeResultPage
-            api={currentPracticeApi}
-            sessionId={getSessionId(selectedPath)}
-            onNavigate={setSelectedPath}
-            onPracticeCreated={setPendingPracticeSession}
-          />
-        ) : null}
-        {selectedPath === "/app/practice/history" && currentPracticeApi ? (
-          <PracticeHistoryPage api={currentPracticeApi} onNavigate={setSelectedPath} />
-        ) : null}
-        {selectedPath.startsWith("/app/practice/history/") && currentPracticeApi ? (
-          <PracticeSessionDetailPage
-            api={currentPracticeApi}
-            sessionId={getSessionId(selectedPath)}
-            onNavigate={setSelectedPath}
-          />
-        ) : null}
-        {selectedPath === "/app/practice/wrong" && currentPracticeApi ? (
-          <PracticeStateListPage
-            api={currentPracticeApi}
-            stateType="wrong"
-            onNavigate={setSelectedPath}
-            onPracticeCreated={setPendingPracticeSession}
-          />
-        ) : null}
-        {selectedPath === "/app/practice/mastered" && currentPracticeApi ? (
-          <PracticeStateListPage
-            api={currentPracticeApi}
-            stateType="mastered"
-            onNavigate={setSelectedPath}
-            onPracticeCreated={setPendingPracticeSession}
-          />
-        ) : null}
-        {selectedPath === "/app/practice/confused" && currentPracticeApi ? (
-          <PracticeStateListPage
-            api={currentPracticeApi}
-            stateType="confused"
-            onNavigate={setSelectedPath}
-            onPracticeCreated={setPendingPracticeSession}
-          />
-        ) : null}
+        {session.menus.length === 0 ? (
+          <p>当前账号暂无可用功能</p>
+        ) : (
+          <>
+            {selectedPath === "/app/courses" ? <h2>我的课程</h2> : null}
+            {selectedPath === "/app/class-learning" ? (
+              currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
+                <ClassLearningPage api={currentPracticeApi} />
+              ) : (
+                <p>当前班级学习功能暂不可用。</p>
+              )
+            ) : null}
+            {selectedPath === "/app/practice" && currentPracticeApi ? (
+              <PracticePanel
+                api={currentPracticeApi}
+                initialSession={pendingPracticeSession}
+                onInitialSessionConsumed={() => setPendingPracticeSession(null)}
+                onFinished={(summary) => setSelectedPath(`/app/practice/results/${summary.id}`)}
+              />
+            ) : null}
+            {selectedPath.startsWith("/app/practice/results/") && currentPracticeApi ? (
+              <PracticeResultPage
+                api={currentPracticeApi}
+                sessionId={getSessionId(selectedPath)}
+                onNavigate={setSelectedPath}
+                onPracticeCreated={setPendingPracticeSession}
+              />
+            ) : null}
+            {selectedPath === "/app/practice/history" && currentPracticeApi ? (
+              <PracticeHistoryPage api={currentPracticeApi} onNavigate={setSelectedPath} />
+            ) : null}
+            {selectedPath.startsWith("/app/practice/history/") && currentPracticeApi ? (
+              <PracticeSessionDetailPage
+                api={currentPracticeApi}
+                sessionId={getSessionId(selectedPath)}
+                onNavigate={setSelectedPath}
+              />
+            ) : null}
+            {selectedPath === "/app/practice/wrong" && currentPracticeApi ? (
+              <PracticeStateListPage
+                api={currentPracticeApi}
+                stateType="wrong"
+                onNavigate={setSelectedPath}
+                onPracticeCreated={setPendingPracticeSession}
+              />
+            ) : null}
+            {selectedPath === "/app/practice/mastered" && currentPracticeApi ? (
+              <PracticeStateListPage
+                api={currentPracticeApi}
+                stateType="mastered"
+                onNavigate={setSelectedPath}
+                onPracticeCreated={setPendingPracticeSession}
+              />
+            ) : null}
+            {selectedPath === "/app/practice/confused" && currentPracticeApi ? (
+              <PracticeStateListPage
+                api={currentPracticeApi}
+                stateType="confused"
+                onNavigate={setSelectedPath}
+                onPracticeCreated={setPendingPracticeSession}
+              />
+            ) : null}
+          </>
+        )}
       </section>
     </main>
   );
@@ -122,6 +216,54 @@ function getSessionId(path: string): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-function isClassLearningApi(api: (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi {
+function isClassLearningApi(
+  api: (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi>) | undefined
+): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi {
   return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
+}
+
+function wrapUnauthorizedApi<T extends object>(api: T, onUnauthorized: () => void): T {
+  return new Proxy(api, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") {
+        return value;
+      }
+
+      return (...args: unknown[]) => {
+        const result = Reflect.apply(value, target, args);
+        if (!(result instanceof Promise)) {
+          return result;
+        }
+
+        return result.catch((error: unknown) => {
+          if (isUnauthorizedError(error)) {
+            onUnauthorized();
+          }
+          throw error;
+        });
+      };
+    }
+  });
+}
+
+function isUnauthorizedError(error: unknown): error is Error & { status: number } {
+  return typeof error === "object" && error !== null && "status" in error && (error as { status?: number }).status === 401;
+}
+
+function getFirstAvailablePath(menus: MenuItem[]): string {
+  for (const menu of menus) {
+    if (menu.children.length > 0) {
+      const childPath = getFirstAvailablePath(menu.children);
+      if (childPath) {
+        return childPath;
+      }
+    }
+
+    if (menu.path) {
+      return menu.path;
+    }
+  }
+
+  return "/app/courses";
 }

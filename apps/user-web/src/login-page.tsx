@@ -1,0 +1,59 @@
+import { useState, type FormEvent } from "react";
+
+import type { LoginRequest } from "@aios/api-sdk";
+
+interface LoginPageProps {
+  submitting: boolean;
+  errorMessage: string;
+  onSubmit(values: LoginRequest): Promise<void>;
+}
+
+const defaultForm: LoginRequest = {
+  tenant_code: "",
+  username: "",
+  password: ""
+};
+
+export function LoginPage({ submitting, errorMessage, onSubmit }: LoginPageProps) {
+  const [form, setForm] = useState<LoginRequest>(defaultForm);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await onSubmit(form);
+    setForm((current) => ({ ...current, password: "" }));
+  }
+
+  return (
+    <form aria-label="登录表单" onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="tenant_code">租户编码</label>
+        <input
+          id="tenant_code"
+          value={form.tenant_code}
+          onChange={(event) => setForm((current) => ({ ...current, tenant_code: event.target.value }))}
+        />
+      </div>
+      <div>
+        <label htmlFor="username">用户名</label>
+        <input
+          id="username"
+          value={form.username}
+          onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+        />
+      </div>
+      <div>
+        <label htmlFor="password">密码</label>
+        <input
+          id="password"
+          type="password"
+          value={form.password}
+          onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+        />
+      </div>
+      {errorMessage ? <p>{errorMessage}</p> : null}
+      <button type="submit" disabled={submitting}>
+        {submitting ? "登录中..." : "登录"}
+      </button>
+    </form>
+  );
+}

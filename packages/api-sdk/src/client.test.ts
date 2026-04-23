@@ -1345,4 +1345,60 @@ describe("createApiClient", () => {
       status: 401
     } satisfies Partial<ApiError>);
   });
+
+  it("calls onUnauthorized when response status is 401", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:18081/api/v1",
+      accessToken: "access-1",
+      onUnauthorized,
+      fetch: async () =>
+        new Response(JSON.stringify({ code: 40101, message: "令牌无效" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" }
+        })
+    });
+
+    await expect(client.me()).rejects.toThrow("令牌无效");
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUnauthorized for 401 responses with plain text bodies", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:18081/api/v1",
+      accessToken: "access-1",
+      onUnauthorized,
+      fetch: async () =>
+        new Response("token expired", {
+          status: 401,
+          headers: { "Content-Type": "text/plain" }
+        })
+    });
+
+    await expect(client.me()).rejects.toMatchObject({
+      message: "token expired",
+      status: 401
+    } satisfies Partial<ApiError>);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUnauthorized for 401 responses with empty bodies", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:18081/api/v1",
+      accessToken: "access-1",
+      onUnauthorized,
+      fetch: async () =>
+        new Response(null, {
+          status: 401
+        })
+    });
+
+    await expect(client.me()).rejects.toMatchObject({
+      message: "Unauthorized",
+      status: 401
+    } satisfies Partial<ApiError>);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
 });

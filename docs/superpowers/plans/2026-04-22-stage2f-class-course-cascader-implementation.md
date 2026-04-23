@@ -1,33 +1,33 @@
-# 阶段 2F 班级课程级联选择器 Implementation Plan
+# 阶段 2F 班级课程级联选择器 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向代理执行者：** 必须使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 按任务逐步执行本计划。所有步骤使用复选框（`- [ ]`）语法进行跟踪。
 
-**Goal:** Build a single cascaded class-course selector for the class-learning page, backed by a permission-aware analytics options API and matching SDK/OpenAPI updates.
+**目标：** 为班级学习页构建单个班级课程级联选择器，并补齐具备权限感知能力的 analytics 选项 API，以及对应的 SDK/OpenAPI 更新。
 
-**Architecture:** Extend the existing `internal/modules/analytics` module with a new `class-course-options` endpoint that returns a class-grouped course tree based on the same tenant and assignment scope already used by `class-practice-summary`. Update the SDK with tree-shaped option types, then replace the manual `class_id` / `course_id` inputs in `ClassLearningPage` with a single two-level selector that loads options first and only queries analytics after a course node is chosen.
+**实现架构：** 在现有 `internal/modules/analytics` 模块中新增 `class-course-options` 端点，基于 `class-practice-summary` 已采用的同一租户与任课范围口径返回按班级分组的课程树。同步为 SDK 增加树形选项类型，并将 `ClassLearningPage` 中手工输入的 `class_id` / `course_id` 替换为单个两级选择器：先加载选项，只有选中课程节点后才查询 analytics。
 
-**Tech Stack:** Go, Gin, database/sql, MySQL 8, sqlmock, React 18, TypeScript, Vitest, Testing Library, OpenAPI 3.0 YAML.
+**技术栈：** Go, Gin, database/sql, MySQL 8, sqlmock, React 18, TypeScript, Vitest, Testing Library, OpenAPI 3.0 YAML.
 
 ---
 
-## File Map
+## 文件清单
 
-- Modify: `internal/modules/analytics/model.go` to add class-course option types and repository contract.
-- Modify: `internal/modules/analytics/service.go` to add `ListClassCourseOptions`.
-- Modify: `internal/modules/analytics/handler.go` to register and serve `GET /analytics/class-course-options`.
-- Modify: `internal/modules/analytics/handler_test.go` to add handler/service red-green coverage for the new endpoint.
-- Modify: `internal/modules/analytics/mysql_repository.go` to query grouped class-course trees.
-- Modify: `internal/modules/analytics/mysql_repository_test.go` to verify tenant, teacher, grouping, and dedupe rules.
-- Modify: `packages/api-sdk/src/client.ts` to add `CourseOptionItem`, `ClassCourseOption`, `ClassCourseOptionsResult`, and `listClassCourseOptions`.
-- Modify: `packages/api-sdk/src/client.test.ts` to add SDK request/response tests.
-- Modify: `apps/user-web/src/class-learning-page.tsx` to replace ID inputs with a single cascaded selector and option-loading state.
-- Modify: `apps/user-web/src/class-learning-page.test.tsx` to cover loading, empty, error, and course-node query behavior.
-- Modify: `apps/user-web/src/app.test.tsx` if the shell-level mock shape must include `listClassCourseOptions`.
-- Modify: `docs/api/openapi.yaml`, `docs/docs/openapi_design_v1.md`, `docs/docs/26_stage2f_implementation_status.md` to formalize the new options API and selector behavior.
+- 修改：`internal/modules/analytics/model.go`，补充班级课程选项类型与仓储契约。
+- 修改：`internal/modules/analytics/service.go`，增加 `ListClassCourseOptions`。
+- 修改：`internal/modules/analytics/handler.go`，注册并提供 `GET /analytics/class-course-options`。
+- 修改：`internal/modules/analytics/handler_test.go`，为新端点补齐 handler/service 红绿测试覆盖。
+- 修改：`internal/modules/analytics/mysql_repository.go`，查询按班级分组的课程树。
+- 修改：`internal/modules/analytics/mysql_repository_test.go`，验证租户、老师、分组与去重规则。
+- 修改：`packages/api-sdk/src/client.ts`，补充 `CourseOptionItem`、`ClassCourseOption`、`ClassCourseOptionsResult` 与 `listClassCourseOptions`。
+- 修改：`packages/api-sdk/src/client.test.ts`，补齐 SDK 请求/响应测试。
+- 修改：`apps/user-web/src/class-learning-page.tsx`，将 ID 输入替换为单个级联选择器并补齐选项加载状态。
+- 修改：`apps/user-web/src/class-learning-page.test.tsx`，覆盖加载、空态、错误态与课程节点查询行为。
+- 修改：`apps/user-web/src/app.test.tsx`，在壳层 mock 结构需要时补充 `listClassCourseOptions`。
+- 修改：`docs/api/openapi.yaml`、`docs/docs/openapi_design_v1.md` 与 `docs/docs/26_stage2f_implementation_status.md`，将新选项 API 与选择器行为固化为正式文档。
 
-## Shared Names
+## 共享命名
 
-Use these names consistently:
+以下命名需保持一致：
 
 ```go
 type CourseOptionItem struct {
@@ -42,13 +42,13 @@ type ClassCourseOption struct {
 }
 ```
 
-Repository method:
+仓储方法：
 
 ```go
 ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error)
 ```
 
-SDK names:
+SDK 命名：
 
 ```ts
 export interface CourseOptionItem {
@@ -67,17 +67,17 @@ export interface ClassCourseOptionsResult {
 }
 ```
 
-## Task 1: Backend Options API Red-Green
+## 任务 1： 后端选项 API 红绿测试
 
-**Files:**
-- Modify: `internal/modules/analytics/model.go`
-- Modify: `internal/modules/analytics/service.go`
-- Modify: `internal/modules/analytics/handler.go`
-- Modify: `internal/modules/analytics/handler_test.go`
+**涉及文件：**
+- 修改：`internal/modules/analytics/model.go`
+- 修改：`internal/modules/analytics/service.go`
+- 修改：`internal/modules/analytics/handler.go`
+- 修改：`internal/modules/analytics/handler_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **步骤 1： 编写失败测试**
 
-Add these tests to `internal/modules/analytics/handler_test.go`:
+将以下测试添加到 `internal/modules/analytics/handler_test.go`:
 
 ```go
 func TestHandler_ListClassCourseOptionsForTeacher(t *testing.T)
@@ -86,7 +86,7 @@ func TestHandler_ListClassCourseOptionsRejectsMissingPermission(t *testing.T)
 func TestService_ListClassCourseOptionsRejectsUnsupportedUserType(t *testing.T)
 ```
 
-Use a memory repository shaped like:
+使用如下结构的内存仓储：
 
 ```go
 type memoryRepository struct {
@@ -100,7 +100,7 @@ type memoryRepository struct {
 }
 ```
 
-The happy-path handler assertion should look like:
+成功路径的 handler 断言可写成：
 
 ```go
 rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/class-course-options", nil, "token")
@@ -114,19 +114,19 @@ if len(body.Data.Items) != 1 || len(body.Data.Items[0].Courses) != 2 {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **步骤 2： 运行测试并确认其失败**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -run "ListClassCourseOptions" -count=1
 ```
 
-Expected: FAIL because `ListClassCourseOptions` types, service method, or handler route do not exist yet.
+预期： FAIL because `ListClassCourseOptions` types, service method, or handler route do not exist yet.
 
-- [ ] **Step 3: Add minimal backend implementation**
+- [ ] **步骤 3： 补充最小后端实现**
 
-Update `internal/modules/analytics/model.go`:
+更新 `internal/modules/analytics/model.go`：
 
 ```go
 type CourseOptionItem struct {
@@ -141,13 +141,13 @@ type ClassCourseOption struct {
 }
 ```
 
-Extend the repository interface:
+扩展仓储接口：
 
 ```go
 ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error)
 ```
 
-Add to `internal/modules/analytics/service.go`:
+向 `internal/modules/analytics/service.go` 中添加：
 
 ```go
 func (service *Service) ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error) {
@@ -163,7 +163,7 @@ func (service *Service) ListClassCourseOptions(ctx context.Context, scope Scope)
 }
 ```
 
-Register and implement in `internal/modules/analytics/handler.go`:
+在 `internal/modules/analytics/handler.go` 中注册并实现：
 
 ```go
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
@@ -185,39 +185,39 @@ func (handler *Handler) listClassCourseOptions(ctx *gin.Context) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **步骤 4： 运行测试并确认其通过**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -run "ListClassCourseOptions" -count=1
 ```
 
-Expected: PASS.
+预期： PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5： Commit**
 
 ```powershell
 git add internal/modules/analytics/model.go internal/modules/analytics/service.go internal/modules/analytics/handler.go internal/modules/analytics/handler_test.go
 git commit -m "新增：补齐班级课程选项接口骨架"
 ```
 
-## Task 2: MySQL Repository Query For Cascaded Options
+## 任务 2： MySQL 级联选项仓储查询
 
-**Files:**
-- Modify: `internal/modules/analytics/mysql_repository.go`
-- Modify: `internal/modules/analytics/mysql_repository_test.go`
+**涉及文件：**
+- 修改：`internal/modules/analytics/mysql_repository.go`
+- 修改：`internal/modules/analytics/mysql_repository_test.go`
 
-- [ ] **Step 1: Write the failing repository tests**
+- [ ] **步骤 1： 编写失败的仓储测试**
 
-Add:
+新增：
 
 ```go
 func TestMySQLRepositoryListClassCourseOptionsForTeacherUsesAssignmentScope(t *testing.T)
 func TestMySQLRepositoryListClassCourseOptionsForAdminGroupsAndDedupes(t *testing.T)
 ```
 
-Teacher query expectation:
+老师查询的预期 SQL：
 
 ```go
 mock.ExpectQuery(regexp.QuoteMeta(`
@@ -240,19 +240,19 @@ ORDER BY c.name ASC, co.name ASC
     AddRow(301, "七年级一班", 11, "英语"))
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **步骤 2： 运行测试并确认其失败**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -run "MySQLRepositoryListClassCourseOptions" -count=1
 ```
 
-Expected: FAIL because the repository method does not exist yet.
+预期： FAIL because the repository method does not exist yet.
 
-- [ ] **Step 3: Write the minimal repository implementation**
+- [ ] **步骤 3： 编写最小仓储实现**
 
-Add to `internal/modules/analytics/mysql_repository.go`:
+向 `internal/modules/analytics/mysql_repository.go` 中添加：
 
 ```go
 func (repo *MySQLRepository) ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error) {
@@ -319,32 +319,32 @@ ORDER BY c.name ASC, co.name ASC
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **步骤 4： 运行测试并确认其通过**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -run "MySQLRepositoryListClassCourseOptions" -count=1
 ```
 
-Expected: PASS.
+预期： PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5： Commit**
 
 ```powershell
 git add internal/modules/analytics/mysql_repository.go internal/modules/analytics/mysql_repository_test.go
 git commit -m "新增：支持班级课程级联选项查询"
 ```
 
-## Task 3: SDK Contract Red-Green
+## 任务 3： SDK 契约红绿测试
 
-**Files:**
-- Modify: `packages/api-sdk/src/client.ts`
-- Modify: `packages/api-sdk/src/client.test.ts`
+**涉及文件：**
+- 修改：`packages/api-sdk/src/client.ts`
+- 修改：`packages/api-sdk/src/client.test.ts`
 
-- [ ] **Step 1: Write the failing SDK test**
+- [ ] **步骤 1： 编写失败的 SDK 测试**
 
-Add:
+新增：
 
 ```ts
 it("queries class course options analytics", async () => {
@@ -376,25 +376,25 @@ it("queries class course options analytics", async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2： 运行测试并确认其失败**
 
-Run:
+执行：
 
 ```powershell
 pnpm test -- packages/api-sdk/src/client.test.ts
 ```
 
-Expected: FAIL because `listClassCourseOptions` is not defined.
+预期： FAIL because `listClassCourseOptions` is not defined.
 
-- [ ] **Step 3: Write the minimal SDK implementation**
+- [ ] **步骤 3： 编写最小 SDK 实现**
 
-In `packages/api-sdk/src/client.ts`, add:
+在 `packages/api-sdk/src/client.ts` 中添加：
 
 ```ts
 listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
 ```
 
-Types:
+类型：
 
 ```ts
 export interface CourseOptionItem {
@@ -413,40 +413,40 @@ export interface ClassCourseOptionsResult {
 }
 ```
 
-Client method:
+客户端方法：
 
 ```ts
 listClassCourseOptions: () =>
   request(fetcher, options, "/analytics/class-course-options", { method: "GET" }),
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4： 运行测试并确认其通过**
 
-Run:
+执行：
 
 ```powershell
 pnpm test -- packages/api-sdk/src/client.test.ts
 ```
 
-Expected: PASS.
+预期： PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5： Commit**
 
 ```powershell
 git add packages/api-sdk/src/client.ts packages/api-sdk/src/client.test.ts
 git commit -m "新增：补齐班级课程选项SDK契约"
 ```
 
-## Task 4: User-Web Cascaded Selector Red-Green
+## 任务 4： 用户端级联选择器红绿测试
 
-**Files:**
-- Modify: `apps/user-web/src/class-learning-page.tsx`
-- Modify: `apps/user-web/src/class-learning-page.test.tsx`
-- Modify: `apps/user-web/src/app.test.tsx`
+**涉及文件：**
+- 修改：`apps/user-web/src/class-learning-page.tsx`
+- 修改：`apps/user-web/src/class-learning-page.test.tsx`
+- 修改：`apps/user-web/src/app.test.tsx`
 
-- [ ] **Step 1: Write the failing UI tests**
+- [ ] **步骤 1： 编写失败的 UI 测试**
 
-Replace the ID-input assertions with tests like:
+将原有 ID 输入断言替换为类似如下的测试：
 
 ```tsx
 it("loads class course options and queries after selecting a course node", async () => {
@@ -489,7 +489,7 @@ it("loads class course options and queries after selecting a course node", async
 });
 ```
 
-Also add:
+另外新增：
 
 ```tsx
 it("shows empty state when no class course options exist", async () => {})
@@ -497,19 +497,19 @@ it("shows error state when class course options fail to load", async () => {})
 it("rejects querying before selecting a course node", async () => {})
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **步骤 2： 运行测试并确认其失败**
 
-Run:
+执行：
 
 ```powershell
 pnpm test -- apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/app.test.tsx
 ```
 
-Expected: FAIL because `ClassLearningPage` still renders `班级ID` and `课程ID` inputs and has no option loader.
+预期： FAIL because `ClassLearningPage` still renders `班级ID` and `课程ID` inputs and has no option loader.
 
-- [ ] **Step 3: Write the minimal UI implementation**
+- [ ] **步骤 3： 编写最小 UI 实现**
 
-Extend the page API:
+扩展页面 API：
 
 ```ts
 export interface ClassLearningApi {
@@ -518,7 +518,7 @@ export interface ClassLearningApi {
 }
 ```
 
-Replace the local form with:
+将本地表单状态替换为：
 
 ```ts
 const defaultSelection = {
@@ -529,7 +529,7 @@ const defaultSelection = {
 };
 ```
 
-Load options on mount:
+在挂载时加载选项：
 
 ```ts
 useEffect(() => {
@@ -556,7 +556,7 @@ useEffect(() => {
 }, [api]);
 ```
 
-Use a single two-level menu:
+使用单个两级菜单：
 
 ```tsx
 <div>
@@ -591,7 +591,7 @@ Use a single two-level menu:
 </div>
 ```
 
-Before querying:
+查询前：
 
 ```ts
 if (!selection.classId || !selection.courseId) {
@@ -601,33 +601,33 @@ if (!selection.classId || !selection.courseId) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **步骤 4： 运行测试并确认其通过**
 
-Run:
+执行：
 
 ```powershell
 pnpm test -- apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/app.test.tsx
 ```
 
-Expected: PASS.
+预期： PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5： Commit**
 
 ```powershell
 git add apps/user-web/src/class-learning-page.tsx apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/app.test.tsx
 git commit -m "新增：升级班级学习级联选择器"
 ```
 
-## Task 5: OpenAPI, Status Docs, And Final Verification
+## 任务 5： OpenAPI、状态文档与最终验证
 
-**Files:**
-- Modify: `docs/api/openapi.yaml`
-- Modify: `docs/docs/openapi_design_v1.md`
-- Modify: `docs/docs/26_stage2f_implementation_status.md`
+**涉及文件：**
+- 修改：`docs/api/openapi.yaml`
+- 修改：`docs/docs/openapi_design_v1.md`
+- 修改：`docs/docs/26_stage2f_implementation_status.md`
 
-- [ ] **Step 1: Update OpenAPI**
+- [ ] **步骤 1： 更新 OpenAPI**
 
-Add:
+新增：
 
 ```yaml
   /analytics/class-course-options:
@@ -660,9 +660,9 @@ Add schemas:
             $ref: '#/components/schemas/CourseOptionItem'
 ```
 
-- [ ] **Step 2: Update Markdown docs**
+- [ ] **步骤 2： 更新 Markdown 文档**
 
-In `docs/docs/openapi_design_v1.md`, add a new subsection under analytics:
+在 `docs/docs/openapi_design_v1.md` 中的 analytics 小节下新增一段：
 
 ```md
 ### GET `/api/v1/analytics/class-course-options`
@@ -672,22 +672,22 @@ In `docs/docs/openapi_design_v1.md`, add a new subsection under analytics:
 - sys_admin / school_admin：返回当前租户有效任课关系组合。
 ```
 
-In `docs/docs/26_stage2f_implementation_status.md`, replace “班级 ID、课程 ID 输入” with “单个级联班级课程选择器” and add the new endpoint to the completed items list.
+在 `docs/docs/26_stage2f_implementation_status.md` 中，将“班级 ID、课程 ID 输入”替换为“单个级联班级课程选择器”，并把新接口加入已完成项列表。
 
-- [ ] **Step 3: Run targeted docs verification**
+- [ ] **步骤 3： 运行针对性文档验证**
 
-Run:
+执行：
 
 ```powershell
 go run -work D:\workspace\temp\openapi_parse_stage2f.go
 git diff --check
 ```
 
-Expected: `openapi_parse_ok` and no diff-check output.
+预期： `openapi_parse_ok` and no diff-check output.
 
-- [ ] **Step 4: Run full verification**
+- [ ] **步骤 4： 运行全量验证**
 
-Run:
+执行：
 
 ```powershell
 pnpm test
@@ -696,21 +696,21 @@ pnpm build
 go test -work ./...
 ```
 
-Expected:
-- `pnpm test`: all test files pass
-- `pnpm typecheck`: passes
-- `pnpm build`: passes
-- `go test -work ./...`: passes
+预期：
+- `pnpm test`：所有测试文件通过
+- `pnpm typecheck`：通过
+- `pnpm build`：通过
+- `go test -work ./...`：通过
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5： Commit**
 
 ```powershell
 git add docs/api/openapi.yaml docs/docs/openapi_design_v1.md docs/docs/26_stage2f_implementation_status.md
 git commit -m "文档：同步班级课程级联选择器契约"
 ```
 
-## Self-Review
+## 自检
 
-- Spec coverage: covers the new options API, permission-aware data source, SDK contract, single cascaded selector UI, empty/error/loading states, and doc updates from `docs/superpowers/specs/2026-04-22-stage2f-class-course-cascader-design.md`.
+- 规格覆盖： covers the new options API, permission-aware data source, SDK contract, single cascaded selector UI, empty/error/loading states, and doc updates from `docs/superpowers/specs/2026-04-22-stage2f-class-course-cascader-design.md`.
 - Placeholder scan: no `TBD`, `TODO`, or “similar to above” shortcuts remain.
-- Type consistency: `ClassCourseOption`, `CourseOptionItem`, `listClassCourseOptions`, and `ClassCourseOptionsResult` are used consistently across backend, SDK, and frontend tasks.
+- 类型一致性： `ClassCourseOption`, `CourseOptionItem`, `listClassCourseOptions`, and `ClassCourseOptionsResult` are used consistently across backend, SDK, and frontend tasks.

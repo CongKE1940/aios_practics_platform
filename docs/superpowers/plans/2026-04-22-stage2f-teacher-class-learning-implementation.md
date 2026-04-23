@@ -1,35 +1,35 @@
-# 阶段 2F 老师侧班级学习页 Implementation Plan
+# 阶段 2F 老师侧班级学习页 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向代理执行者：** 必须使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 按任务逐步执行本计划。所有步骤使用复选框（`- [ ]`）语法进行跟踪。
 
-**Goal:** Build the stage 2F teacher class-learning loop: a protected analytics API, SDK method, user-web teacher page, OpenAPI contract, and status docs.
+**目标：** 构建阶段 2F 老师侧班级学习闭环，包括受保护的 analytics API、SDK 方法、用户端老师页面、OpenAPI 契约与状态文档。
 
-**Architecture:** Add a new backend `internal/modules/analytics` module with model/service/handler/MySQL repository layers, following the existing module style. The API aggregates existing practice tables in real time and enforces teacher assignment scope through `teacher_class_course_assignments`; the frontend consumes the SDK from a focused `ClassLearningPage` component.
+**实现架构：** 按现有模块风格新增后端 `internal/modules/analytics` 模块，包含 model/service/handler/MySQL repository 分层。API 基于现有练题表实时聚合，并通过 `teacher_class_course_assignments` 强制校验老师任课范围；前端通过聚焦的 `ClassLearningPage` 组件消费 SDK。
 
-**Tech Stack:** Go, Gin, database/sql, MySQL 8, sqlmock, React 18, TypeScript, Vite, Vitest, OpenAPI 3.0 YAML.
+**技术栈：** Go, Gin, database/sql, MySQL 8, sqlmock, React 18, TypeScript, Vite, Vitest, OpenAPI 3.0 YAML.
 
 ---
 
-## File Map
+## 文件清单
 
-- Create: `internal/modules/analytics/model.go` for analytics models, query structs, repository interface, errors, and pagination helpers.
-- Create: `internal/modules/analytics/service.go` for validation, time range normalization, authorization, and orchestration.
-- Create: `internal/modules/analytics/handler.go` for JWT parsing, `analytics:view` permission checks, query parsing, and JSON responses.
-- Create: `internal/modules/analytics/mysql_repository.go` for MySQL existence, assignment, and aggregation queries.
-- Create: `internal/modules/analytics/handler_test.go` for service/handler tests with an in-memory repository.
-- Create: `internal/modules/analytics/mysql_repository_test.go` for sqlmock checks around tenant and assignment filters.
-- Modify: `cmd/server/main.go` to wire the analytics handler into `/api/v1`.
-- Modify: `internal/modules/rbac/menu.go` and `internal/modules/rbac/menu_service_test.go` to add the user-web “班级学习” menu.
-- Modify: `packages/api-sdk/src/client.ts` and `packages/api-sdk/src/client.test.ts` to add analytics types and `getClassPracticeSummary`.
-- Create: `apps/user-web/src/class-learning-page.tsx` for the teacher class-learning page.
-- Create: `apps/user-web/src/class-learning-page.test.tsx` for UI behavior tests.
-- Modify: `apps/user-web/src/app.tsx` and `apps/user-web/src/app.test.tsx` to register the page in the user shell.
-- Modify: `docs/api/openapi.yaml`, `docs/docs/openapi_design_v1.md`, `docs/README.md`.
-- Create: `docs/docs/26_stage2f_implementation_status.md`.
+- 新建：`internal/modules/analytics/model.go`，用于承载 analytics 模型、查询结构、仓储接口、错误定义与分页辅助函数。
+- 新建：`internal/modules/analytics/service.go`，用于处理校验、时间范围归一化、鉴权与编排。
+- 新建：`internal/modules/analytics/handler.go`，用于处理 JWT 解析、`analytics:view` 权限校验、查询解析与 JSON 响应。
+- 新建：`internal/modules/analytics/mysql_repository.go`，用于处理 MySQL 存在性、任课关系与聚合查询。
+- 新建：`internal/modules/analytics/handler_test.go`，用于承载基于内存仓储的 service/handler 测试。
+- 新建：`internal/modules/analytics/mysql_repository_test.go`，用于承载围绕租户与任课过滤条件的 sqlmock 检查。
+- 修改：`cmd/server/main.go`，将 analytics handler 挂接到 `/api/v1`。
+- 修改：`internal/modules/rbac/menu.go` 与 `internal/modules/rbac/menu_service_test.go`，补充用户端“班级学习”菜单。
+- 修改：`packages/api-sdk/src/client.ts` 与 `packages/api-sdk/src/client.test.ts`，补充 analytics 类型与 `getClassPracticeSummary`。
+- 新建：`apps/user-web/src/class-learning-page.tsx`，用于老师侧班级学习页。
+- 新建：`apps/user-web/src/class-learning-page.test.tsx`，用于 UI 行为测试。
+- 修改：`apps/user-web/src/app.tsx` 与 `apps/user-web/src/app.test.tsx`，将页面注册到用户端壳层。
+- 修改：`docs/api/openapi.yaml`、`docs/docs/openapi_design_v1.md` 与 `docs/README.md`。
+- 新建：`docs/docs/26_stage2f_implementation_status.md`.
 
-## Shared Backend Types
+## 共享后端类型
 
-Use these names consistently across backend, SDK, OpenAPI, and frontend:
+以下命名需在后端、SDK、OpenAPI 和前端之间保持一致：
 
 ```go
 type Scope struct {
@@ -93,7 +93,7 @@ type ClassPracticeSummaryResult struct {
 }
 ```
 
-Repository contract:
+仓储契约：
 
 ```go
 type Repository interface {
@@ -104,7 +104,7 @@ type Repository interface {
 }
 ```
 
-Error constants:
+错误常量：
 
 ```go
 const (
@@ -120,21 +120,21 @@ var (
 )
 ```
 
-## Task 1: Backend Analytics Red Tests And Models
+## 任务 1： 后端统计红测与模型
 
-**Files:**
-- Create: `internal/modules/analytics/model.go`
-- Create: `internal/modules/analytics/service.go`
-- Create: `internal/modules/analytics/handler.go`
-- Create: `internal/modules/analytics/handler_test.go`
+**涉及文件：**
+- 新建：`internal/modules/analytics/model.go`
+- 新建：`internal/modules/analytics/service.go`
+- 新建：`internal/modules/analytics/handler.go`
+- 新建：`internal/modules/analytics/handler_test.go`
 
-- [ ] **Step 1: Add model definitions**
+- [ ] **步骤 1： 补充模型定义**
 
-Create `internal/modules/analytics/model.go` with the shared backend types above. Also include `normalizePage`, `normalizePageSize`, and `pageOf` helpers copied in style from `internal/modules/practice/model.go`, with max page size 100.
+创建 `internal/modules/analytics/model.go`，写入上面的共享后端类型。同时补充 `normalizePage`、`normalizePageSize` 与 `pageOf` 辅助函数，风格参考 `internal/modules/practice/model.go`，最大页大小为 100。
 
-- [ ] **Step 2: Add service skeleton**
+- [ ] **步骤 2： 补充 service 骨架**
 
-Create `internal/modules/analytics/service.go`:
+创建 `internal/modules/analytics/service.go`：
 
 ```go
 package analytics
@@ -158,9 +158,9 @@ func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope
 }
 ```
 
-- [ ] **Step 3: Add handler skeleton**
+- [ ] **步骤 3： 补充 handler 骨架**
 
-Create `internal/modules/analytics/handler.go` with a `TokenParser` interface matching practice, `NewHandler`, and route registration:
+创建 `internal/modules/analytics/handler.go`，包含与 practice 保持一致的 `TokenParser` 接口、`NewHandler` 以及路由注册：
 
 ```go
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
@@ -168,11 +168,11 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 }
 ```
 
-For this red-test step, `getClassPracticeSummary` may return `501` with `response.Failure(50000, "服务异常", requestID)` after authorization helpers are stubbed.
+在这一步红测中，完成鉴权辅助函数桩后，`getClassPracticeSummary` 可以先返回 `501`，并使用 `response.Failure(50000, "服务异常", requestID)`。
 
-- [ ] **Step 4: Write failing handler/service tests**
+- [ ] **步骤 4： 编写失败的 handler/service 测试**
 
-Create `internal/modules/analytics/handler_test.go` with these tests:
+创建 `internal/modules/analytics/handler_test.go`，加入以下测试：
 
 ```go
 func TestHandler_TeacherClassPracticeSummaryReturnsOverviewAndStudents(t *testing.T)
@@ -196,7 +196,7 @@ type memoryRepository struct {
 }
 ```
 
-Expected happy-path assertions:
+成功路径的预期断言：
 
 ```go
 rec := performAnalyticsRequest(
@@ -219,26 +219,26 @@ if len(body.Data.Students.Items) != 2 {
 }
 ```
 
-- [ ] **Step 5: Run red tests**
+- [ ] **步骤 5： 运行红测**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -run TestHandler_TeacherClassPracticeSummaryReturnsOverviewAndStudents -count=1
 ```
 
-Expected: FAIL because service and handler skeletons do not yet implement the behavior.
+预期： FAIL because service and handler skeletons do not yet implement the behavior.
 
-## Task 2: Backend Analytics Implementation
+## 任务 2： 后端统计实现
 
-**Files:**
-- Modify: `internal/modules/analytics/service.go`
-- Modify: `internal/modules/analytics/handler.go`
-- Modify: `internal/modules/analytics/handler_test.go`
+**涉及文件：**
+- 修改：`internal/modules/analytics/service.go`
+- 修改：`internal/modules/analytics/handler.go`
+- 修改：`internal/modules/analytics/handler_test.go`
 
-- [ ] **Step 1: Implement time range normalization**
+- [ ] **步骤 1： 实现时间范围归一化**
 
-In `service.go`, add:
+在 `service.go` 中添加：
 
 ```go
 const maxRangeDays = 366
@@ -262,9 +262,9 @@ func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (ti
 }
 ```
 
-- [ ] **Step 2: Implement service validation and authorization**
+- [ ] **步骤 2： 实现 service 校验与鉴权**
 
-Implement `GetClassPracticeSummary`:
+实现 `GetClassPracticeSummary`：
 
 ```go
 func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope, query ClassPracticeSummaryQuery) (ClassPracticeSummaryResult, error) {
@@ -316,11 +316,11 @@ func canViewAllTenantAnalytics(scope Scope) bool {
 }
 ```
 
-`TenantID` is carried in `ClassPracticeSummaryQuery` so repository methods can keep tenant filtering explicit.
+`TenantID` 放在 `ClassPracticeSummaryQuery` 中，以便仓储方法始终显式保留租户过滤条件。
 
-- [ ] **Step 3: Implement handler authorization and parsing**
+- [ ] **步骤 3： 实现 handler 鉴权与解析**
 
-In `handler.go`, implement:
+在 `handler.go` 中实现：
 
 ```go
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -342,7 +342,7 @@ func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
 }
 ```
 
-Parsing rules:
+解析规则：
 
 ```go
 func parseClassPracticeSummaryQuery(ctx *gin.Context) (ClassPracticeSummaryQuery, bool) {
@@ -369,11 +369,11 @@ func parseClassPracticeSummaryQuery(ctx *gin.Context) (ClassPracticeSummaryQuery
 }
 ```
 
-Use `time.Parse(time.RFC3339, value)` in `parseOptionalTime`.
+在 `parseOptionalTime` 中使用 `time.Parse(time.RFC3339, value)`。
 
-- [ ] **Step 4: Implement handler error mapping**
+- [ ] **步骤 4： 实现 handler 错误映射**
 
-Use:
+使用：
 
 ```go
 func writeAnalyticsError(ctx *gin.Context, err error) {
@@ -390,25 +390,25 @@ func writeAnalyticsError(ctx *gin.Context, err error) {
 }
 ```
 
-- [ ] **Step 5: Run analytics tests**
+- [ ] **步骤 5： 运行 analytics 测试**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -count=1
 ```
 
-Expected: PASS for handler/service tests using the memory repository.
+预期： PASS for handler/service tests using the memory repository.
 
-## Task 3: MySQL Analytics Repository
+## 任务 3： MySQL 统计仓储
 
-**Files:**
-- Create: `internal/modules/analytics/mysql_repository.go`
-- Create: `internal/modules/analytics/mysql_repository_test.go`
+**涉及文件：**
+- 新建：`internal/modules/analytics/mysql_repository.go`
+- 新建：`internal/modules/analytics/mysql_repository_test.go`
 
-- [ ] **Step 1: Write sqlmock tests**
+- [ ] **步骤 1： 编写 sqlmock 测试**
 
-Create `mysql_repository_test.go` with:
+创建 `mysql_repository_test.go`，加入：
 
 ```go
 func TestMySQLRepositoryTeacherCanViewClassCourseUsesTenantAndCurrentAssignment(t *testing.T)
@@ -426,9 +426,9 @@ WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND course_id = ?
 LIMIT 1
 ```
 
-- [ ] **Step 2: Implement repository skeleton and existence methods**
+- [ ] **步骤 2： 实现仓储骨架与存在性方法**
 
-Create `mysql_repository.go`:
+创建 `mysql_repository.go`：
 
 ```go
 package analytics
@@ -460,17 +460,17 @@ WHERE c.tenant_id = ? AND c.id = ? AND co.id = ?
 LIMIT 1
 ```
 
-Implement `TeacherCanViewClassCourse` with the query from Step 1. Map `sql.ErrNoRows` to `false, nil`.
+按步骤 1 中的查询实现 `TeacherCanViewClassCourse`，并将 `sql.ErrNoRows` 映射为 `false, nil`。
 
-- [ ] **Step 3: Implement summary aggregation**
+- [ ] **步骤 3： 实现汇总聚合**
 
-Implement `GetClassPracticeSummary` with three focused queries:
+使用三个聚焦查询来实现 `GetClassPracticeSummary`：
 
 1. Class/course names and student count.
 2. Session and answer aggregates from `practice_sessions`, `practice_session_questions`, and `practice_answers`.
 3. Wrong/confused question counts from `user_question_states` filtered by active question banks for the course.
 
-The session and answer query must restrict:
+练题会话与答题查询必须限制为：
 
 ```sql
 ps.tenant_id = scm.tenant_id
@@ -484,13 +484,13 @@ scm.is_current = 1
 scm.status = 'active'
 ```
 
-After scanning, compute:
+扫描后计算：
 
 ```go
 summary.Accuracy = ratio(summary.CorrectCount, summary.AnsweredCount)
 ```
 
-Implement:
+实现：
 
 ```go
 func ratio(part int, total int) float64 {
@@ -501,16 +501,16 @@ func ratio(part int, total int) float64 {
 }
 ```
 
-- [ ] **Step 4: Implement student pagination and metrics**
+- [ ] **步骤 4： 实现学生分页与指标**
 
-Implement `ListClassPracticeStudents` in two steps:
+分两步实现 `ListClassPracticeStudents`：
 
 1. Count all current active class students.
 2. Query page rows ordered by `u.display_name ASC, scm.student_id ASC`.
 
-The row query must start from `student_class_memberships` and use `LEFT JOIN` aggregates so students without practice remain visible.
+行查询必须从 `student_class_memberships` 出发，并使用 `LEFT JOIN` 聚合，以保证没有练题记录的学生仍然可见。
 
-Required selected fields:
+必须查询出的字段：
 
 ```sql
 scm.student_id,
@@ -523,29 +523,29 @@ SUM(CASE WHEN pa.is_correct = 0 THEN 1 ELSE 0 END) AS wrong_count,
 MAX(COALESCE(pa.answered_at, ps.started_at)) AS last_practiced_at
 ```
 
-Use correlated subqueries or a second page-scoped query for `wrong_question_count` and `confused_question_count`; whichever is clearer must still filter active question banks by `course_id`.
+对于 `wrong_question_count` 和 `confused_question_count`，可以使用相关子查询或第二个分页范围查询；无论采用哪种方式，都必须继续按 `course_id` 过滤有效题库。
 
-- [ ] **Step 5: Run repository tests**
+- [ ] **步骤 5： 运行仓储测试**
 
-Run:
+执行：
 
 ```powershell
 go test ./internal/modules/analytics -run MySQL -count=1
 ```
 
-Expected: PASS.
+预期： PASS.
 
-## Task 7: OpenAPI And Documentation
+## 任务 7： OpenAPI 与文档
 
-**Files:**
-- Modify: `docs/api/openapi.yaml`
-- Modify: `docs/docs/openapi_design_v1.md`
-- Modify: `docs/README.md`
-- Create: `docs/docs/26_stage2f_implementation_status.md`
+**涉及文件：**
+- 修改：`docs/api/openapi.yaml`
+- 修改：`docs/docs/openapi_design_v1.md`
+- 修改：`docs/README.md`
+- 新建：`docs/docs/26_stage2f_implementation_status.md`
 
-- [ ] **Step 1: Update OpenAPI path**
+- [ ] **步骤 1： 更新 OpenAPI path**
 
-Add the new analytics path next to existing analytics paths:
+在现有 analytics 路径旁新增以下接口：
 
 ```yaml
   /analytics/class-practice-summary:
@@ -581,7 +581,7 @@ Add the new analytics path next to existing analytics paths:
         '200': { $ref: '#/components/responses/ClassPracticeSummaryOk' }
 ```
 
-Add response:
+新增响应定义：
 
 ```yaml
     ClassPracticeSummaryOk:
@@ -592,17 +592,17 @@ Add response:
             $ref: '#/components/schemas/ClassPracticeSummaryResponse'
 ```
 
-Add schemas for `ClassPracticeSummary`, `ClassPracticeStudentItem`, `ClassPracticeStudentPage`, `ClassPracticeSummaryResult`, and `ClassPracticeSummaryResponse`.
+补充 `ClassPracticeSummary`、`ClassPracticeStudentItem`、`ClassPracticeStudentPage`、`ClassPracticeSummaryResult` 与 `ClassPracticeSummaryResponse` 的 schema。
 
-- [ ] **Step 2: Update OpenAPI design doc**
+- [ ] **步骤 2： 更新 OpenAPI design doc**
 
-In `docs/docs/openapi_design_v1.md`, add a section for:
+在 `docs/docs/openapi_design_v1.md` 中新增如下小节：
 
 ```text
 GET /api/v1/analytics/class-practice-summary
 ```
 
-Include:
+内容包括：
 
 1. Required `class_id` and `course_id`.
 2. Default time range is recent 30 days.
@@ -610,9 +610,9 @@ Include:
 4. Admin scope is current tenant.
 5. Response example matching the stage 2F design document.
 
-- [ ] **Step 3: Add stage status doc**
+- [ ] **步骤 3： 新增阶段状态文档**
 
-Create `docs/docs/26_stage2f_implementation_status.md`:
+创建 `docs/docs/26_stage2f_implementation_status.md`：
 
 ```markdown
 # 阶段 2F 实施状态：老师侧班级学习页
@@ -647,13 +647,13 @@ Create `docs/docs/26_stage2f_implementation_status.md`:
 6. 编码、BOM、混合换行、异常引用标记和敏感明文扫描
 ```
 
-- [ ] **Step 4: Update docs README**
+- [ ] **步骤 4： 更新 docs README**
 
-Add `docs/docs/26_stage2f_implementation_status.md` to the reading order and catalog.
+将 `docs/docs/26_stage2f_implementation_status.md` 加入阅读顺序与目录说明。
 
-- [ ] **Step 5: Parse OpenAPI**
+- [ ] **步骤 5： 解析 OpenAPI**
 
-Use a non-`*_test.go` temp filename:
+使用一个非 `*_test.go` 的临时文件名：
 
 ```powershell
 $tempPath = 'D:\workspace\temp\openapi_parse_stage2f.go'
@@ -683,30 +683,30 @@ go run -work $tempPath
 Remove-Item -LiteralPath $tempPath -Force
 ```
 
-Expected output:
+预期输出：
 
 ```text
 openapi_parse_ok
 ```
 
-## Task 8: Full Verification And Commit
+## 任务 8： 全量验证与提交
 
-**Files:**
-- All changed files
+**涉及文件：**
+- 所有已变更文件
 
-- [ ] **Step 1: Run backend tests**
+- [ ] **步骤 1： 运行后端测试**
 
-Run:
+执行：
 
 ```powershell
 go test -work ./...
 ```
 
-Expected: all packages PASS. If normal `go test ./...` fails only during Go temp cleanup with Windows `Access is denied`, rerun with `-work` and record the cleanup limitation in the final status.
+预期： all packages PASS. If normal `go test ./...` fails only during Go temp cleanup with Windows `Access is denied`, rerun with `-work` and record the cleanup limitation in the final status.
 
-- [ ] **Step 2: Run frontend checks**
+- [ ] **步骤 2： 运行前端检查**
 
-Run:
+执行：
 
 ```powershell
 pnpm test
@@ -714,7 +714,7 @@ pnpm typecheck
 pnpm build
 ```
 
-Expected:
+预期：
 
 ```text
 Test files pass
@@ -722,9 +722,9 @@ Typecheck exits 0
 Build exits 0
 ```
 
-- [ ] **Step 3: Run formatting and safety checks**
+- [ ] **步骤 3： 运行格式与安全检查**
 
-Run:
+执行：
 
 ```powershell
 git diff --check
@@ -732,13 +732,13 @@ git diff --cached --check
 rg -n "<initial-password>|<abnormal-citation-marker>" apps internal packages docs
 ```
 
-Expected:
+预期：
 
-1. `git diff --check` exits 0.
-2. `git diff --cached --check` exits 0 after staging.
-3. `rg` finds no matches.
+1. `git diff --check` 退出码为 0。
+2. `git diff --cached --check` 在暂存后退出码为 0。
+3. `rg` 不应匹配到任何结果。
 
-Run changed-file BOM and mixed-EOL check:
+对变更文件运行 BOM 与混合换行检查：
 
 ```powershell
 $changed = git diff --name-only
@@ -761,15 +761,15 @@ if ($bom.Count -gt 0 -or $mixed.Count -gt 0) { exit 1 }
 Write-Output 'encoding_eol_ok_for_changed_files'
 ```
 
-Expected:
+预期：
 
 ```text
 encoding_eol_ok_for_changed_files
 ```
 
-- [ ] **Step 4: Stage and commit**
+- [ ] **步骤 4： 暂存并提交**
 
-Run:
+执行：
 
 ```powershell
 git add cmd internal apps packages docs
@@ -777,35 +777,35 @@ git diff --cached --check
 git commit -m "新增：完成阶段2f班级学习页"
 ```
 
-Expected commit message:
+预期提交信息：
 
 ```text
 新增：完成阶段2f班级学习页
 ```
 
-## Self-Review Checklist
+## 自检清单
 
-- Spec coverage: backend API, authorization, time range, aggregation, SDK, frontend page, docs, OpenAPI, and verification are covered.
-- Type consistency: `ClassPracticeSummaryQuery`, `ClassPracticeSummaryResult`, `ClassPracticeSummary`, and `ClassPracticeStudentItem` names are consistent across tasks.
-- Scope control: no trend charts, no export, no knowledge point analytics, no exam analytics, no new statistics table.
-- Safety: plan uses D workspace paths, Chinese commit message, UTF-8 text files, and explicit sensitive-string checks.
+- 规格覆盖： backend API, authorization, time range, aggregation, SDK, frontend page, docs, OpenAPI, and verification are covered.
+- 类型一致性： `ClassPracticeSummaryQuery`, `ClassPracticeSummaryResult`, `ClassPracticeSummary`, and `ClassPracticeStudentItem` names are consistent across tasks.
+- 范围控制： no trend charts, no export, no knowledge point analytics, no exam analytics, no new statistics table.
+- 安全性： plan uses D workspace paths, Chinese commit message, UTF-8 text files, and explicit sensitive-string checks.
 
-## Task 4: Server Wiring And RBAC Menu
+## 任务 4： 服务接线与 RBAC 菜单
 
-**Files:**
-- Modify: `cmd/server/main.go`
-- Modify: `internal/modules/rbac/menu.go`
-- Modify: `internal/modules/rbac/menu_service_test.go`
+**涉及文件：**
+- 修改：`cmd/server/main.go`
+- 修改：`internal/modules/rbac/menu.go`
+- 修改：`internal/modules/rbac/menu_service_test.go`
 
-- [ ] **Step 1: Wire analytics handler**
+- [ ] **步骤 1： 挂接 analytics handler**
 
-In `cmd/server/main.go`, add import:
+在 `cmd/server/main.go` 中新增 import：
 
 ```go
 "aios_practice_platform/internal/modules/analytics"
 ```
 
-Create handler near other handlers:
+在其他 handler 附近创建：
 
 ```go
 analyticsHandler := analytics.NewHandler(
@@ -814,23 +814,23 @@ analyticsHandler := analytics.NewHandler(
 )
 ```
 
-Register with API v1 routes:
+注册到 API v1 路由：
 
 ```go
 bootstrap.WithAPIV1Routes(analyticsHandler.RegisterRoutes),
 ```
 
-- [ ] **Step 2: Add user menu item**
+- [ ] **步骤 2： 新增用户菜单项**
 
-In `internal/modules/rbac/menu.go`, add to `userMenus` children:
+在 `internal/modules/rbac/menu.go` 中，向 `userMenus` 的 children 追加：
 
 ```go
 {id: 27, name: "班级学习", path: "/app/class-learning", requiredPermissions: []string{"analytics:view"}},
 ```
 
-- [ ] **Step 3: Update menu tests**
+- [ ] **步骤 3： 更新菜单测试**
 
-In `internal/modules/rbac/menu_service_test.go`, assert:
+在 `internal/modules/rbac/menu_service_test.go` 中断言：
 
 ```go
 menus := BuildMenus("user", []string{"practice:use", "analytics:view"})
@@ -845,27 +845,27 @@ wantPaths := []string{
 }
 ```
 
-Add a test confirming “班级学习” is hidden without `analytics:view`.
+再补一个测试，确认缺少 `analytics:view` 时“班级学习”菜单会被隐藏。
 
-- [ ] **Step 4: Run backend route/menu tests**
+- [ ] **步骤 4： 运行后端路由与菜单测试**
 
-Run:
+执行：
 
 ```powershell
 go test ./cmd/server ./internal/modules/rbac ./internal/modules/analytics -count=1
 ```
 
-Expected: PASS.
+预期： PASS.
 
-## Task 5: SDK Contract
+## 任务 5： SDK Contract
 
-**Files:**
-- Modify: `packages/api-sdk/src/client.ts`
-- Modify: `packages/api-sdk/src/client.test.ts`
+**涉及文件：**
+- 修改：`packages/api-sdk/src/client.ts`
+- 修改：`packages/api-sdk/src/client.test.ts`
 
-- [ ] **Step 1: Add SDK types and method**
+- [ ] **步骤 1： 新增 SDK 类型与方法**
 
-Add to `client.ts`:
+向 `client.ts` 中添加：
 
 ```ts
 export interface ClassPracticeSummaryQuery {
@@ -927,9 +927,9 @@ getClassPracticeSummary: (query) =>
   request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
 ```
 
-- [ ] **Step 2: Add SDK test**
+- [ ] **步骤 2： 新增 SDK 测试**
 
-In `client.test.ts`, add a test named `queries class practice summary`. It should mock a response with `summary` and `students`, call:
+在 `client.test.ts` 中新增一个名为 `queries class practice summary` 的测试。它应 mock 一个带 `summary` 和 `students` 的响应，并调用：
 
 ```ts
 await client.getClassPracticeSummary({
@@ -942,7 +942,7 @@ await client.getClassPracticeSummary({
 });
 ```
 
-Assert:
+断言：
 
 ```ts
 expect(result.summary.class_name).toBe("一班");
@@ -951,27 +951,27 @@ expect(String(fetchMock.mock.calls[0][0])).toContain("/analytics/class-practice-
 expect(String(fetchMock.mock.calls[0][0])).toContain("start_at=2026-04-01T00%3A00%3A00%2B08%3A00");
 ```
 
-- [ ] **Step 3: Run SDK tests**
+- [ ] **步骤 3： 运行 SDK 测试**
 
-Run:
+执行：
 
 ```powershell
 pnpm test -- packages/api-sdk/src/client.test.ts
 ```
 
-Expected: PASS.
+预期： PASS.
 
-## Task 6: User-Web Class Learning Page
+## 任务 6： 用户端班级学习页
 
-**Files:**
-- Create: `apps/user-web/src/class-learning-page.tsx`
-- Create: `apps/user-web/src/class-learning-page.test.tsx`
-- Modify: `apps/user-web/src/app.tsx`
-- Modify: `apps/user-web/src/app.test.tsx`
+**涉及文件：**
+- 新建：`apps/user-web/src/class-learning-page.tsx`
+- 新建：`apps/user-web/src/class-learning-page.test.tsx`
+- 修改：`apps/user-web/src/app.tsx`
+- 修改：`apps/user-web/src/app.test.tsx`
 
-- [ ] **Step 1: Create page component and API interface**
+- [ ] **步骤 1： 创建页面组件与 API 接口**
 
-Create `class-learning-page.tsx` with:
+创建 `class-learning-page.tsx`，内容如下：
 
 ```tsx
 import { useState } from "react";
@@ -983,7 +983,7 @@ export interface ClassLearningApi {
 }
 ```
 
-Component state:
+组件状态：
 
 ```tsx
 const [classId, setClassId] = useState("");
@@ -995,7 +995,7 @@ const [loading, setLoading] = useState(false);
 const [error, setError] = useState("");
 ```
 
-Submit handler:
+提交处理函数：
 
 ```tsx
 async function handleSearch() {
@@ -1025,7 +1025,7 @@ async function handleSearch() {
 }
 ```
 
-Render labels exactly:
+渲染时标签名称必须完全一致：
 
 - `班级ID`
 - `课程ID`
@@ -1035,9 +1035,9 @@ Render labels exactly:
 - `班级概览`
 - `学生明细`
 
-- [ ] **Step 2: Add page tests**
+- [ ] **步骤 2： 新增页面测试**
 
-Create `class-learning-page.test.tsx` with tests:
+创建 `class-learning-page.test.tsx`，加入以下测试：
 
 ```tsx
 it("queries and renders class learning summary", async () => {
@@ -1098,13 +1098,13 @@ it("shows permission error when api returns 403")
 it("validates class and course ids before querying")
 ```
 
-- [ ] **Step 3: Wire page into app**
+- [ ] **步骤 3： 将页面接入应用**
 
-Modify `apps/user-web/src/app.tsx`:
+修改 `apps/user-web/src/app.tsx`：
 
-1. Import `ClassLearningPage` and `ClassLearningApi`.
-2. Update `UserAppProps` so `practiceApi` can also satisfy `ClassLearningApi`.
-3. Add nav button:
+1. 引入 `ClassLearningPage` 与 `ClassLearningApi`。
+2. 更新 `UserAppProps`，使 `practiceApi` 也能满足 `ClassLearningApi`。
+3. 新增导航按钮：
 
 ```tsx
 <button type="button" onClick={() => setSelectedPath("/app/class-learning")}>
@@ -1112,7 +1112,7 @@ Modify `apps/user-web/src/app.tsx`:
 </button>
 ```
 
-4. Add route:
+4. 新增路由：
 
 ```tsx
 {selectedPath === "/app/class-learning" && currentPracticeApi ? (
@@ -1120,11 +1120,11 @@ Modify `apps/user-web/src/app.tsx`:
 ) : null}
 ```
 
-- [ ] **Step 4: Update app tests**
+- [ ] **步骤 4： 更新应用测试**
 
-In `app.test.tsx`, add a mocked `getClassPracticeSummary` to objects passed as `practiceApi`.
+在 `app.test.tsx` 中，为传入的 `practiceApi` 对象补充一个 mock 的 `getClassPracticeSummary`。
 
-Add test:
+新增测试：
 
 ```tsx
 it("opens class learning page from the learner shell", async () => {
@@ -1136,12 +1136,12 @@ it("opens class learning page from the learner shell", async () => {
 });
 ```
 
-- [ ] **Step 5: Run user-web tests**
+- [ ] **步骤 5： 运行 user-web 测试**
 
-Run:
+执行：
 
 ```powershell
 pnpm test -- apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/app.test.tsx
 ```
 
-Expected: PASS.
+预期： PASS.
