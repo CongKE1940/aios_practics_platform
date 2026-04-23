@@ -1,4 +1,4 @@
-# 阶段 2F 实施状态：老师侧班级学习页与用户端登录闭环
+# 阶段 2F 实施状态：老师侧学习分析闭环
 
 日期：2026-04-23
 状态：已完成并准备提交
@@ -13,14 +13,17 @@
 - `internal/modules/analytics`：MySQL 仓储基于练题会话、答题记录、用户题目状态和当前班级归属实时聚合，不新增统计表。
 - `internal/modules/analytics`：新增 `GET /analytics/class-course-options`，按当前老师任课范围或租户范围返回班级课程树。
 - `internal/modules/analytics`：新增 `GET /analytics/student-practice-detail`，支持老师查看当前班级课程下单个学生的练题记录、错题和疑惑题。
+- `internal/modules/analytics`：新增 `GET /analytics/student-practice-session-detail`，支持老师继续下钻单次练题详情，返回会话汇总与题目明细。
+- `internal/modules/analytics`：单次练题详情仓储按 `session_question_id + user_id` 取最新作答，题目按 `display_order` 升序，优先使用 `presented_options_json` 快照还原题目内容。
 - `cmd/server`：将 analytics handler 注册到 `/api/v1`。
 - `internal/modules/rbac`：用户端菜单新增“班级学习”，权限为 `analytics:view`。
-- `packages/api-sdk`：新增 `listClassCourseOptions`、`getClassPracticeSummary`、`getStudentPracticeDetail` 方法与相关类型。
+- `packages/api-sdk`：新增 `listClassCourseOptions`、`getClassPracticeSummary`、`getStudentPracticeDetail`、`getStudentPracticeSessionDetail` 方法与相关类型。
 - `apps/user-web`：`ClassLearningPage` 升级为单个班级课程级联选择器，支持日期范围查询，展示汇总指标与学生明细。
 - `apps/user-web`：新增 `StudentLearningDetailPage`，支持从班级学习页继续下钻到学生详情，并通过标签页切换练题记录、错题和疑惑题。
+- `apps/user-web`：新增 `StudentPracticeSessionDetailPage`，支持从学生详情页 `sessions` 标签下钻单次练题详情并保留返回上下文。
 - `apps/user-web`：补齐登录页、动态菜单、退出登录、`401` 统一失效回退、本地会话恢复，以及 `localStorage` 脏 session 的结构校验与自动清理。
-- `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary` 与 `GET /analytics/student-practice-detail` 正式契约。
-- `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览与学生学习详情接口说明。
+- `docs/api/openapi.yaml`：补充 `GET /analytics/class-course-options`、`GET /analytics/class-practice-summary`、`GET /analytics/student-practice-detail`、`GET /analytics/student-practice-session-detail` 正式契约。
+- `docs/docs/openapi_design_v1.md`：补充老师侧班级课程级联选项、练题概览、学生学习详情与单次练题详情接口说明。
 - `docs/README.md`：把阶段 2F 状态文档纳入阅读顺序和目录说明。
 
 ## 2. 已落地的业务口径
@@ -36,6 +39,8 @@
 9. 当且仅当可选课程总数为 1 时，页面会自动默认选中该课程。
 10. 用户端启动时会优先尝试从 `localStorage` 恢复合法 session；若 session 可解析但结构残缺，会立即清理并回到登录页，不允许首屏崩溃。
 11. 学生详情页通过 `GET /api/v1/analytics/student-practice-detail` 复用班级课程与当前学生归属口径，支持 `sessions`、`wrong`、`confused` 三个标签页。
+12. 单次练题详情通过 `GET /api/v1/analytics/student-practice-session-detail` 精确定位 `class_id + course_id + student_user_id + session_id`，并返回会话汇总与题目明细。
+13. 单次练题详情题目数据优先读取练题时快照，学生答案按每题最新作答去重，正确率由 `correct_count / answered_count` 计算。
 
 ## 3. 当前限制
 
@@ -43,7 +48,7 @@
 2. 班级课程选择当前为基础级联按钮树，尚未接入更完整的搜索式选择器或组织树样式控件。
 3. 统计实时聚合，尚未引入物化统计表或异步汇总任务。
 4. 学校管理员的数据范围当前按 token 租户处理，后续可继续细化到学校/年级范围。
-5. 学生详情页当前仍为最小可用形态，暂未继续下钻到单次练题详情或完整题目详情页。
+5. 当前尚未支持从单次练题详情继续下钻到完整题目详情、老师讲评或导出能力。
 
 ## 4. 已执行验证
 
@@ -53,6 +58,7 @@
 git diff --check
 pnpm test -- packages/api-sdk/src/client.test.ts apps/user-web/src/app.test.tsx
 pnpm test -- apps/user-web/src/class-learning-page.test.tsx apps/user-web/src/student-learning-detail-page.test.tsx
+pnpm test -- apps/user-web/src/student-practice-session-detail-page.test.tsx
 go test ./internal/modules/analytics
 pnpm test
 pnpm typecheck
@@ -66,8 +72,8 @@ PowerShell 脚本检查 `git diff --name-only` 中所有文本文件的 UTF-8 BO
 
 验证结论：
 1. `git diff --check` 无输出，空白检查通过。
-2. 前端定向回归通过：`packages/api-sdk/src/client.test.ts`、`apps/user-web/src/app.test.tsx`、`apps/user-web/src/class-learning-page.test.tsx` 与 `apps/user-web/src/student-learning-detail-page.test.tsx` 覆盖登录页、动态菜单、退出登录、`401` 失效回退、班级学习页和学生详情页。
-3. 后端 analytics 包测试通过，覆盖班级汇总、学生详情服务与 MySQL 仓储查询。
+2. 前端定向回归通过：`packages/api-sdk/src/client.test.ts`、`apps/user-web/src/app.test.tsx`、`apps/user-web/src/class-learning-page.test.tsx`、`apps/user-web/src/student-learning-detail-page.test.tsx`、`apps/user-web/src/student-practice-session-detail-page.test.tsx`，覆盖登录页、动态菜单、退出登录、`401` 失效回退、班级学习页、学生详情页和单次练题详情页。
+3. 后端 analytics 包测试通过，覆盖班级汇总、学生详情、单次练题详情服务与 MySQL 仓储查询。
 4. 前端全量测试通过：`pnpm test` 共 16 个测试文件、97 个测试通过。
 5. 前端类型检查通过。
 6. 前端构建通过。
@@ -79,7 +85,7 @@ PowerShell 脚本检查 `git diff --name-only` 中所有文本文件的 UTF-8 BO
 
 阶段 2F 之后建议优先补齐：
 
-1. 从学生详情页继续进入单次练题详情和完整题目详情。
+1. 从单次练题详情页继续进入完整题目详情与老师讲评能力。
 2. 面向老师的课程维度学习趋势与薄弱题型统计。
 3. 将当前基础级联选择器升级为带搜索与更丰富状态提示的正式选择组件。
 4. 当数据量上升后，将实时聚合沉淀为异步统计任务或物化汇总表。

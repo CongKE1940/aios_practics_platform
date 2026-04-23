@@ -714,6 +714,191 @@ func TestHandler_GetStudentPracticeDetailRejectsInvalidTimeRange(t *testing.T) {
 	}
 }
 
+func TestHandler_GetStudentPracticeSessionDetailSuccess(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = true
+	repo.studentPracticeSessionDetailResult = StudentPracticeSessionDetailResult{
+		StudentSummary: StudentPracticeSessionStudentSummary{
+			StudentUserID: 7001,
+			StudentName:   "张三",
+			StudentNo:     strPtr("S001"),
+			ClassID:       101,
+			ClassName:     "一班",
+			CourseID:      12,
+			CourseName:    "数学",
+		},
+		Session: StudentPracticeSessionSummary{
+			SessionID:     9001,
+			Status:        "finished",
+			PracticeMode:  "random",
+			SourceMode:    "course",
+			FlowMode:      "fixed_count",
+			TotalCount:    2,
+			AnsweredCount: 2,
+			CorrectCount:  1,
+			WrongCount:    1,
+			Accuracy:      0.5,
+		},
+		Questions: []StudentPracticeSessionQuestionItem{
+			{
+				SessionQuestionID: 701,
+				QuestionID:        1,
+				QuestionVersionID: 11,
+				DisplayOrder:      1,
+				QuestionType:      "single_choice",
+				Content:           map[string]any{"stem": map[string]any{"text": "1+1=?"}},
+				StudentAnswer:     map[string]any{"selected_options": []any{"A"}},
+				CorrectAnswer:     map[string]any{"selected_options": []any{"A"}},
+				IsAnswered:        true,
+				IsCorrect:         boolPtr(true),
+			},
+			{
+				SessionQuestionID: 702,
+				QuestionID:        2,
+				QuestionVersionID: 22,
+				DisplayOrder:      2,
+				QuestionType:      "single_choice",
+				Content:           map[string]any{"stem": map[string]any{"text": "1+2=?"}},
+				StudentAnswer:     map[string]any{"selected_options": []any{"B"}},
+				CorrectAnswer:     map[string]any{"selected_options": []any{"A"}},
+				IsAnswered:        true,
+				IsCorrect:         boolPtr(false),
+			},
+		},
+	}
+
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/student-practice-session-detail?class_id=101&course_id=12&student_user_id=7001&session_id=9001", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body analyticsEnvelope[StudentPracticeSessionDetailResult]
+	decodeAnalyticsBody(t, rec, &body)
+	if body.Data.Session.SessionID != 9001 {
+		t.Fatalf("session = %+v", body.Data.Session)
+	}
+	if len(body.Data.Questions) != 2 {
+		t.Fatalf("question count = %d", len(body.Data.Questions))
+	}
+	if body.Data.Questions[0].SessionQuestionID != 701 {
+		t.Fatalf("first question = %+v", body.Data.Questions[0])
+	}
+	if body.Data.StudentSummary.StudentName != "张三" {
+		t.Fatalf("student summary = %+v", body.Data.StudentSummary)
+	}
+}
+
+func TestHandler_GetStudentPracticeSessionDetailRejectsTeacherWithoutAssignment(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = false
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = true
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/student-practice-session-detail?class_id=101&course_id=12&student_user_id=7001&session_id=9001", nil, "token")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_GetStudentPracticeSessionDetailRejectsStudentOutsideClass(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = false
+	repo.sessionBelongsToStudent = true
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/student-practice-session-detail?class_id=101&course_id=12&student_user_id=7001&session_id=9001", nil, "token")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_GetStudentPracticeSessionDetailRejectsSessionNotBelongToStudent(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = false
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/student-practice-session-detail?class_id=101&course_id=12&student_user_id=7001&session_id=9001", nil, "token")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_GetStudentPracticeSessionDetailRejectsInvalidQuery(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = true
+	router := newAnalyticsTestRouter(repo, fakeAnalyticsParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"analytics:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performAnalyticsRequest(router, http.MethodGet, "/api/v1/analytics/student-practice-session-detail?class_id=101&course_id=12&student_user_id=7001&session_id=0", nil, "token")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestService_GetStudentPracticeDetailNormalizesTimeAndPagination(t *testing.T) {
 	repo := newMemoryAnalyticsRepository()
 	repo.classCourseExists = true
@@ -797,6 +982,92 @@ func TestService_GetStudentPracticeDetailRejectsMissingPermission(t *testing.T) 
 	}
 }
 
+func TestService_GetStudentPracticeSessionDetailAdminScopes(t *testing.T) {
+	for _, userType := range []string{"sys_admin", "school_admin"} {
+		repo := newMemoryAnalyticsRepository()
+		repo.classCourseExists = true
+		repo.studentBelongsToClass = true
+		repo.sessionBelongsToStudent = true
+		repo.studentPracticeSessionDetailResult = StudentPracticeSessionDetailResult{
+			StudentSummary: StudentPracticeSessionStudentSummary{
+				StudentUserID: 7001,
+				StudentName:   "张三",
+				ClassID:       101,
+				CourseID:      12,
+			},
+			Session: StudentPracticeSessionSummary{
+				SessionID: 9001,
+				Status:    "finished",
+			},
+		}
+		service := NewService(repo)
+
+		result, err := service.GetStudentPracticeSessionDetail(context.Background(), Scope{
+			TenantID: 1,
+			UserID:   7,
+			UserType: userType,
+			Permissions: []string{
+				"analytics:view",
+			},
+		}, StudentPracticeSessionDetailQuery{
+			ClassID:       101,
+			CourseID:      12,
+			StudentUserID: 7001,
+			SessionID:     9001,
+		})
+		if err != nil {
+			t.Fatalf("userType=%s err=%v", userType, err)
+		}
+		if result.Session.SessionID != 9001 {
+			t.Fatalf("userType=%s session=%+v", userType, result.Session)
+		}
+		if repo.teacherCanViewCalls != 0 {
+			t.Fatalf("userType=%s teacherCanViewCalls=%d", userType, repo.teacherCanViewCalls)
+		}
+		if repo.classCourseExistsCalls != 1 {
+			t.Fatalf("userType=%s classCourseExistsCalls=%d", userType, repo.classCourseExistsCalls)
+		}
+		if repo.getStudentPracticeSessionDetailCalls != 1 {
+			t.Fatalf("userType=%s getStudentPracticeSessionDetailCalls=%d", userType, repo.getStudentPracticeSessionDetailCalls)
+		}
+		if repo.lastStudentPracticeSessionDetailQuery.TenantID != 1 {
+			t.Fatalf("userType=%s query=%+v", userType, repo.lastStudentPracticeSessionDetailQuery)
+		}
+	}
+}
+
+func TestService_GetStudentPracticeSessionDetailReturnsNotFoundWhenRepoRejectsSession(t *testing.T) {
+	repo := newMemoryAnalyticsRepository()
+	repo.classCourseExists = true
+	repo.teacherAllowed = true
+	repo.studentBelongsToClass = true
+	repo.sessionBelongsToStudent = false
+
+	service := NewService(repo)
+	_, err := service.GetStudentPracticeSessionDetail(context.Background(), Scope{
+		TenantID: 1,
+		UserID:   7,
+		UserType: "teacher",
+		Permissions: []string{
+			"analytics:view",
+		},
+	}, StudentPracticeSessionDetailQuery{
+		ClassID:       101,
+		CourseID:      12,
+		StudentUserID: 7001,
+		SessionID:     9001,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("error = %v", err)
+	}
+	if repo.getStudentPracticeSessionDetailCalls != 1 {
+		t.Fatalf("getStudentPracticeSessionDetailCalls=%d", repo.getStudentPracticeSessionDetailCalls)
+	}
+	if repo.lastStudentPracticeSessionDetailQuery.StudentUserID != 7001 || repo.lastStudentPracticeSessionDetailQuery.SessionID != 9001 {
+		t.Fatalf("query=%+v", repo.lastStudentPracticeSessionDetailQuery)
+	}
+}
+
 type analyticsEnvelope[T any] struct {
 	Code      int    `json:"code"`
 	Message   string `json:"message"`
@@ -828,24 +1099,28 @@ func newAnalyticsTestRouter(repo *memoryAnalyticsRepository, parser fakeAnalytic
 }
 
 type memoryAnalyticsRepository struct {
-	classCourseExists bool
-	teacherAllowed    bool
-	summary           ClassPracticeSummary
-	students          []ClassPracticeStudentItem
-	lastQuery         ClassPracticeSummaryQuery
-	options           []ClassCourseOption
-	lastScope         Scope
-	classCourseExistsCalls            int
-	teacherCanViewCalls               int
-	studentBelongsToClass             bool
-	studentPracticeSummary            StudentPracticeSummary
-	studentPracticeSessions           []StudentPracticeSessionItem
-	studentPracticeWrongQuestions     []StudentPracticeQuestionItem
-	studentPracticeConfusedQuestions  []StudentPracticeQuestionItem
-	lastStudentPracticeQuery          StudentPracticeDetailQuery
-	listStudentSessionsCalls          int
-	listStudentWrongCalls             int
-	listStudentConfusedCalls          int
+	classCourseExists                     bool
+	teacherAllowed                        bool
+	summary                               ClassPracticeSummary
+	students                              []ClassPracticeStudentItem
+	lastQuery                             ClassPracticeSummaryQuery
+	options                               []ClassCourseOption
+	lastScope                             Scope
+	classCourseExistsCalls                int
+	teacherCanViewCalls                   int
+	studentBelongsToClass                 bool
+	studentPracticeSummary                StudentPracticeSummary
+	studentPracticeSessions               []StudentPracticeSessionItem
+	studentPracticeWrongQuestions         []StudentPracticeQuestionItem
+	studentPracticeConfusedQuestions      []StudentPracticeQuestionItem
+	lastStudentPracticeQuery              StudentPracticeDetailQuery
+	listStudentSessionsCalls              int
+	listStudentWrongCalls                 int
+	listStudentConfusedCalls              int
+	sessionBelongsToStudent               bool
+	studentPracticeSessionDetailResult    StudentPracticeSessionDetailResult
+	lastStudentPracticeSessionDetailQuery StudentPracticeSessionDetailQuery
+	getStudentPracticeSessionDetailCalls  int
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
@@ -904,6 +1179,15 @@ func (repo *memoryAnalyticsRepository) ListStudentConfusedQuestions(_ context.Co
 	return pageOf(repo.studentPracticeConfusedQuestions, query.Page, query.PageSize), nil
 }
 
+func (repo *memoryAnalyticsRepository) GetStudentPracticeSessionDetail(_ context.Context, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error) {
+	repo.lastStudentPracticeSessionDetailQuery = query
+	repo.getStudentPracticeSessionDetailCalls++
+	if !repo.sessionBelongsToStudent {
+		return StudentPracticeSessionDetailResult{}, ErrNotFound
+	}
+	return repo.studentPracticeSessionDetailResult, nil
+}
+
 func performAnalyticsRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {
 	var requestBody []byte
 	if body != nil {
@@ -937,5 +1221,9 @@ func strPtr(value string) *string {
 }
 
 func timePtr(value time.Time) *time.Time {
+	return &value
+}
+
+func boolPtr(value bool) *bool {
 	return &value
 }

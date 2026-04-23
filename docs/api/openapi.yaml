@@ -1208,6 +1208,42 @@ paths:
           description: 当前分页大小。
       responses:
         '200': { $ref: '#/components/responses/StudentPracticeDetailOk' }
+  /analytics/student-practice-session-detail:
+    get:
+      tags: [Analytics]
+      summary: 老师侧单次练题详情
+      operationId: getStudentPracticeSessionDetail
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: student_user_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 学生用户 ID。
+        - in: query
+          name: session_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 练题会话 ID。
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeSessionDetailOk' }
   /audit-logs:
     get:
       tags: [Audit]
@@ -1355,6 +1391,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/StudentPracticeDetailResponse'
+    StudentPracticeSessionDetailOk:
+      description: 老师侧单次练题详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionDetailResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -2586,6 +2628,123 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/StudentPracticeDetailResult'
+        request_id:
+          type: string
+    StudentPracticeSessionStudentSummary:
+      type: object
+      required: [student_user_id, student_name, class_id, class_name, course_id, course_name]
+      properties:
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+    StudentPracticeSessionSummary:
+      type: object
+      required: [session_id, status, practice_mode, source_mode, flow_mode, total_count, answered_count, correct_count, wrong_count, accuracy]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        practice_mode:
+          type: string
+        source_mode:
+          type: string
+        flow_mode:
+          type: string
+        total_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+    StudentPracticeSessionQuestionItem:
+      type: object
+      required: [session_question_id, question_id, question_version_id, display_order, question_type, content, is_answered]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        student_answer:
+          type: object
+          additionalProperties: true
+        correct_answer:
+          type: object
+          additionalProperties: true
+        is_answered:
+          type: boolean
+        is_correct:
+          type: boolean
+          nullable: true
+        answered_at:
+          type: string
+          format: date-time
+          nullable: true
+        analysis:
+          type: object
+          additionalProperties: true
+    StudentPracticeSessionDetailResult:
+      type: object
+      required: [student_summary, session, questions]
+      properties:
+        student_summary:
+          $ref: '#/components/schemas/StudentPracticeSessionStudentSummary'
+        session:
+          $ref: '#/components/schemas/StudentPracticeSessionSummary'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionItem'
+    StudentPracticeSessionDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeSessionDetailResult'
         request_id:
           type: string
     QuestionBankResponse:

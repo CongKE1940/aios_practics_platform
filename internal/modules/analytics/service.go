@@ -190,6 +190,59 @@ func (service *Service) GetStudentPracticeDetail(ctx context.Context, scope Scop
 	return result, nil
 }
 
+func (service *Service) GetStudentPracticeSessionDetail(ctx context.Context, scope Scope, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error) {
+	if !containsPermission(scope.Permissions, "analytics:view") {
+		return StudentPracticeSessionDetailResult{}, ErrForbidden
+	}
+	if query.ClassID <= 0 || query.CourseID <= 0 || query.StudentUserID <= 0 || query.SessionID <= 0 {
+		return StudentPracticeSessionDetailResult{}, ErrInvalidInput
+	}
+
+	query.TenantID = scope.TenantID
+
+	switch scope.UserType {
+	case "sys_admin", "school_admin":
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeSessionDetailResult{}, err
+		}
+		if !exists {
+			return StudentPracticeSessionDetailResult{}, ErrNotFound
+		}
+	case "teacher":
+		allowed, err := service.repo.TeacherCanViewClassCourse(ctx, query.TenantID, scope.UserID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeSessionDetailResult{}, err
+		}
+		if !allowed {
+			return StudentPracticeSessionDetailResult{}, ErrForbidden
+		}
+		exists, err := service.repo.ClassCourseExists(ctx, query.TenantID, query.ClassID, query.CourseID)
+		if err != nil {
+			return StudentPracticeSessionDetailResult{}, err
+		}
+		if !exists {
+			return StudentPracticeSessionDetailResult{}, ErrNotFound
+		}
+	default:
+		return StudentPracticeSessionDetailResult{}, ErrForbidden
+	}
+
+	belongs, err := service.repo.StudentBelongsToClass(ctx, query.TenantID, query.ClassID, query.StudentUserID)
+	if err != nil {
+		return StudentPracticeSessionDetailResult{}, err
+	}
+	if !belongs {
+		return StudentPracticeSessionDetailResult{}, ErrNotFound
+	}
+
+	result, err := service.repo.GetStudentPracticeSessionDetail(ctx, query)
+	if err != nil {
+		return StudentPracticeSessionDetailResult{}, err
+	}
+	return result, nil
+}
+
 func normalizeTimeRange(now time.Time, startAt *time.Time, endAt *time.Time) (time.Time, time.Time, error) {
 	end := now
 	if endAt != nil {

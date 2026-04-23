@@ -116,6 +116,35 @@ describe("StudentLearningDetailPage", () => {
     expect(screen.getByText("status：finished")).toBeTruthy();
   });
 
+  it("navigates to student session detail page from sessions tab", async () => {
+    const api: StudentLearningDetailApi = {
+      getStudentPracticeDetail: vi.fn(async () => createDetailResult())
+    };
+    const onNavigate = vi.fn();
+
+    render(
+      <StudentLearningDetailPage
+        api={api}
+        path="/app/class-learning/student?class_id=301&course_id=10&student_user_id=701&tab=sessions&start_at=2026-04-01T00:00:00%2B08:00&end_at=2026-04-22T23:59:59%2B08:00"
+        onNavigate={onNavigate}
+      />
+    );
+
+    await waitFor(() => expect(api.getStudentPracticeDetail).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "查看本次练习" }));
+
+    const nextPath = onNavigate.mock.calls[0][0];
+    const nextURL = new URL(nextPath, "http://localhost");
+    expect(nextURL.pathname).toBe("/app/class-learning/student/session");
+    expect(nextURL.searchParams.get("class_id")).toBe("301");
+    expect(nextURL.searchParams.get("course_id")).toBe("10");
+    expect(nextURL.searchParams.get("student_user_id")).toBe("701");
+    expect(nextURL.searchParams.get("session_id")).toBe("9001");
+    expect(nextURL.searchParams.get("start_at")).toBe("2026-04-01T00:00:00+08:00");
+    expect(nextURL.searchParams.get("end_at")).toBe("2026-04-22T23:59:59+08:00");
+  });
+
   it("switches to wrong tab, re-fetches data, and updates URL", async () => {
     const api: StudentLearningDetailApi = {
       getStudentPracticeDetail: vi.fn(async (query: StudentPracticeDetailQuery) => {

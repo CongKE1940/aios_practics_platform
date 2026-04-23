@@ -97,6 +97,7 @@ export interface ApiClient {
   listUserQuestionStates(query?: UserQuestionStateListQuery): Promise<PageResult<UserQuestionState>>;
   getClassPracticeSummary(query: ClassPracticeSummaryQuery): Promise<ClassPracticeSummaryResult>;
   getStudentPracticeDetail(query: StudentPracticeDetailQuery): Promise<StudentPracticeDetailResult>;
+  getStudentPracticeSessionDetail(query: StudentPracticeSessionDetailQuery): Promise<StudentPracticeSessionDetailResult>;
   listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
@@ -537,6 +538,59 @@ export interface StudentPracticeDetailResult {
   sessions: PageResult<StudentPracticeSessionItem>;
   wrong_questions: PageResult<StudentPracticeQuestionItem>;
   confused_questions: PageResult<StudentPracticeQuestionItem>;
+}
+
+export interface StudentPracticeSessionDetailQuery {
+  class_id: number;
+  course_id: number;
+  student_user_id: number;
+  session_id: number;
+}
+
+export interface StudentPracticeSessionStudentSummary {
+  student_user_id: number;
+  student_name: string;
+  student_no?: string | null;
+  class_id: number;
+  class_name: string;
+  course_id: number;
+  course_name: string;
+}
+
+export interface StudentPracticeSessionSummary {
+  session_id: number;
+  started_at?: string | null;
+  finished_at?: string | null;
+  status: string;
+  practice_mode: string;
+  source_mode: string;
+  flow_mode: string;
+  total_count: number;
+  answered_count: number;
+  correct_count: number;
+  wrong_count: number;
+  accuracy: number;
+}
+
+export interface StudentPracticeSessionQuestionItem {
+  session_question_id: number;
+  question_id: number;
+  question_version_id: number;
+  display_order: number;
+  question_type: string;
+  content: Record<string, unknown>;
+  student_answer?: Record<string, unknown>;
+  correct_answer?: Record<string, unknown>;
+  is_answered: boolean;
+  is_correct?: boolean | null;
+  answered_at?: string | null;
+  analysis?: Record<string, unknown>;
+}
+
+export interface StudentPracticeSessionDetailResult {
+  student_summary: StudentPracticeSessionStudentSummary;
+  session: StudentPracticeSessionSummary;
+  questions: StudentPracticeSessionQuestionItem[];
 }
 
 export interface ClassPracticeStudentItem {
@@ -1003,6 +1057,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, buildPath("/analytics/class-practice-summary", query), { method: "GET" }),
     getStudentPracticeDetail: (query) =>
       request(fetcher, options, buildPath("/analytics/student-practice-detail", query), { method: "GET" }),
+    getStudentPracticeSessionDetail: (query) =>
+      request(fetcher, options, buildPath("/analytics/student-practice-session-detail", query), { method: "GET" }),
     listClassCourseOptions: () =>
       request(fetcher, options, "/analytics/class-course-options", { method: "GET" }),
     listRoles: (query) => request(fetcher, options, buildPath("/roles", query), { method: "GET" }),

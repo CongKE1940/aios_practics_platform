@@ -101,15 +101,15 @@ const (
 )
 
 type StudentPracticeDetailQuery struct {
-	TenantID       int64
-	ClassID        int64
-	CourseID       int64
-	StudentUserID  int64
-	Tab            string
-	StartAt        *time.Time
-	EndAt          *time.Time
-	Page           int
-	PageSize       int
+	TenantID      int64
+	ClassID       int64
+	CourseID      int64
+	StudentUserID int64
+	Tab           string
+	StartAt       *time.Time
+	EndAt         *time.Time
+	Page          int
+	PageSize      int
 }
 
 type StudentPracticeSummary struct {
@@ -162,6 +162,60 @@ type StudentPracticeDetailResult struct {
 	ConfusedQuestions PageResult[StudentPracticeQuestionItem] `json:"confused_questions"`
 }
 
+type StudentPracticeSessionDetailQuery struct {
+	TenantID      int64
+	ClassID       int64
+	CourseID      int64
+	StudentUserID int64
+	SessionID     int64
+}
+
+type StudentPracticeSessionStudentSummary struct {
+	StudentUserID int64   `json:"student_user_id"`
+	StudentName   string  `json:"student_name"`
+	StudentNo     *string `json:"student_no,omitempty"`
+	ClassID       int64   `json:"class_id"`
+	ClassName     string  `json:"class_name"`
+	CourseID      int64   `json:"course_id"`
+	CourseName    string  `json:"course_name"`
+}
+
+type StudentPracticeSessionSummary struct {
+	SessionID     int64      `json:"session_id"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	FinishedAt    *time.Time `json:"finished_at,omitempty"`
+	Status        string     `json:"status"`
+	PracticeMode  string     `json:"practice_mode"`
+	SourceMode    string     `json:"source_mode"`
+	FlowMode      string     `json:"flow_mode"`
+	TotalCount    int        `json:"total_count"`
+	AnsweredCount int        `json:"answered_count"`
+	CorrectCount  int        `json:"correct_count"`
+	WrongCount    int        `json:"wrong_count"`
+	Accuracy      float64    `json:"accuracy"`
+}
+
+type StudentPracticeSessionQuestionItem struct {
+	SessionQuestionID int64          `json:"session_question_id"`
+	QuestionID        int64          `json:"question_id"`
+	QuestionVersionID int64          `json:"question_version_id"`
+	DisplayOrder      int            `json:"display_order"`
+	QuestionType      string         `json:"question_type"`
+	Content           map[string]any `json:"content"`
+	StudentAnswer     map[string]any `json:"student_answer,omitempty"`
+	CorrectAnswer     map[string]any `json:"correct_answer,omitempty"`
+	IsAnswered        bool           `json:"is_answered"`
+	IsCorrect         *bool          `json:"is_correct,omitempty"`
+	AnsweredAt        *time.Time     `json:"answered_at,omitempty"`
+	Analysis          map[string]any `json:"analysis,omitempty"`
+}
+
+type StudentPracticeSessionDetailResult struct {
+	StudentSummary StudentPracticeSessionStudentSummary `json:"student_summary"`
+	Session        StudentPracticeSessionSummary        `json:"session"`
+	Questions      []StudentPracticeSessionQuestionItem `json:"questions"`
+}
+
 type Repository interface {
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
@@ -173,6 +227,7 @@ type Repository interface {
 	ListStudentPracticeSessions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeSessionItem], error)
 	ListStudentWrongQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
 	ListStudentConfusedQuestions(ctx context.Context, query StudentPracticeDetailQuery) (PageResult[StudentPracticeQuestionItem], error)
+	GetStudentPracticeSessionDetail(ctx context.Context, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

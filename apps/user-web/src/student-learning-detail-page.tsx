@@ -146,7 +146,10 @@ export function StudentLearningDetailPage({ api, path, onNavigate }: StudentLear
       {result ? (
         <section aria-label="详情内容">
           {parsed.tab === "sessions" ? (
-            <SessionList items={result.sessions.items} />
+            <SessionList
+              items={result.sessions.items}
+              onOpenSession={(sessionID) => onNavigate(buildStudentSessionDetailPath({ ...parsed, session_id: sessionID }))}
+            />
           ) : parsed.tab === "wrong" ? (
             <QuestionList items={result.wrong_questions.items} emptyText="暂无错题。" />
           ) : (
@@ -260,7 +263,35 @@ function buildClassLearningBackPath(parsed: Extract<ParsedStudentPracticeQuery, 
   return queryString ? `/app/class-learning?${queryString}` : "/app/class-learning";
 }
 
-function SessionList({ items }: { items: StudentPracticeSessionItem[] }) {
+function buildStudentSessionDetailPath(params: {
+  class_id: number;
+  course_id: number;
+  student_user_id: number;
+  session_id: number;
+  start_at?: string;
+  end_at?: string;
+}): string {
+  const search = new URLSearchParams();
+  search.set("class_id", String(params.class_id));
+  search.set("course_id", String(params.course_id));
+  search.set("student_user_id", String(params.student_user_id));
+  search.set("session_id", String(params.session_id));
+  if (params.start_at) {
+    search.set("start_at", params.start_at);
+  }
+  if (params.end_at) {
+    search.set("end_at", params.end_at);
+  }
+  return `/app/class-learning/student/session?${search.toString()}`;
+}
+
+function SessionList({
+  items,
+  onOpenSession
+}: {
+  items: StudentPracticeSessionItem[];
+  onOpenSession(sessionID: number): void;
+}) {
   if (items.length === 0) {
     return <p>暂无练题记录。</p>;
   }
@@ -275,6 +306,9 @@ function SessionList({ items }: { items: StudentPracticeSessionItem[] }) {
             total {item.total_count}，answered {item.answered_count}，correct {item.correct_count}，wrong {item.wrong_count}
           </p>
           <p>accuracy：{formatPercent(item.accuracy)}</p>
+          <button type="button" onClick={() => onOpenSession(item.session_id)}>
+            查看本次练习
+          </button>
         </li>
       ))}
     </ul>

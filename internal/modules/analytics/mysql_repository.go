@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sort"
 	"time"
@@ -20,6 +21,18 @@ const latestPracticeAnswerSubquery = `
     SELECT session_question_id, user_id, MAX(id) AS max_id
     FROM practice_answers
     WHERE answered_at BETWEEN ? AND ?
+    GROUP BY session_question_id, user_id
+  ) latest ON latest.max_id = pa1.id
+)
+`
+
+const latestPracticeAnswerWithPayloadSubquery = `
+(
+  SELECT pa1.session_question_id, pa1.user_id, pa1.answer_json, pa1.is_correct, pa1.answered_at
+  FROM practice_answers pa1
+  JOIN (
+    SELECT session_question_id, user_id, MAX(id) AS max_id
+    FROM practice_answers
     GROUP BY session_question_id, user_id
   ) latest ON latest.max_id = pa1.id
 )
@@ -622,6 +635,154 @@ func (repo *MySQLRepository) ListStudentConfusedQuestions(ctx context.Context, q
 	return repo.listStudentPracticeQuestions(ctx, query, "uqs.is_confused = 1", "uqs.confused_at", "uqs.confused_at DESC, uqs.question_id DESC")
 }
 
+func (repo *MySQLRepository) GetStudentPracticeSessionDetail(ctx context.Context, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error) {
+	const sessionQuery = `
+SELECT
+  u.id AS student_user_id,
+  u.display_name AS student_name,
+  sp.student_no,
+  c.id AS class_id,
+  c.name AS class_name,
+  co.id AS course_id,
+  co.name AS course_name,
+  ps.id AS session_id,
+  ps.started_at,
+  ps.ended_at AS finished_at,
+  ps.status,
+  ps.practice_mode,
+  ps.source_mode,
+  ps.bank_scope_json
+FROM practice_sessions ps
+JOIN users u ON u.tenant_id = ps.tenant_id AND u.id = ps.user_id
+LEFT JOIN student_profiles sp ON sp.tenant_id = ps.tenant_id AND sp.user_id = ps.user_id
+JOIN student_class_memberships scm ON scm.tenant_id = ps.tenant_id
+  AND scm.student_id = ps.user_id
+  AND scm.class_id = ?
+  AND scm.is_current = 1
+  AND scm.status = 'active'
+JOIN classes c ON c.tenant_id = scm.tenant_id AND c.id = scm.class_id
+  AND c.status = 'active'
+  AND c.deleted_at IS NULL
+JOIN courses co ON co.tenant_id = ps.tenant_id AND co.id = ps.course_id
+  AND co.status = 'active'
+  AND co.deleted_at IS NULL
+WHERE ps.tenant_id = ? AND ps.id = ? AND ps.user_id = ? AND ps.course_id = ?
+LIMIT 1
+`
+	result := StudentPracticeSessionDetailResult{
+		Questions: make([]StudentPracticeSessionQuestionItem, 0),
+	}
+	var (
+		studentNo     sql.NullString
+		startedAt     sql.NullTime
+		finishedAt    sql.NullTime
+		bankScopeJSON []byte
+	)
+	if err := repo.db.QueryRowContext(
+		ctx,
+		sessionQuery,
+		query.ClassID,
+		query.TenantID,
+		query.SessionID,
+		query.StudentUserID,
+		query.CourseID,
+	).Scan(
+		&result.StudentSummary.StudentUserID,
+		&result.StudentSummary.StudentName,
+		&studentNo,
+		&result.StudentSummary.ClassID,
+		&result.StudentSummary.ClassName,
+		&result.StudentSummary.CourseID,
+		&result.StudentSummary.CourseName,
+		&result.Session.SessionID,
+		&startedAt,
+		&finishedAt,
+		&result.Session.Status,
+		&result.Session.PracticeMode,
+		&result.Session.SourceMode,
+		&bankScopeJSON,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return StudentPracticeSessionDetailResult{}, ErrNotFound
+		}
+		return StudentPracticeSessionDetailResult{}, err
+	}
+	if studentNo.Valid {
+		result.StudentSummary.StudentNo = &studentNo.String
+	}
+	if startedAt.Valid {
+		result.Session.StartedAt = &startedAt.Time
+	}
+	if finishedAt.Valid {
+		result.Session.FinishedAt = &finishedAt.Time
+	}
+	bankScope, err := decodeJSONMap(bankScopeJSON)
+	if err != nil {
+		return StudentPracticeSessionDetailResult{}, err
+	}
+	if flowMode, ok := bankScope["flow_mode"].(string); ok {
+		result.Session.FlowMode = flowMode
+	}
+
+	const questionQuery = `
+SELECT
+  psq.id AS session_question_id,
+  psq.question_id,
+  psq.question_version_id,
+  psq.display_order,
+  q.question_type,
+  psq.presented_options_json,
+  qv.content_json,
+  qv.answer_json,
+  qv.analysis_json,
+  pa.answer_json AS student_answer_json,
+  pa.is_correct,
+  pa.answered_at
+FROM practice_session_questions psq
+JOIN questions q ON q.id = psq.question_id
+LEFT JOIN question_versions qv ON qv.id = psq.question_version_id
+LEFT JOIN ` + latestPracticeAnswerWithPayloadSubquery + ` pa ON pa.session_question_id = psq.id
+  AND pa.user_id = ?
+WHERE psq.session_id = ?
+ORDER BY psq.display_order ASC, psq.id ASC
+`
+	rows, err := repo.db.QueryContext(ctx, questionQuery, query.StudentUserID, query.SessionID)
+	if err != nil {
+		return StudentPracticeSessionDetailResult{}, err
+	}
+	defer rows.Close()
+
+	correctCount := 0
+	wrongCount := 0
+	answeredCount := 0
+	for rows.Next() {
+		item, answered, isCorrect, err := scanStudentPracticeSessionDetailQuestion(rows)
+		if err != nil {
+			return StudentPracticeSessionDetailResult{}, err
+		}
+		if answered {
+			answeredCount++
+			if isCorrect {
+				correctCount++
+			} else {
+				wrongCount++
+			}
+		}
+		result.Questions = append(result.Questions, item)
+	}
+	if err := rows.Err(); err != nil {
+		return StudentPracticeSessionDetailResult{}, err
+	}
+
+	result.Session.TotalCount = len(result.Questions)
+	result.Session.AnsweredCount = answeredCount
+	result.Session.CorrectCount = correctCount
+	result.Session.WrongCount = wrongCount
+	result.Session.Accuracy = ratio(correctCount, answeredCount)
+
+	return result, nil
+}
+
 func (repo *MySQLRepository) listStudentPracticeQuestions(ctx context.Context, query StudentPracticeDetailQuery, stateFilter string, stateTimeColumn string, orderBy string) (PageResult[StudentPracticeQuestionItem], error) {
 	page := normalizePage(query.Page)
 	pageSize := normalizePageSize(query.PageSize)
@@ -1010,6 +1171,86 @@ func scanStudentPracticeQuestion(scanner interface{ Scan(dest ...any) error }) (
 	return item, nil
 }
 
+func scanStudentPracticeSessionDetailQuestion(scanner interface{ Scan(dest ...any) error }) (StudentPracticeSessionQuestionItem, bool, bool, error) {
+	var (
+		item              StudentPracticeSessionQuestionItem
+		questionType      sql.NullString
+		presentedJSON     []byte
+		contentJSON       []byte
+		correctAnswerJSON []byte
+		analysisJSON      []byte
+		studentAnswerJSON []byte
+		isCorrect         sql.NullBool
+		answeredAt        sql.NullTime
+	)
+	if err := scanner.Scan(
+		&item.SessionQuestionID,
+		&item.QuestionID,
+		&item.QuestionVersionID,
+		&item.DisplayOrder,
+		&questionType,
+		&presentedJSON,
+		&contentJSON,
+		&correctAnswerJSON,
+		&analysisJSON,
+		&studentAnswerJSON,
+		&isCorrect,
+		&answeredAt,
+	); err != nil {
+		return StudentPracticeSessionQuestionItem{}, false, false, err
+	}
+
+	presented, err := decodeJSONMap(presentedJSON)
+	if err != nil {
+		return StudentPracticeSessionQuestionItem{}, false, false, err
+	}
+	item.QuestionType = questionType.String
+	if presentedType, ok := presented["question_type"].(string); ok && presentedType != "" {
+		item.QuestionType = presentedType
+	}
+
+	item.Content, err = decodeJSONMap(contentJSON)
+	if err != nil {
+		return StudentPracticeSessionQuestionItem{}, false, false, err
+	}
+	if snapshotContent := mapFromAny(presented["content"]); len(snapshotContent) > 0 {
+		item.Content = snapshotContent
+	}
+
+	item.CorrectAnswer, err = decodeJSONMap(correctAnswerJSON)
+	if err != nil {
+		return StudentPracticeSessionQuestionItem{}, false, false, err
+	}
+	if snapshotAnswer := mapFromAny(presented["answer"]); len(snapshotAnswer) > 0 {
+		item.CorrectAnswer = snapshotAnswer
+	}
+
+	item.Analysis, err = decodeJSONMap(analysisJSON)
+	if err != nil {
+		return StudentPracticeSessionQuestionItem{}, false, false, err
+	}
+	if snapshotAnalysis := mapFromAny(presented["analysis"]); len(snapshotAnalysis) > 0 {
+		item.Analysis = snapshotAnalysis
+	}
+
+	answered := len(studentAnswerJSON) > 0
+	if answered {
+		item.StudentAnswer, err = decodeJSONMap(studentAnswerJSON)
+		if err != nil {
+			return StudentPracticeSessionQuestionItem{}, false, false, err
+		}
+		item.IsAnswered = true
+	}
+	if isCorrect.Valid {
+		value := isCorrect.Bool
+		item.IsCorrect = &value
+	}
+	if answeredAt.Valid {
+		item.AnsweredAt = &answeredAt.Time
+	}
+	return item, answered, isCorrect.Bool, nil
+}
+
 func ratio(part int, total int) float64 {
 	if total == 0 {
 		return 0
@@ -1022,4 +1263,26 @@ func sqlTimeArg(value *time.Time) any {
 		return nil
 	}
 	return *value
+}
+
+func decodeJSONMap(payload []byte) (map[string]any, error) {
+	if len(payload) == 0 {
+		return map[string]any{}, nil
+	}
+	var result map[string]any
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return map[string]any{}, nil
+	}
+	return result, nil
+}
+
+func mapFromAny(value any) map[string]any {
+	typed, ok := value.(map[string]any)
+	if !ok || typed == nil {
+		return map[string]any{}
+	}
+	return typed
 }

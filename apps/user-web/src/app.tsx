@@ -8,6 +8,10 @@ import { MenuNav } from "./menu-nav";
 import { LoginPage } from "./login-page";
 import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
 import { StudentLearningDetailPage, type StudentLearningDetailApi } from "./student-learning-detail-page";
+import {
+  StudentPracticeSessionDetailPage,
+  type StudentPracticeSessionDetailApi
+} from "./student-practice-session-detail-page";
 import { PracticePanel, type PracticePanelApi } from "./practice-panel";
 import {
   PracticeHistoryPage,
@@ -19,7 +23,11 @@ import {
 
 interface UserAppProps {
   authApi?: UserAuthApi;
-  practiceApi?: PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>;
+  practiceApi?: PracticePanelApi &
+    PracticeReviewApi &
+    Partial<ClassLearningApi> &
+    Partial<StudentLearningDetailApi> &
+    Partial<StudentPracticeSessionDetailApi>;
   sessionStore?: UserSessionStore;
 }
 
@@ -43,7 +51,12 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   }
 
   const currentPracticeApi = useMemo<
-    (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>) | undefined
+    | (PracticePanelApi &
+        PracticeReviewApi &
+        Partial<ClassLearningApi> &
+        Partial<StudentLearningDetailApi> &
+        Partial<StudentPracticeSessionDetailApi>)
+    | undefined
   >(() => {
     if (practiceApi) {
       return wrapUnauthorizedApi(practiceApi, handleUnauthorized);
@@ -74,6 +87,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
       menus: (accessToken) => createApiClient({ baseUrl, accessToken, onUnauthorized: handleUnauthorized }).menus("user")
     };
   }, [authApi, store]);
+
+  const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
 
   async function handleLogin(form: LoginRequest) {
     setSubmitting(true);
@@ -151,7 +166,18 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         ) : (
           <>
             {selectedRoute === "/app/courses" ? <h2>我的课程</h2> : null}
-            {selectedRoute.startsWith("/app/class-learning/student") ? (
+            {isStudentSessionRoute ? (
+              currentPracticeApi && isStudentPracticeSessionDetailApi(currentPracticeApi) ? (
+                <StudentPracticeSessionDetailPage
+                  api={currentPracticeApi}
+                  path={selectedPath}
+                  onNavigate={setSelectedPath}
+                />
+              ) : (
+                <p>当前单次练题详情功能暂不可用。</p>
+              )
+            ) : null}
+            {!isStudentSessionRoute && selectedRoute.startsWith("/app/class-learning/student") ? (
               currentPracticeApi && isStudentLearningDetailApi(currentPracticeApi) ? (
                 <StudentLearningDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
               ) : (
@@ -233,18 +259,53 @@ function getRoutePath(path: string): string {
 
 function isClassLearningApi(
   api:
-    | (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>)
+    | (PracticePanelApi &
+        PracticeReviewApi &
+        Partial<ClassLearningApi> &
+        Partial<StudentLearningDetailApi> &
+        Partial<StudentPracticeSessionDetailApi>)
     | undefined
-): api is PracticePanelApi & PracticeReviewApi & ClassLearningApi & Partial<StudentLearningDetailApi> {
+): api is
+  | (PracticePanelApi &
+      PracticeReviewApi &
+      ClassLearningApi &
+      Partial<StudentLearningDetailApi> &
+      Partial<StudentPracticeSessionDetailApi>) {
   return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
 }
 
 function isStudentLearningDetailApi(
   api:
-    | (PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & Partial<StudentLearningDetailApi>)
+    | (PracticePanelApi &
+        PracticeReviewApi &
+        Partial<ClassLearningApi> &
+        Partial<StudentLearningDetailApi> &
+        Partial<StudentPracticeSessionDetailApi>)
     | undefined
-): api is PracticePanelApi & PracticeReviewApi & Partial<ClassLearningApi> & StudentLearningDetailApi {
+): api is
+  | (PracticePanelApi &
+      PracticeReviewApi &
+      Partial<ClassLearningApi> &
+      StudentLearningDetailApi &
+      Partial<StudentPracticeSessionDetailApi>) {
   return typeof api?.getStudentPracticeDetail === "function";
+}
+
+function isStudentPracticeSessionDetailApi(
+  api:
+    | (PracticePanelApi &
+        PracticeReviewApi &
+        Partial<ClassLearningApi> &
+        Partial<StudentLearningDetailApi> &
+        Partial<StudentPracticeSessionDetailApi>)
+    | undefined
+): api is
+  | (PracticePanelApi &
+      PracticeReviewApi &
+      Partial<ClassLearningApi> &
+      Partial<StudentLearningDetailApi> &
+      StudentPracticeSessionDetailApi) {
+  return typeof api?.getStudentPracticeSessionDetail === "function";
 }
 
 function wrapUnauthorizedApi<T extends object>(api: T, onUnauthorized: () => void): T {

@@ -31,6 +31,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/analytics/class-practice-summary", handler.getClassPracticeSummary)
 	router.GET("/analytics/class-course-options", handler.listClassCourseOptions)
 	router.GET("/analytics/student-practice-detail", handler.getStudentPracticeDetail)
+	router.GET("/analytics/student-practice-session-detail", handler.getStudentPracticeSessionDetail)
 }
 
 func (handler *Handler) getClassPracticeSummary(ctx *gin.Context) {
@@ -75,6 +76,24 @@ func (handler *Handler) getStudentPracticeDetail(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.GetStudentPracticeDetail(ctx.Request.Context(), scope, query)
+	if err != nil {
+		writeAnalyticsError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) getStudentPracticeSessionDetail(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	query, ok := parseStudentPracticeSessionDetailQuery(ctx)
+	if !ok {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.GetStudentPracticeSessionDetail(ctx.Request.Context(), scope, query)
 	if err != nil {
 		writeAnalyticsError(ctx, err)
 		return
@@ -162,6 +181,31 @@ func parseStudentPracticeDetailQuery(ctx *gin.Context) (StudentPracticeDetailQue
 		EndAt:         endAt,
 		Page:          parseInt(ctx.Query("page")),
 		PageSize:      parseInt(ctx.Query("page_size")),
+	}, true
+}
+
+func parseStudentPracticeSessionDetailQuery(ctx *gin.Context) (StudentPracticeSessionDetailQuery, bool) {
+	classID, ok := parsePositiveInt64(ctx.Query("class_id"))
+	if !ok {
+		return StudentPracticeSessionDetailQuery{}, false
+	}
+	courseID, ok := parsePositiveInt64(ctx.Query("course_id"))
+	if !ok {
+		return StudentPracticeSessionDetailQuery{}, false
+	}
+	studentUserID, ok := parsePositiveInt64(ctx.Query("student_user_id"))
+	if !ok {
+		return StudentPracticeSessionDetailQuery{}, false
+	}
+	sessionID, ok := parsePositiveInt64(ctx.Query("session_id"))
+	if !ok {
+		return StudentPracticeSessionDetailQuery{}, false
+	}
+	return StudentPracticeSessionDetailQuery{
+		ClassID:       classID,
+		CourseID:      courseID,
+		StudentUserID: studentUserID,
+		SessionID:     sessionID,
 	}, true
 }
 
