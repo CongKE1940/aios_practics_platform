@@ -7,6 +7,8 @@ import type {
   StudentPracticeSessionQuestionReviewInput
 } from "@aios/api-sdk";
 
+import { buildQuestionFeedbackPath } from "./question-feedback-page";
+
 export interface StudentPracticeSessionQuestionDetailApi {
   getStudentPracticeSessionQuestionDetail(
     query: StudentPracticeSessionQuestionDetailQuery
@@ -178,6 +180,22 @@ export function StudentPracticeSessionQuestionDetailPage({
           <p>结果：{formatResult(question)}</p>
           <p>作答时间：{question.answered_at ?? "-"}</p>
           <p>解析：{extractAnalysis(question.analysis)}</p>
+          <button
+            type="button"
+            onClick={() =>
+              onNavigate(
+                buildQuestionFeedbackPath({
+                  question_id: question.question_id,
+                  question_version_id: question.question_version_id,
+                  question_type: question.question_type,
+                  stem: extractStem(question.content),
+                  from: path
+                })
+              )
+            }
+          >
+            评论与质疑
+          </button>
           <label>
             老师讲评
             <textarea value={reviewDraft} onChange={(event) => setReviewDraft(event.target.value)} />

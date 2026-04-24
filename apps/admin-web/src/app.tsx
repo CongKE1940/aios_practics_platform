@@ -7,14 +7,22 @@ import {
   type LoginResponse,
   type MenuItem
 } from "@aios/api-sdk";
-import { AppShell, EmptyState, PageSection, PermissionButton, StatusNotice } from "@aios/ui-web";
+import { AppShell, EmptyState, StatusNotice } from "@aios/ui-web";
 
+import sceneBackground from "../../../docs/images/背景.png";
+import brandIcon from "../../../docs/images/图标.png";
+
+import { AdminWorkbench } from "./admin-workbench";
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
+import { ChallengePanel } from "./challenge-panel";
+import { ExamPanel, type ExamPanelApi } from "./exam-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
 import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
 import { OrganizationPanel, type OrganizationApi } from "./organization-panel";
+import { PaperAssemblyPanel } from "./paper-assembly-panel";
 import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
+import { QuestionEditorPanel } from "./question-editor-panel";
 import { QuestionPanel, type QuestionPanelApi } from "./question-panel";
 import { RbacPanel, type RbacPanelApi } from "./rbac-panel";
 import { UserPanel, type UserPanelApi } from "./user-panel";
@@ -33,6 +41,7 @@ interface AdminAppProps {
   questionBankApi?: QuestionBankPanelApi;
   questionApi?: QuestionPanelApi;
   importApi?: ImportPanelApi;
+  examApi?: ExamPanelApi;
   userApi?: UserPanelApi;
   rbacApi?: RbacPanelApi;
   analyticsApi?: AnalyticsPanelApi;
@@ -67,6 +76,7 @@ export function AdminApp({
   questionBankApi,
   questionApi,
   importApi,
+  examApi,
   userApi,
   rbacApi,
   analyticsApi,
@@ -75,7 +85,7 @@ export function AdminApp({
 }: AdminAppProps) {
   const [form, setForm] = useState<LoginRequest>(defaultForm);
   const store = useMemo(() => sessionStore ?? createBrowserSessionStore(), [sessionStore]);
-  const [session, setSession] = useState<SessionState | null>(() => store.load());
+  const [session, setSession] = useState<SessionState | null>(() => normalizeSession(store.load()));
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedPath, setSelectedPath] = useState("");
@@ -175,13 +185,13 @@ export function AdminApp({
     if (noticeApi) {
       return noticeApi;
     }
-    if (!session) {
+    if (!session || selectedPath !== "/admin/notices") {
       return undefined;
     }
 
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
-  }, [noticeApi, session]);
+  }, [noticeApi, selectedPath, session]);
 
   const currentQuestionBankApi = useMemo<QuestionBankPanelApi | undefined>(() => {
     if (questionBankApi) {
@@ -219,9 +229,9 @@ export function AdminApp({
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [importApi, session]);
 
-  const currentAnalyticsApi = useMemo<AnalyticsPanelApi | undefined>(() => {
-    if (analyticsApi) {
-      return analyticsApi;
+  const currentExamApi = useMemo<ExamPanelApi | undefined>(() => {
+    if (examApi) {
+      return examApi;
     }
     if (!session) {
       return undefined;
@@ -229,7 +239,19 @@ export function AdminApp({
 
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
-  }, [analyticsApi, session]);
+  }, [examApi, session]);
+
+  const currentAnalyticsApi = useMemo<AnalyticsPanelApi | undefined>(() => {
+    if (analyticsApi) {
+      return analyticsApi;
+    }
+    if (!session || selectedPath !== "/admin/analytics") {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [analyticsApi, selectedPath, session]);
 
   const currentHistoryApi = useMemo<HistoryPanelApi | undefined>(() => {
     if (historyApi) {
@@ -250,7 +272,7 @@ export function AdminApp({
 
     try {
       const result = await api.login(form);
-      const menus = await api.menus(result.access_token);
+      const menus = normalizeAdminMenus(await api.menus(result.access_token), result.user.permissions ?? []);
       const nextSession = {
         accessToken: result.access_token,
         refreshToken: result.refresh_token,
@@ -279,17 +301,16 @@ export function AdminApp({
   if (!session) {
     return (
       <main className="ui-auth-page">
+        <img src={sceneBackground} alt="" className="ui-scene-image" />
         <section className="ui-auth-hero">
-          <p className="ui-auth-eyebrow">AIOS Practice Platform</p>
-          <h1>AIOS 管理端</h1>
-          <p>统一管理组织、题库、权限、导入与平台数据。</p>
+          <span className="ui-auth-hero__sr">AIOS 管理端登录背景</span>
         </section>
         <section className="ui-auth-card">
           <form onSubmit={handleSubmit} aria-label="登录表单" className="ui-auth-form">
             <header className="ui-auth-form__header">
-              <p className="ui-auth-eyebrow">平台管理入口</p>
-              <h2>登录后台工作台</h2>
-              <p>选择组织后进入管理端，继续处理组织、题库与平台运营。</p>
+              <img src={brandIcon} alt="" className="ui-brand-mark" />
+              <h1>欢迎回来</h1>
+              <p>科技连接未来，创新改变世界</p>
             </header>
             <div className="ui-field">
               <label htmlFor="tenant_code">组织</label>
@@ -338,6 +359,14 @@ export function AdminApp({
             >
               {submitting ? "登录中..." : "登录"}
             </button>
+            <footer className="ui-auth-form__footer">
+              <button type="button" className="ui-auth-link">
+                学习端入口
+              </button>
+              <button type="button" className="ui-auth-link">
+                忘记密码？
+              </button>
+            </footer>
           </form>
         </section>
       </main>
@@ -353,70 +382,89 @@ export function AdminApp({
     currentQuestionBankApi,
     currentQuestionApi,
     currentImportApi,
+    currentExamApi,
     currentAnalyticsApi,
-    currentHistoryApi
+    currentHistoryApi,
+    onNavigate: setSelectedPath
   });
 
   return (
-    <AppShell
-      brand={
-        <div className="ui-brand-block">
-          <strong>AIOS 管理端</strong>
-          <span>现代教育工作台</span>
-        </div>
-      }
-      sidebar={
-        <nav aria-label="管理菜单" className="ui-nav-tree">
-          <div className="ui-nav-tree__title">
-            <strong>管理导航</strong>
-            <span>进入组织、题库、权限与平台数据模块</span>
+    <div className="ui-app-frame">
+      <img src={sceneBackground} alt="" className="ui-scene-image ui-scene-image--shell" />
+      <AppShell
+        brand={
+          <div className="ui-brand-block">
+            <div className="ui-brand-block__row">
+              <img src={brandIcon} alt="" className="ui-brand-block__icon" />
+              <strong>智慧教育平台</strong>
+            </div>
           </div>
-          <ul>
-            {session.menus.map((menu) => (
-              <AdminMenuNode key={menu.id} menu={menu} selectedPath={selectedPath} onSelect={setSelectedPath} />
-            ))}
-          </ul>
-        </nav>
-      }
-      header={
-        <section className="ui-user-chip" aria-label="当前用户">
-          <div>
-            <p>欢迎回来，{session.user.display_name}</p>
-            <strong>{getUserTypeLabel(session.user.user_type)}</strong>
+        }
+        sidebar={
+          <nav aria-label="管理菜单" className="ui-nav-tree">
+            <div className="ui-nav-tree__title">
+              <strong>管理导航</strong>
+            </div>
+            <ul>
+              <li>
+                <button
+                  type="button"
+                  className={["ui-nav-tree__item", selectedPath === "" ? "is-active" : ""].filter(Boolean).join(" ")}
+                  aria-pressed={selectedPath === ""}
+                  onClick={() => setSelectedPath("")}
+                >
+                  工作台
+                </button>
+              </li>
+              {session.menus.map((menu) => (
+                <AdminMenuNode key={menu.id} menu={menu} selectedPath={selectedPath} onSelect={setSelectedPath} />
+              ))}
+            </ul>
+          </nav>
+        }
+        header={
+          <div className="ui-topbar">
+            <div className="ui-topbar__title">
+              <span className="ui-topbar__menu" aria-hidden="true">
+                ≡
+              </span>
+              <strong>{selectedPath === "" ? "工作台" : resolveAdminPageTitle(selectedPath)}</strong>
+            </div>
+            <section className="ui-user-chip" aria-label="当前用户">
+              <div className="ui-user-chip__avatar" aria-hidden="true">
+                {session.user.display_name.slice(0, 1)}
+              </div>
+              <div>
+                <p>{session.user.display_name}</p>
+                <strong>{getUserTypeLabel(session.user.user_type)}</strong>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={handleLogout}>
+                退出登录
+              </button>
+            </section>
           </div>
-          <button type="button" className="ui-button ui-button--ghost" onClick={handleLogout}>
-            退出登录
-          </button>
-        </section>
-      }
-    >
-      <div className="ui-stack ui-stack--lg">
-        <PageSection title="基础平台能力" description="当前以统一后台壳承载现有业务模块。">
-          <PermissionButton
-            className="ui-button ui-button--primary"
-            permissions={session.user.permissions ?? []}
-            requiredPermissions={["notice:manage"]}
-          >
-            新增公告
-          </PermissionButton>
-        </PageSection>
-        <PageSection
-          title={selectedPath ? "模块工作区" : "当前视图"}
-          description="从左侧选择功能后在这里展开。"
-          actions={
-            selectedPath ? (
-              <span className="ui-status-chip ui-status-chip--info">当前模块：{resolveAdminPageTitle(selectedPath)}</span>
-            ) : null
-          }
-        >
-          {isKnownAdminPath(selectedPath) ? (
-            currentView
-          ) : (
-            <EmptyState title="请选择左侧功能入口。" description="已登录后可在左侧继续进入具体模块。" />
-          )}
-        </PageSection>
-      </div>
-    </AppShell>
+        }
+      >
+        {selectedPath === "" ? (
+          <AdminWorkbench
+            analyticsApi={currentAnalyticsApi}
+            noticeApi={currentNoticeApi}
+            menus={session.menus}
+            userDisplayName={session.user.display_name}
+            onSelect={setSelectedPath}
+          />
+        ) : (
+          <div className="ui-admin-route">
+            <div className="ui-admin-route__crumb">{resolveAdminBreadcrumb(selectedPath, session.menus)}</div>
+            {isKnownAdminPath(selectedPath) ? (
+              currentView
+            ) : (
+              <EmptyState title="请选择左侧功能入口。" description="" />
+            )}
+          </div>
+        )}
+      </AppShell>
+    </div>
   );
 }
 
@@ -429,8 +477,10 @@ interface RenderAdminViewArgs {
   currentQuestionBankApi?: QuestionBankPanelApi;
   currentQuestionApi?: QuestionPanelApi;
   currentImportApi?: ImportPanelApi;
+  currentExamApi?: ExamPanelApi;
   currentAnalyticsApi?: AnalyticsPanelApi;
   currentHistoryApi?: HistoryPanelApi;
+  onNavigate(path: string): void;
 }
 
 function renderAdminView({
@@ -442,20 +492,40 @@ function renderAdminView({
   currentQuestionBankApi,
   currentQuestionApi,
   currentImportApi,
+  currentExamApi,
   currentAnalyticsApi,
-  currentHistoryApi
+  currentHistoryApi,
+  onNavigate
 }: RenderAdminViewArgs) {
   return (
     <>
-      {selectedPath === "/admin/org" && organizationApi ? <OrganizationPanel api={organizationApi} /> : null}
+      {selectedPath === "/admin/org" && organizationApi ? <OrganizationPanel api={organizationApi} view="schools" /> : null}
+      {selectedPath === "/admin/org/schools" && organizationApi ? (
+        <OrganizationPanel api={organizationApi} view="schools" />
+      ) : null}
+      {selectedPath === "/admin/org/grades" && organizationApi ? (
+        <OrganizationPanel api={organizationApi} view="grades" />
+      ) : null}
+      {selectedPath === "/admin/org/classes" && organizationApi ? (
+        <OrganizationPanel api={organizationApi} view="classes" />
+      ) : null}
+      {selectedPath === "/admin/courses" && organizationApi ? (
+        <OrganizationPanel api={organizationApi} view="courses" />
+      ) : null}
       {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
       {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
       {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
       {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
         <QuestionBankPanel api={currentQuestionBankApi} />
       ) : null}
-      {selectedPath === "/admin/questions" && currentQuestionApi ? <QuestionPanel api={currentQuestionApi} /> : null}
+      {selectedPath === "/admin/questions" && currentQuestionApi ? (
+        <QuestionPanel api={currentQuestionApi} onNavigate={onNavigate} />
+      ) : null}
+      {selectedPath === "/admin/questions/editor" && currentQuestionApi ? <QuestionEditorPanel api={currentQuestionApi} /> : null}
       {selectedPath === "/admin/imports" && currentImportApi ? <ImportPanel api={currentImportApi} /> : null}
+      {selectedPath === "/admin/exams" && currentExamApi ? <ExamPanel api={currentExamApi} onNavigate={onNavigate} /> : null}
+      {selectedPath === "/admin/exams/assembly" ? <PaperAssemblyPanel /> : null}
+      {selectedPath === "/admin/challenges" ? <ChallengePanel /> : null}
       {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
       {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
     </>
@@ -466,23 +536,38 @@ interface AdminMenuNodeProps {
   menu: MenuItem;
   selectedPath: string;
   onSelect(path: string): void;
+  depth?: number;
 }
 
-function AdminMenuNode({ menu, selectedPath, onSelect }: AdminMenuNodeProps) {
+function AdminMenuNode({ menu, selectedPath, onSelect, depth = 0 }: AdminMenuNodeProps) {
   const nextPath = getFirstMenuPath(menu);
   const hasChildren = menu.children.length > 0;
-  const isSelected = nextPath !== "" && selectedPath === nextPath;
+  const isExactSelected = Boolean(menu.path) && selectedPath === menu.path;
+  const isTrailActive = hasChildren && menuContainsPath(menu, selectedPath);
 
   return (
     <li>
       {nextPath ? (
         <button
           type="button"
-          className={["ui-nav-tree__item", isSelected ? "is-active" : ""].filter(Boolean).join(" ")}
-          aria-pressed={isSelected}
+          className={[
+            hasChildren ? "ui-nav-tree__group-trigger" : "ui-nav-tree__item",
+            isExactSelected ? "is-active" : "",
+            isTrailActive ? "is-open" : "",
+            depth > 0 ? "is-child" : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-pressed={isExactSelected}
+          aria-expanded={hasChildren ? isTrailActive : undefined}
           onClick={() => onSelect(nextPath)}
         >
-          {menu.name}
+          <span>{menu.name}</span>
+          {hasChildren ? (
+            <span aria-hidden="true" className="ui-nav-tree__caret">
+              {isTrailActive ? "⌄" : "›"}
+            </span>
+          ) : null}
         </button>
       ) : (
         <span className="ui-nav-tree__group">{menu.name}</span>
@@ -490,7 +575,13 @@ function AdminMenuNode({ menu, selectedPath, onSelect }: AdminMenuNodeProps) {
       {hasChildren ? (
         <ul>
           {menu.children.map((child) => (
-            <AdminMenuNode key={child.id} menu={child} selectedPath={selectedPath} onSelect={onSelect} />
+            <AdminMenuNode
+              key={child.id}
+              menu={child}
+              selectedPath={selectedPath}
+              onSelect={onSelect}
+              depth={depth + 1}
+            />
           ))}
         </ul>
       ) : null}
@@ -511,10 +602,26 @@ function getFirstMenuPath(menu: MenuItem): string {
   return typeof menu.path === "string" ? menu.path : "";
 }
 
+function menuContainsPath(menu: MenuItem, targetPath: string): boolean {
+  if (menu.path === targetPath) {
+    return true;
+  }
+
+  return menu.children.some((child) => menuContainsPath(child, targetPath));
+}
+
 function resolveAdminPageTitle(selectedPath: string): string {
   switch (selectedPath) {
     case "/admin/org":
-      return "组织管理";
+      return "学校与组织管理";
+    case "/admin/org/schools":
+      return "学校与组织管理";
+    case "/admin/org/grades":
+      return "年级管理";
+    case "/admin/org/classes":
+      return "班级管理";
+    case "/admin/courses":
+      return "课程管理";
     case "/admin/users":
       return "用户管理";
     case "/admin/roles":
@@ -525,8 +632,16 @@ function resolveAdminPageTitle(selectedPath: string): string {
       return "题库管理";
     case "/admin/questions":
       return "题目管理";
+    case "/admin/questions/editor":
+      return "题目编辑器";
     case "/admin/imports":
       return "导入中心";
+    case "/admin/exams":
+      return "考试管理";
+    case "/admin/exams/assembly":
+      return "随机组卷";
+    case "/admin/challenges":
+      return "质疑处理";
     case "/admin/analytics":
       return "数据看板";
     case "/admin/history":
@@ -539,21 +654,53 @@ function resolveAdminPageTitle(selectedPath: string): string {
 function isKnownAdminPath(selectedPath: string): boolean {
   return [
     "/admin/org",
+    "/admin/org/schools",
+    "/admin/org/grades",
+    "/admin/org/classes",
+    "/admin/courses",
     "/admin/users",
     "/admin/roles",
     "/admin/notices",
     "/admin/question-banks",
     "/admin/questions",
+    "/admin/questions/editor",
     "/admin/imports",
+    "/admin/exams",
+    "/admin/exams/assembly",
+    "/admin/challenges",
     "/admin/analytics",
     "/admin/history"
   ].includes(selectedPath);
 }
 
+function resolveAdminBreadcrumb(selectedPath: string, menus: MenuItem[]): string {
+  const labels = findMenuTrail(menus, selectedPath);
+  if (labels.length === 0) {
+    return resolveAdminPageTitle(selectedPath);
+  }
+  return labels.join(" / ");
+}
+
+function findMenuTrail(menus: MenuItem[], selectedPath: string, trail: string[] = []): string[] {
+  for (const menu of menus) {
+    const nextTrail = [...trail, menu.name];
+    if (menu.path === selectedPath) {
+      return nextTrail;
+    }
+    if (menu.children.length > 0) {
+      const childTrail = findMenuTrail(menu.children, selectedPath, nextTrail);
+      if (childTrail.length > 0) {
+        return childTrail;
+      }
+    }
+  }
+  return [];
+}
+
 function getUserTypeLabel(userType: LoginResponse["user"]["user_type"]): string {
   switch (userType) {
     case "sys_admin":
-      return "系统管理员";
+      return "平台管理员";
     case "school_admin":
       return "学校管理员";
     case "teacher":
@@ -584,7 +731,7 @@ function createBrowserSessionStore(): SessionStore {
       }
 
       try {
-        return JSON.parse(raw) as SessionState;
+        return normalizeSession(JSON.parse(raw) as SessionState);
       } catch {
         return null;
       }
@@ -602,4 +749,84 @@ function createBrowserSessionStore(): SessionStore {
       window.localStorage.removeItem(storageKey);
     }
   };
+}
+
+function normalizeSession(session: SessionState | null): SessionState | null {
+  if (!session) {
+    return null;
+  }
+
+  return {
+    ...session,
+    menus: normalizeAdminMenus(session.menus, session.user.permissions ?? [])
+  };
+}
+
+function normalizeAdminMenus(menus: MenuItem[], permissions: string[] = []): MenuItem[] {
+  const hasOrganizationRoot = menus.some((menu) => menu.path === "/admin/org" || menu.children.some((child) => child.path === "/admin/org/schools"));
+  const hasCoursesRoot = menus.some((menu) => menu.path === "/admin/courses");
+  const hasExamEntry = menus.some((menu) => menu.path === "/admin/exams" || menu.children.some((child) => child.path === "/admin/exams"));
+  const hasAssemblyEntry = menus.some((menu) =>
+    menu.path === "/admin/exams/assembly" || menu.children.some((child) => child.path === "/admin/exams/assembly")
+  );
+  const hasChallengeEntry = menus.some((menu) =>
+    menu.path === "/admin/challenges" || menu.children.some((child) => child.path === "/admin/challenges")
+  );
+
+  if (hasOrganizationRoot && hasCoursesRoot && hasExamEntry && hasAssemblyEntry && hasChallengeEntry) {
+    return menus;
+  }
+
+  const normalized: MenuItem[] = [];
+
+  for (const menu of menus) {
+    if (menu.name !== "系统管理") {
+      normalized.push(menu);
+      continue;
+    }
+
+    const orgChild = menu.children.find((child) => child.path === "/admin/org" || child.name === "组织管理");
+    const otherChildren = menu.children.filter((child) => child !== orgChild);
+
+    if (orgChild && !hasOrganizationRoot) {
+      normalized.push({
+        id: orgChild.id,
+        name: "组织管理",
+        path: "/admin/org",
+        children: [
+          { id: orgChild.id * 10 + 1, name: "学校与组织管理", path: "/admin/org/schools", children: [] },
+          { id: orgChild.id * 10 + 2, name: "年级管理", path: "/admin/org/grades", children: [] },
+          { id: orgChild.id * 10 + 3, name: "班级管理", path: "/admin/org/classes", children: [] }
+        ]
+      });
+    }
+
+    if (orgChild && !hasCoursesRoot) {
+      normalized.push({
+        id: orgChild.id * 100 + 1,
+        name: "课程管理",
+        path: "/admin/courses",
+        children: []
+      });
+    }
+
+    const nextChildren = [...otherChildren];
+    if (!hasExamEntry && permissions.includes("exam:manage")) {
+      nextChildren.push({ id: 39, name: "考试管理", path: "/admin/exams", children: [] });
+    }
+    if (!hasAssemblyEntry && permissions.includes("exam:manage")) {
+      nextChildren.push({ id: 40, name: "随机组卷", path: "/admin/exams/assembly", children: [] });
+    }
+    if (!hasChallengeEntry && permissions.includes("question:manage")) {
+      nextChildren.push({ id: 41, name: "质疑处理", path: "/admin/challenges", children: [] });
+    }
+
+    normalized.push({
+      ...menu,
+      path: "/admin/system",
+      children: nextChildren
+    });
+  }
+
+  return normalized;
 }

@@ -21,6 +21,7 @@ describe("UserApp", () => {
     render(<UserApp authApi={createAuthApiMock()} />);
 
     expect(screen.getByRole("heading", { name: "AIOS 学生端" })).toBeTruthy();
+    expect(screen.getByText("把课程、练题、班级学习和考试放进一个统一工作台。")).toBeTruthy();
     expect(screen.getByRole("form", { name: "登录表单" })).toBeTruthy();
     expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
@@ -37,9 +38,10 @@ describe("UserApp", () => {
     render(<UserApp authApi={createAuthApiMock()} practiceApi={createPracticeApiMock()} />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
+      expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
       expect(screen.getByRole("button", { name: "练题中心" })).toBeTruthy();
       expect(screen.getByRole("heading", { name: "我的课程" })).toBeTruthy();
+      expect(screen.getByText("学习导航")).toBeTruthy();
     });
   });
 
@@ -53,7 +55,7 @@ describe("UserApp", () => {
     render(<UserApp authApi={createAuthApiMock()} practiceApi={createPracticeApiMock()} />);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
+      expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
       expect(screen.getByRole("heading", { name: "我的课程" })).toBeTruthy();
       expect(window.localStorage.getItem("aios.user.session")).not.toBeNull();
     });
@@ -121,8 +123,8 @@ describe("UserApp", () => {
     );
 
     expect(screen.getAllByText("当前账号暂无可用功能")).toHaveLength(2);
-    expect(screen.getByRole("heading", { name: "AIOS 学生端" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
+    expect(screen.queryByText("学习导航")).toBeNull();
+    expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "我的课程" })).toBeNull();
     expect(screen.queryByRole("button", { name: "我的课程" })).toBeNull();
@@ -147,8 +149,9 @@ describe("UserApp", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { name: "AIOS 学生端" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "李同学" })).toBeTruthy();
+    expect(screen.getByText("AIOS 学习工作台")).toBeTruthy();
+    expect(screen.getByText("学习导航")).toBeTruthy();
+    expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "我的课程" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "班级学习" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "练题记录" })).toBeTruthy();
@@ -394,6 +397,43 @@ describe("UserApp", () => {
     });
   });
 
+  it("renders question feedback page from direct route", async () => {
+    render(
+      <UserApp
+        authApi={createAuthApiMock()}
+        practiceApi={{
+          ...createPracticeApiMock(),
+          createQuestionComment: async () => true,
+          createQuestionChallenge: async () => true,
+          uploadFile: async () => ({
+            id: 9001,
+            source_type: "upload",
+            object_key: "challenge/proof.png",
+            url: "https://cdn.example.com/challenge/proof.png",
+            status: "uploaded"
+          })
+        }}
+        sessionStore={createSessionStore(
+          createSession([
+            {
+              id: 40,
+              name: "题目互动",
+              path: "/app/questions/feedback?question_id=1001&question_version_id=3001&question_type=single_choice&stem=1%2B1%E7%AD%89%E4%BA%8E%E5%87%A0%EF%BC%9F&from=%2Fapp%2Fpractice",
+              children: []
+            }
+          ])
+        )}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "题目评论与质疑" })).toBeTruthy();
+      expect(screen.getByText("1+1等于几？")).toBeTruthy();
+      expect(screen.getByLabelText("评论内容")).toBeTruthy();
+      expect(screen.getByLabelText("质疑说明")).toBeTruthy();
+    });
+  });
+
   it("renders user menus from session and defaults to the first available menu", () => {
     render(
       <UserApp
@@ -415,7 +455,7 @@ describe("UserApp", () => {
       />
     );
 
-    expect(screen.getByText("李同学")).toBeTruthy();
+    expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
     expect(screen.getByRole("button", { name: "我的课程" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "练题中心" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "班级学习" })).toBeNull();
@@ -1607,6 +1647,23 @@ function createLoginOrganizations() {
 
 function createPracticeApiMock() {
   return {
+    listCourses: async () => ({
+      items: [
+        {
+          id: 10,
+          tenant_id: 1,
+          code: "math_7a",
+          name: "七年级数学",
+          description: "本学期基础计算与方程训练",
+          start_at: "2026-02-01T08:00:00+08:00",
+          end_at: "2026-07-01T18:00:00+08:00",
+          status: "active"
+        }
+      ],
+      page: 1,
+      page_size: 12,
+      total: 1
+    }),
     createPracticeSession: async () => ({
       id: 501,
       tenant_id: 1,

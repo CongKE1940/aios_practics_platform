@@ -44,7 +44,7 @@ describe("UserPanel", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "用户管理" })).toBeTruthy();
     });
-    expect(screen.getByText("张老师")).toBeTruthy();
+    expect(screen.getAllByText("张老师").length).toBeGreaterThan(0);
     expect(screen.getAllByText("学校审核员").length).toBeGreaterThan(0);
   });
 

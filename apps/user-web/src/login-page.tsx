@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 
 import type { LoginOrganization, LoginRequest } from "@aios/api-sdk";
+import { StatusNotice } from "@aios/ui-web";
+import brandIcon from "../../../docs/images/图标.png";
 
 interface LoginPageProps {
   organizations: LoginOrganization[];
@@ -37,8 +39,13 @@ export function LoginPage({
   }
 
   return (
-    <form aria-label="登录表单" onSubmit={handleSubmit}>
-      <div>
+    <form aria-label="登录表单" className="ui-auth-form" onSubmit={handleSubmit}>
+      <header className="ui-auth-form__header">
+        <img src={brandIcon} alt="" className="ui-brand-mark" />
+        <h2>欢迎回来</h2>
+        <p>科技连接未来，创新改变世界</p>
+      </header>
+      <div className="ui-field">
         <label htmlFor="tenant_code">组织</label>
         <select
           id="tenant_code"
@@ -54,8 +61,8 @@ export function LoginPage({
           ))}
         </select>
       </div>
-      {organizationsError ? <p>{organizationsError}</p> : null}
-      <div>
+      {organizationsError ? <StatusNotice tone="warning" title="组织列表加载失败" description={organizationsError} /> : null}
+      <div className="ui-field">
         <label htmlFor="username">用户名</label>
         <input
           id="username"
@@ -63,7 +70,7 @@ export function LoginPage({
           onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
         />
       </div>
-      <div>
+      <div className="ui-field">
         <label htmlFor="password">密码</label>
         <input
           id="password"
@@ -72,10 +79,22 @@ export function LoginPage({
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
         />
       </div>
-      {errorMessage ? <p>{errorMessage}</p> : null}
-      <button type="submit" disabled={submitting || organizationsLoading || !form.tenant_code}>
+      {errorMessage ? <StatusNotice tone="danger" title="登录失败" description={errorMessage} /> : null}
+      <button
+        type="submit"
+        className="ui-button ui-button--primary"
+        disabled={submitting || organizationsLoading || !form.tenant_code}
+      >
         {submitting ? "登录中..." : "登录"}
       </button>
+      <footer className="ui-auth-form__footer">
+        <button type="button" className="ui-auth-link">
+          管理端入口
+        </button>
+        <button type="button" className="ui-auth-link">
+          忘记密码？
+        </button>
+      </footer>
     </form>
   );
 }

@@ -416,4 +416,66 @@ describe("PracticePanel", () => {
     expect(screen.getByLabelText("选项 true")).toBeTruthy();
     expect(screen.getByLabelText("选项 false")).toBeTruthy();
   });
+
+  it("navigates to question feedback page from current question actions", async () => {
+    const api: PracticePanelApi = {
+      createPracticeSession: vi.fn(async () => ({
+        id: 801,
+        tenant_id: 1,
+        user_id: 7,
+        practice_mode: "random",
+        source_mode: "single_bank",
+        flow_mode: "fixed_count",
+        bank_scope: {},
+        bank_ids: [1],
+        exclude_mastered: false,
+        question_count: 10,
+        random_seed: 20260422,
+        round_no: 1,
+        status: "active",
+        questions: [
+          {
+            session_question_id: 9301,
+            session_id: 801,
+            question_id: 1301,
+            question_version_id: 3301,
+            display_order: 1,
+            question_type: "single_choice",
+            content: {
+              stem: { content_type: "text", text: "3+3等于几？", assets: [] },
+              options: [
+                { key: "A", content_type: "text", text: "5", assets: [] },
+                { key: "B", content_type: "text", text: "6", assets: [] }
+              ]
+            },
+            round_no: 1,
+            answered: false
+          }
+        ]
+      })),
+      getPracticeSession: vi.fn(),
+      nextPracticeQuestion: vi.fn(),
+      submitPracticeAnswer: vi.fn(),
+      finishPracticeSession: vi.fn(),
+      markPracticeQuestionMastered: vi.fn(),
+      markPracticeQuestionConfused: vi.fn(),
+      listUserQuestionStates: vi.fn()
+    };
+
+    const onNavigate = vi.fn();
+    render(<PracticePanel api={api} onNavigate={onNavigate} />);
+
+    fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始练题" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("3+3等于几？")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "评论与质疑" }));
+
+    expect(onNavigate).toHaveBeenCalledWith(
+      "/app/questions/feedback?question_id=1301&question_version_id=3301&question_type=single_choice&stem=3%2B3%E7%AD%89%E4%BA%8E%E5%87%A0%EF%BC%9F&from=%2Fapp%2Fpractice"
+    );
+  });
 });

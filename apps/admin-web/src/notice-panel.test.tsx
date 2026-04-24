@@ -50,7 +50,7 @@ describe("NoticePanel", () => {
       expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getByText("周五晚维护")).toBeTruthy();
+    expect(screen.getAllByText("周五晚维护").length).toBeGreaterThan(0);
   });
 
   it("creates notice and marks notification as read", async () => {

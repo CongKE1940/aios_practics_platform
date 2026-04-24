@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import {
   createApiClient,
@@ -7,12 +7,18 @@ import {
   type MenuItem,
   type PracticeSessionDetail
 } from "@aios/api-sdk";
+import { AppShell, EmptyState, PageSection, StatusNotice } from "@aios/ui-web";
+
+import sceneBackground from "../../../docs/images/背景.png";
 
 import { createBrowserSessionStore } from "./auth-store";
 import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-types";
 import { MenuNav } from "./menu-nav";
 import { LoginPage } from "./login-page";
+import { NotificationCenterPage, type NotificationCenterApi } from "./notification-center-page";
 import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
+import { CourseOverviewPage, type CourseOverviewApi } from "./course-overview-page";
+import { QuestionFeedbackPage, type QuestionFeedbackPageApi } from "./question-feedback-page";
 import { StudentLearningDetailPage, type StudentLearningDetailApi } from "./student-learning-detail-page";
 import {
   StudentPracticeSessionDetailPage,
@@ -31,10 +37,16 @@ import {
   type PracticeReviewApi
 } from "./practice-review-pages";
 import { StudentExamPage, type StudentExamApi } from "./student-exam-page";
+import { TeacherQuestionBankPage, type TeacherQuestionBankApi } from "./teacher-question-bank-page";
 import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
+import { UserWorkbenchPage } from "./user-workbench-page";
 
 type UserPracticeApi = PracticePanelApi &
   PracticeReviewApi &
+  Partial<CourseOverviewApi> &
+  Partial<NotificationCenterApi> &
+  Partial<QuestionFeedbackPageApi> &
+  Partial<TeacherQuestionBankApi> &
   Partial<ClassLearningApi> &
   Partial<StudentLearningDetailApi> &
   Partial<StudentPracticeSessionDetailApi> &
@@ -64,7 +76,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   function handleUnauthorized() {
     store.clear();
     setSession(null);
-    setSelectedPath("/app/courses");
+    setSelectedPath("/app/workbench");
     setPendingPracticeSession(null);
     setSubmitting(false);
     setErrorMessage("登录已失效，请重新登录");
@@ -138,9 +150,6 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     };
   }, [auth, session]);
 
-  const isStudentSessionQuestionRoute = selectedRoute.startsWith("/app/class-learning/student/session/question");
-  const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
-
   async function handleLogin(form: LoginRequest) {
     setSubmitting(true);
     setErrorMessage("");
@@ -186,143 +195,241 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     } finally {
       store.clear();
       setSession(null);
-      setSelectedPath("/app/courses");
+      setSelectedPath("/app/workbench");
       setPendingPracticeSession(null);
     }
   }
 
   if (!session) {
     return (
-      <main>
-        <h1>AIOS 学生端</h1>
-        <LoginPage
-          organizations={organizations}
-          organizationsLoading={organizationsLoading}
-          organizationsError={organizationsError}
-          submitting={submitting}
-          errorMessage={errorMessage}
-          onSubmit={handleLogin}
-        />
+      <main className="ui-auth-page ui-auth-page--learner">
+        <img src={sceneBackground} alt="" className="ui-scene-image" />
+        <section className="ui-auth-hero">
+          <span className="ui-auth-hero__sr">AIOS 学习端登录背景</span>
+          <h1 className="ui-auth-hero__title">AIOS 学生端</h1>
+          <p className="ui-auth-hero__copy">把课程、练题、班级学习和考试放进一个统一工作台。</p>
+        </section>
+        <section className="ui-auth-card">
+          <LoginPage
+            organizations={organizations}
+            organizationsLoading={organizationsLoading}
+            organizationsError={organizationsError}
+            submitting={submitting}
+            errorMessage={errorMessage}
+            onSubmit={handleLogin}
+          />
+        </section>
       </main>
     );
   }
 
+  const content = renderUserContent({
+    selectedPath,
+    selectedRoute,
+    session,
+    currentPracticeApi,
+    pendingPracticeSession,
+    setPendingPracticeSession,
+    setSelectedPath
+  });
+
   return (
-    <main>
-      <h1>AIOS 学生端</h1>
-      <section aria-label="当前用户">
-        <h2>{session.user.display_name}</h2>
-        <p>{session.user.user_type}</p>
-        <button type="button" onClick={handleLogout}>
-          退出登录
-        </button>
-      </section>
-      <MenuNav menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />
-      <section aria-label="学习入口">
+    <div className="ui-app-frame">
+      <img src={sceneBackground} alt="" className="ui-scene-image ui-scene-image--shell" />
+      <AppShell
+        brand={
+          <div className="ui-brand-block">
+            <strong>AIOS 学习工作台</strong>
+            <span>课程、练题、考试一体化</span>
+          </div>
+        }
+        sidebar={<MenuNav menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />}
+        header={
+          <section aria-label="当前用户" className="ui-user-chip">
+            <div className="ui-user-chip__avatar" aria-hidden="true">
+              {session.user.display_name.slice(0, 1)}
+            </div>
+            <div>
+              <p>欢迎回来，{session.user.display_name}</p>
+              <strong>{getUserTypeLabel(session.user.user_type)}</strong>
+            </div>
+            <button type="button" className="ui-button ui-button--ghost" onClick={handleLogout}>
+              退出登录
+            </button>
+          </section>
+        }
+      >
         {session.menus.length === 0 ? (
-          <p>当前账号暂无可用功能</p>
+          <PageSection title="当前学习内容" description="">
+            <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />
+          </PageSection>
         ) : (
-          <>
-            {selectedRoute === "/app/courses" ? <h2>我的课程</h2> : null}
-            {isStudentSessionQuestionRoute ? (
-              currentPracticeApi && isStudentPracticeSessionQuestionDetailApi(currentPracticeApi) ? (
-                <StudentPracticeSessionQuestionDetailPage
-                  api={currentPracticeApi}
-                  path={selectedPath}
-                  onNavigate={setSelectedPath}
-                />
-              ) : (
-                <p>当前单题详情功能暂不可用。</p>
-              )
-            ) : null}
-            {!isStudentSessionQuestionRoute && isStudentSessionRoute ? (
-              currentPracticeApi && isStudentPracticeSessionDetailApi(currentPracticeApi) ? (
-                <StudentPracticeSessionDetailPage
-                  api={currentPracticeApi}
-                  path={selectedPath}
-                  onNavigate={setSelectedPath}
-                />
-              ) : (
-                <p>当前单次练题详情功能暂不可用。</p>
-              )
-            ) : null}
-            {!isStudentSessionRoute && selectedRoute.startsWith("/app/class-learning/student") ? (
-              currentPracticeApi && isStudentLearningDetailApi(currentPracticeApi) ? (
-                <StudentLearningDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
-              ) : (
-                <p>当前学生学习详情功能暂不可用。</p>
-              )
-            ) : null}
-            {selectedRoute === "/app/class-learning" ? (
-              currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
-                <ClassLearningPage api={currentPracticeApi} onNavigate={setSelectedPath} />
-              ) : (
-                <p>当前班级学习功能暂不可用。</p>
-              )
-            ) : null}
-            {selectedRoute === "/app/exams" ? (
-              session.user.user_type === "teacher" && currentPracticeApi && isTeacherExamApi(currentPracticeApi) ? (
-                <TeacherExamPage api={currentPracticeApi} />
-              ) : session.user.user_type === "student" && currentPracticeApi && isStudentExamApi(currentPracticeApi) ? (
-                <StudentExamPage api={currentPracticeApi} />
-              ) : (
-                <p>当前考试功能暂不可用。</p>
-              )
-            ) : null}
-            {selectedRoute === "/app/practice" && currentPracticeApi ? (
-              <PracticePanel
-                api={currentPracticeApi}
-                initialSession={pendingPracticeSession}
-                onInitialSessionConsumed={() => setPendingPracticeSession(null)}
-                onFinished={(summary) => setSelectedPath(`/app/practice/results/${summary.id}`)}
-              />
-            ) : null}
-            {selectedRoute.startsWith("/app/practice/results/") && currentPracticeApi ? (
-              <PracticeResultPage
-                api={currentPracticeApi}
-                sessionId={getSessionId(selectedRoute)}
-                onNavigate={setSelectedPath}
-                onPracticeCreated={setPendingPracticeSession}
-              />
-            ) : null}
-            {selectedRoute === "/app/practice/history" && currentPracticeApi ? (
-              <PracticeHistoryPage api={currentPracticeApi} onNavigate={setSelectedPath} />
-            ) : null}
-            {selectedRoute.startsWith("/app/practice/history/") && currentPracticeApi ? (
-              <PracticeSessionDetailPage
-                api={currentPracticeApi}
-                sessionId={getSessionId(selectedRoute)}
-                onNavigate={setSelectedPath}
-              />
-            ) : null}
-            {selectedRoute === "/app/practice/wrong" && currentPracticeApi ? (
-              <PracticeStateListPage
-                api={currentPracticeApi}
-                stateType="wrong"
-                onNavigate={setSelectedPath}
-                onPracticeCreated={setPendingPracticeSession}
-              />
-            ) : null}
-            {selectedRoute === "/app/practice/mastered" && currentPracticeApi ? (
-              <PracticeStateListPage
-                api={currentPracticeApi}
-                stateType="mastered"
-                onNavigate={setSelectedPath}
-                onPracticeCreated={setPendingPracticeSession}
-              />
-            ) : null}
-            {selectedRoute === "/app/practice/confused" && currentPracticeApi ? (
-              <PracticeStateListPage
-                api={currentPracticeApi}
-                stateType="confused"
-                onNavigate={setSelectedPath}
-                onPracticeCreated={setPendingPracticeSession}
-              />
-            ) : null}
-          </>
+          <div className="ui-stack ui-stack--lg">{content}</div>
         )}
-      </section>
-    </main>
+        {errorMessage ? <StatusNotice tone="danger" title="当前会话异常" description={errorMessage} /> : null}
+      </AppShell>
+    </div>
+  );
+}
+
+interface RenderUserContentArgs {
+  selectedPath: string;
+  selectedRoute: string;
+  session: UserSessionState;
+  currentPracticeApi?: UserPracticeApi;
+  pendingPracticeSession: PracticeSessionDetail | null;
+  setPendingPracticeSession: Dispatch<SetStateAction<PracticeSessionDetail | null>>;
+  setSelectedPath: Dispatch<SetStateAction<string>>;
+}
+
+function renderUserContent({
+  selectedPath,
+  selectedRoute,
+  session,
+  currentPracticeApi,
+  pendingPracticeSession,
+  setPendingPracticeSession,
+  setSelectedPath
+}: RenderUserContentArgs) {
+  const isStudentSessionQuestionRoute = selectedRoute.startsWith("/app/class-learning/student/session/question");
+  const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
+
+  return (
+    <>
+      {selectedRoute === "/app/workbench" ? (
+        <UserWorkbenchPage
+          menus={session.menus}
+          userDisplayName={session.user.display_name}
+          userTypeLabel={getUserTypeLabel(session.user.user_type)}
+          onNavigate={setSelectedPath}
+        />
+      ) : null}
+      {selectedRoute === "/app/courses" ? (
+        currentPracticeApi && isCourseOverviewApi(currentPracticeApi) ? (
+          <CourseOverviewPage
+            api={currentPracticeApi}
+            menus={session.menus}
+            userType={session.user.user_type}
+            onNavigate={setSelectedPath}
+          />
+        ) : (
+          <p>当前课程功能暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/notifications" ? (
+        currentPracticeApi && isNotificationCenterApi(currentPracticeApi) ? (
+          <NotificationCenterPage api={currentPracticeApi} />
+        ) : (
+          <p>当前通知中心暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/teacher-banks" ? (
+        currentPracticeApi && isTeacherQuestionBankApi(currentPracticeApi) ? (
+          <TeacherQuestionBankPage api={currentPracticeApi} />
+        ) : (
+          <p>当前老师题库功能暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/questions/feedback" ? (
+        currentPracticeApi && isQuestionFeedbackApi(currentPracticeApi) ? (
+          <QuestionFeedbackPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
+        ) : (
+          <p>当前题目互动功能暂不可用。</p>
+        )
+      ) : null}
+      {isStudentSessionQuestionRoute ? (
+        currentPracticeApi && isStudentPracticeSessionQuestionDetailApi(currentPracticeApi) ? (
+          <StudentPracticeSessionQuestionDetailPage
+            api={currentPracticeApi}
+            path={selectedPath}
+            onNavigate={setSelectedPath}
+          />
+        ) : (
+          <p>当前单题详情功能暂不可用。</p>
+        )
+      ) : null}
+      {!isStudentSessionQuestionRoute && isStudentSessionRoute ? (
+        currentPracticeApi && isStudentPracticeSessionDetailApi(currentPracticeApi) ? (
+          <StudentPracticeSessionDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
+        ) : (
+          <p>当前单次练题详情功能暂不可用。</p>
+        )
+      ) : null}
+      {!isStudentSessionRoute && selectedRoute.startsWith("/app/class-learning/student") ? (
+        currentPracticeApi && isStudentLearningDetailApi(currentPracticeApi) ? (
+          <StudentLearningDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
+        ) : (
+          <p>当前学生学习详情功能暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/class-learning" ? (
+        currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
+          <ClassLearningPage api={currentPracticeApi} onNavigate={setSelectedPath} />
+        ) : (
+          <p>当前班级学习功能暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/exams" ? (
+        session.user.user_type === "teacher" && currentPracticeApi && isTeacherExamApi(currentPracticeApi) ? (
+          <TeacherExamPage api={currentPracticeApi} />
+        ) : session.user.user_type === "student" && currentPracticeApi && isStudentExamApi(currentPracticeApi) ? (
+          <StudentExamPage api={currentPracticeApi} />
+        ) : (
+          <p>当前考试功能暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/practice" && currentPracticeApi ? (
+        <PracticePanel
+          api={currentPracticeApi}
+          initialSession={pendingPracticeSession}
+          onInitialSessionConsumed={() => setPendingPracticeSession(null)}
+          onNavigate={setSelectedPath}
+          onFinished={(summary) => setSelectedPath(`/app/practice/results/${summary.id}`)}
+        />
+      ) : null}
+      {selectedRoute.startsWith("/app/practice/results/") && currentPracticeApi ? (
+        <PracticeResultPage
+          api={currentPracticeApi}
+          sessionId={getSessionId(selectedRoute)}
+          onNavigate={setSelectedPath}
+          onPracticeCreated={setPendingPracticeSession}
+        />
+      ) : null}
+      {selectedRoute === "/app/practice/history" && currentPracticeApi ? (
+        <PracticeHistoryPage api={currentPracticeApi} onNavigate={setSelectedPath} />
+      ) : null}
+      {selectedRoute.startsWith("/app/practice/history/") && currentPracticeApi ? (
+        <PracticeSessionDetailPage
+          api={currentPracticeApi}
+          sessionId={getSessionId(selectedRoute)}
+          onNavigate={setSelectedPath}
+        />
+      ) : null}
+      {selectedRoute === "/app/practice/wrong" && currentPracticeApi ? (
+        <PracticeStateListPage
+          api={currentPracticeApi}
+          stateType="wrong"
+          onNavigate={setSelectedPath}
+          onPracticeCreated={setPendingPracticeSession}
+        />
+      ) : null}
+      {selectedRoute === "/app/practice/mastered" && currentPracticeApi ? (
+        <PracticeStateListPage
+          api={currentPracticeApi}
+          stateType="mastered"
+          onNavigate={setSelectedPath}
+          onPracticeCreated={setPendingPracticeSession}
+        />
+      ) : null}
+      {selectedRoute === "/app/practice/confused" && currentPracticeApi ? (
+        <PracticeStateListPage
+          api={currentPracticeApi}
+          stateType="confused"
+          onNavigate={setSelectedPath}
+          onPracticeCreated={setPendingPracticeSession}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -337,6 +444,31 @@ function getRoutePath(path: string): string {
 
 function isClassLearningApi(api: UserPracticeApi | undefined): api is UserPracticeApi & ClassLearningApi {
   return typeof api?.listClassCourseOptions === "function" && typeof api?.getClassPracticeSummary === "function";
+}
+
+function isCourseOverviewApi(api: UserPracticeApi | undefined): api is UserPracticeApi & CourseOverviewApi {
+  return typeof api?.listCourses === "function";
+}
+
+function isNotificationCenterApi(api: UserPracticeApi | undefined): api is UserPracticeApi & NotificationCenterApi {
+  return typeof api?.listNotifications === "function" && typeof api?.markNotificationRead === "function";
+}
+
+function isQuestionFeedbackApi(api: UserPracticeApi | undefined): api is UserPracticeApi & QuestionFeedbackPageApi {
+  return (
+    typeof api?.createQuestionComment === "function" &&
+    typeof api?.createQuestionChallenge === "function" &&
+    typeof api?.uploadFile === "function"
+  );
+}
+
+function isTeacherQuestionBankApi(api: UserPracticeApi | undefined): api is UserPracticeApi & TeacherQuestionBankApi {
+  return (
+    typeof api?.listQuestionBanks === "function" &&
+    typeof api?.createQuestionBank === "function" &&
+    typeof api?.publishQuestionBank === "function" &&
+    typeof api?.assignQuestionBankVisibility === "function"
+  );
 }
 
 function isStudentLearningDetailApi(api: UserPracticeApi | undefined): api is UserPracticeApi & StudentLearningDetailApi {
@@ -423,5 +555,20 @@ function getFirstAvailablePath(menus: MenuItem[]): string {
     }
   }
 
-  return "/app/courses";
+  return "/app/workbench";
+}
+
+function getUserTypeLabel(userType: UserSessionState["user"]["user_type"]): string {
+  switch (userType) {
+    case "teacher":
+      return "教师";
+    case "student":
+      return "学生";
+    case "school_admin":
+      return "学校管理员";
+    case "sys_admin":
+      return "系统管理员";
+    default:
+      return userType;
+  }
 }

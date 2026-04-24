@@ -70,98 +70,173 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
   }
 
   return (
-    <section aria-label="导入中心面板">
-      <h2>导入中心</h2>
-      {errorMessage ? <p>{errorMessage}</p> : null}
-      {loading ? <p>加载中...</p> : null}
-
-      <section aria-label="模板下载">
-        <button type="button" onClick={() => void handleDownload("question")}>
-          下载题目模板
-        </button>
-        <button type="button" onClick={() => void handleDownload("question_bank")}>
-          下载题库模板
-        </button>
-        <button type="button" onClick={() => void handleDownload("exam")}>
-          下载考试模板
-        </button>
-        {templatePreview ? <pre>{templatePreview}</pre> : null}
+    <section aria-label="导入中心面板" className="ui-admin-page">
+      <section className="ui-admin-page__hero">
+        <div className="ui-admin-page__header">
+          <div>
+            <span className="ui-admin-page__eyebrow">导入中心</span>
+            <h2>导入中心</h2>
+          </div>
+          <div className="ui-admin-toolbar">
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDownload("question")}>
+              下载题目模板
+            </button>
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDownload("question_bank")}>
+              下载题库模板
+            </button>
+            <button type="button" className="ui-button ui-button--primary" onClick={() => void handleDownload("exam")}>
+              下载考试模板
+            </button>
+          </div>
+        </div>
       </section>
 
-      <form onSubmit={(event) => void handleCreate(event)}>
-        <label htmlFor="import_type">导入类型</label>
-        <select
-          id="import_type"
-          value={form.import_type}
-          onChange={(event) => setForm((current) => ({ ...current, import_type: event.target.value }))}
-        >
-          <option value="question">question</option>
-          <option value="question_bank">question_bank</option>
-        </select>
-        <label htmlFor="import_template_version">模板版本</label>
-        <input
-          id="import_template_version"
-          value={form.template_version}
-          onChange={(event) => setForm((current) => ({ ...current, template_version: event.target.value }))}
-        />
-        <label htmlFor="import_file_url">文件地址</label>
-        <input
-          id="import_file_url"
-          value={form.file_url}
-          onChange={(event) => setForm((current) => ({ ...current, file_url: event.target.value }))}
-        />
-        <label htmlFor="import_content">CSV 内容</label>
-        <textarea
-          id="import_content"
-          value={form.content}
-          onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
-        />
-        <button type="submit">创建导入任务</button>
-      </form>
+      {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
+      {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
 
-      <table>
-        <thead>
-          <tr>
-            <th>类型</th>
-            <th>状态</th>
-            <th>总行</th>
-            <th>成功</th>
-            <th>失败</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td>{item.import_type}</td>
-              <td>{item.status}</td>
-              <td>{item.total_rows}</td>
-              <td>{item.success_rows}</td>
-              <td>{item.failed_rows}</td>
-              <td>
-                <button type="button" onClick={() => void handleLoadRows(item.id)}>
-                  查看行结果
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {!loading ? (
+        <div className="ui-admin-layout">
+          <div className="ui-admin-main">
+            <section className="ui-admin-card">
+              <div className="ui-admin-card__header">
+                <div>
+                  <h3>创建导入任务</h3>
+                </div>
+              </div>
+              <form className="ui-admin-form__grid ui-admin-form__grid--wide" onSubmit={(event) => void handleCreate(event)}>
+                <div className="ui-admin-form__field">
+                  <label htmlFor="import_type">导入类型</label>
+                  <select
+                    id="import_type"
+                    value={form.import_type}
+                    onChange={(event) => setForm((current) => ({ ...current, import_type: event.target.value }))}
+                  >
+                    <option value="question">题目</option>
+                    <option value="question_bank">题库</option>
+                  </select>
+                </div>
+                <div className="ui-admin-form__field">
+                  <label htmlFor="import_template_version">模板版本</label>
+                  <input
+                    id="import_template_version"
+                    value={form.template_version}
+                    onChange={(event) => setForm((current) => ({ ...current, template_version: event.target.value }))}
+                  />
+                </div>
+                <div className="ui-admin-form__field">
+                  <label htmlFor="import_file_url">文件地址</label>
+                  <input
+                    id="import_file_url"
+                    value={form.file_url}
+                    onChange={(event) => setForm((current) => ({ ...current, file_url: event.target.value }))}
+                  />
+                </div>
+                <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                  <label htmlFor="import_content">CSV 内容</label>
+                  <textarea
+                    id="import_content"
+                    value={form.content}
+                    onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
+                  />
+                </div>
+                <div className="ui-admin-form__actions" style={{ gridColumn: "1 / -1" }}>
+                  <button type="submit" className="ui-button ui-button--primary">
+                    创建导入任务
+                  </button>
+                </div>
+              </form>
+            </section>
 
-      <section aria-label="行级结果">
-        <h3>行级结果</h3>
-        <ul>
-          {rows.map((row) => (
-            <li key={row.id}>
-              <span>{row.row_no}</span>
-              <span>{row.status}</span>
-              <span>{row.error_code ?? "-"}</span>
-              <span>{row.error_message ?? "-"}</span>
-              <span>{row.target_entity_type ?? "-"}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+            <section className="ui-admin-table-card">
+              <div className="ui-admin-table-card__header">
+                <div>
+                  <h3>导入任务列表</h3>
+                </div>
+              </div>
+              <table className="ui-admin-table">
+                <thead>
+                  <tr>
+                    <th>类型</th>
+                    <th>状态</th>
+                    <th>总行数</th>
+                    <th>成功</th>
+                    <th>失败</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.import_type}</td>
+                      <td>
+                        <span className={statusClassName(item.status)}>{item.status}</span>
+                      </td>
+                      <td>{item.total_rows}</td>
+                      <td>{item.success_rows}</td>
+                      <td>{item.failed_rows}</td>
+                      <td>
+                        <div className="ui-admin-table__actions">
+                          <button type="button" className="ui-admin-link" onClick={() => void handleLoadRows(item.id)}>
+                            查看行结果
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          </div>
+
+          <aside className="ui-admin-side-card">
+            <section className="ui-admin-card">
+              <div className="ui-admin-card__header">
+                <div>
+                  <h3>模板预览</h3>
+                </div>
+              </div>
+              {templatePreview ? <pre className="ui-admin-code-block">{templatePreview}</pre> : <div className="ui-admin-empty-inline">请选择左侧模板下载预览内容</div>}
+            </section>
+
+            <section className="ui-admin-card">
+              <div className="ui-admin-card__header">
+                <div>
+                  <h3>行级结果</h3>
+                </div>
+              </div>
+              {rows.length > 0 ? (
+                <div className="ui-admin-mini-list">
+                  {rows.map((row) => (
+                    <article key={row.id} className="ui-admin-mini-item">
+                      <strong>{`第 ${row.row_no} 行`}</strong>
+                      <p>{row.error_message ?? row.status}</p>
+                      <div className="ui-admin-row-meta">
+                        <span>{row.error_code ?? "-"}</span>
+                        <span>{row.target_entity_type ?? "-"}</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="ui-admin-empty-inline">选择任务后可查看行级结果</div>
+              )}
+            </section>
+          </aside>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function statusClassName(value: string): string {
+  switch (value) {
+    case "success":
+      return "ui-admin-status ui-admin-status--active";
+    case "partial_success":
+      return "ui-admin-status ui-admin-status--pending";
+    case "failed":
+      return "ui-admin-status ui-admin-status--danger";
+    default:
+      return "ui-admin-status ui-admin-status--draft";
+  }
 }

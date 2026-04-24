@@ -45,7 +45,7 @@ describe("RbacPanel", () => {
       expect(screen.getByRole("heading", { name: "角色权限" })).toBeTruthy();
     });
     expect(screen.getAllByText("学校审核员").length).toBeGreaterThan(0);
-    expect(screen.getByText("用户管理")).toBeTruthy();
+    expect(screen.getAllByText("用户管理").length).toBeGreaterThan(0);
   });
 
   it("creates role and assigns permissions", async () => {

@@ -60,7 +60,7 @@ describe("QuestionBankPanel", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "题库管理" })).toBeTruthy();
     });
-    expect(screen.getByText("高一数学基础题库")).toBeTruthy();
+    expect(screen.getAllByText("高一数学基础题库").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("题库名称"), { target: { value: "高一数学提升题库" } });
     fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
@@ -84,7 +84,7 @@ describe("QuestionBankPanel", () => {
     fireEvent.change(screen.getByLabelText("下发目标类型"), { target: { value: "class" } });
     fireEvent.change(screen.getByLabelText("下发目标ID"), { target: { value: "301" } });
     fireEvent.change(screen.getByLabelText("下发用途"), { target: { value: "practice" } });
-    fireEvent.click(screen.getByRole("button", { name: "下发题库" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "下发题库" })[1]);
 
     await waitFor(() => {
       expect(api.assignQuestionBankVisibility).toHaveBeenCalledWith(1, {

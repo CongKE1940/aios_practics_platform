@@ -1,4 +1,5 @@
 import type { MenuItem } from "@aios/api-sdk";
+import { EmptyState } from "@aios/ui-web";
 
 interface MenuNavProps {
   menus: MenuItem[];
@@ -8,11 +9,14 @@ interface MenuNavProps {
 
 export function MenuNav({ menus, selectedPath, onSelect }: MenuNavProps) {
   if (menus.length === 0) {
-    return <p>当前账号暂无可用功能</p>;
+    return <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />;
   }
 
   return (
-    <nav aria-label="学习菜单">
+    <nav aria-label="学习菜单" className="ui-nav-tree">
+      <div className="ui-nav-tree__title">
+        <strong>学习导航</strong>
+      </div>
       <ul>
         {menus.map((menu) => (
           <MenuNode key={menu.id} menu={menu} selectedPath={selectedPath} onSelect={onSelect} />
@@ -38,13 +42,14 @@ function MenuNode({ menu, selectedPath, onSelect }: MenuNodeProps) {
       {hasPath ? (
         <button
           type="button"
+          className={["ui-nav-tree__item", selectedPath === nextSelectedPath ? "is-active" : ""].filter(Boolean).join(" ")}
           aria-pressed={selectedPath === nextSelectedPath}
           onClick={() => onSelect(nextSelectedPath)}
         >
           {menu.name}
         </button>
       ) : (
-        <span>{menu.name}</span>
+        <span className="ui-nav-tree__group">{menu.name}</span>
       )}
       {hasChildren ? (
         <ul>

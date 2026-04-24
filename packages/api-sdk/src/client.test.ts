@@ -525,6 +525,81 @@ describe("createApiClient", () => {
     );
   });
 
+  it("posts question comment and challenge bodies", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await expect(
+      client.createQuestionComment(1001, {
+        question_version_id: 3001,
+        content: "这题可以再补一个口算方法。",
+        comment_type: "discussion",
+        is_private: false,
+        parent_comment_id: null
+      })
+    ).resolves.toBe(true);
+
+    await expect(
+      client.createQuestionChallenge(1001, {
+        question_version_id: 3001,
+        challenge_type: "wrong_answer",
+        description: "答案应为 B。",
+        attachments: [{ url: "https://cdn.example.com/proof.png", type: "image" }]
+      })
+    ).resolves.toBe(true);
+
+    const [commentUrl, commentInit] = fetchMock.mock.calls[0];
+    expect(String(commentUrl)).toContain("/questions/1001/comments");
+    expect(commentInit?.method).toBe("POST");
+    expect(commentInit?.body).toBe(
+      JSON.stringify({
+        question_version_id: 3001,
+        content: "这题可以再补一个口算方法。",
+        comment_type: "discussion",
+        is_private: false,
+        parent_comment_id: null
+      })
+    );
+
+    const [challengeUrl, challengeInit] = fetchMock.mock.calls[1];
+    expect(String(challengeUrl)).toContain("/questions/1001/challenges");
+    expect(challengeInit?.method).toBe("POST");
+    expect(challengeInit?.body).toBe(
+      JSON.stringify({
+        question_version_id: 3001,
+        challenge_type: "wrong_answer",
+        description: "答案应为 B。",
+        attachments: [{ url: "https://cdn.example.com/proof.png", type: "image" }]
+      })
+    );
+  });
+
   it("requests notices with filters", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(

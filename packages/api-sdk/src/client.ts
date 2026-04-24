@@ -69,6 +69,8 @@ export interface ApiClient {
   updateQuestion(id: number, body: QuestionUpdateInput): Promise<Question>;
   listQuestionVersions(id: number): Promise<QuestionVersion[]>;
   createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
+  createQuestionComment(id: number, body: QuestionCommentInput): Promise<boolean>;
+  createQuestionChallenge(id: number, body: QuestionChallengeInput): Promise<boolean>;
   listNotices(query?: NoticeListQuery): Promise<PageResult<Notice>>;
   createNotice(body: NoticeInput): Promise<Notice>;
   getNotice(id: number): Promise<Notice>;
@@ -312,6 +314,26 @@ export interface QuestionVersion {
   is_published?: boolean;
   created_by: number;
   created_at?: string;
+}
+
+export interface QuestionCommentInput {
+  question_version_id: number;
+  content: string;
+  comment_type: string;
+  is_private?: boolean;
+  parent_comment_id?: number | null;
+}
+
+export interface QuestionChallengeAttachmentInput {
+  url: string;
+  type: string;
+}
+
+export interface QuestionChallengeInput {
+  question_version_id: number;
+  challenge_type: string;
+  description: string;
+  attachments?: QuestionChallengeAttachmentInput[];
 }
 
 export interface Notice {
@@ -1456,6 +1478,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     listQuestionVersions: (id) => request(fetcher, options, `/questions/${id}/versions`, { method: "GET" }),
     createQuestionVersion: (id, body) =>
       request(fetcher, options, `/questions/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
+    createQuestionComment: (id, body) =>
+      request(fetcher, options, `/questions/${id}/comments`, { method: "POST", body: JSON.stringify(body) }),
+    createQuestionChallenge: (id, body) =>
+      request(fetcher, options, `/questions/${id}/challenges`, { method: "POST", body: JSON.stringify(body) }),
     listNotices: (query) => request(fetcher, options, buildPath("/notices", query), { method: "GET" }),
     createNotice: (body) => request(fetcher, options, "/notices", { method: "POST", body: JSON.stringify(body) }),
     getNotice: (id) => request(fetcher, options, `/notices/${id}`, { method: "GET" }),

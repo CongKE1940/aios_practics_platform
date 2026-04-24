@@ -11,6 +11,8 @@ import type {
   UserQuestionStateListQuery
 } from "@aios/api-sdk";
 
+import { buildQuestionFeedbackPath } from "./question-feedback-page";
+
 export interface PracticePanelApi {
   createPracticeSession(body: PracticeSessionInput): Promise<PracticeSessionDetail>;
   getPracticeSession(id: number): Promise<PracticeSessionDetail>;
@@ -27,6 +29,7 @@ interface PracticePanelProps {
   initialSession?: PracticeSessionDetail | null;
   onInitialSessionConsumed?: () => void;
   onFinished?: (summary: PracticeSessionSummary) => void;
+  onNavigate?: (path: string) => void;
 }
 
 const defaultForm = {
@@ -39,7 +42,7 @@ const defaultForm = {
   excludeMastered: true
 };
 
-export function PracticePanel({ api, initialSession, onInitialSessionConsumed, onFinished }: PracticePanelProps) {
+export function PracticePanel({ api, initialSession, onInitialSessionConsumed, onFinished, onNavigate }: PracticePanelProps) {
   const [form, setForm] = useState(defaultForm);
   const [session, setSession] = useState<PracticeSessionDetail | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -157,6 +160,21 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setSelectedKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
   }
 
+  function handleQuestionFeedback() {
+    if (!currentQuestion) {
+      return;
+    }
+    onNavigate?.(
+      buildQuestionFeedbackPath({
+        question_id: currentQuestion.question_id,
+        question_version_id: currentQuestion.question_version_id,
+        question_type: currentQuestion.question_type,
+        stem: questionText(currentQuestion.content),
+        from: "/app/practice"
+      })
+    );
+  }
+
   return (
     <section aria-label="练题中心面板">
       <h2>练题中心</h2>
@@ -268,6 +286,9 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
           </button>
           <button type="button" onClick={() => void handleMarkConfused(!(questionState?.is_confused ?? false))}>
             {questionState?.is_confused ? "取消疑惑" : "标疑惑"}
+          </button>
+          <button type="button" onClick={handleQuestionFeedback}>
+            评论与质疑
           </button>
           <button type="button" onClick={() => void handleNext()}>
             下一题
