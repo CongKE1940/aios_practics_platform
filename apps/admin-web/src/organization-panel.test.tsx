@@ -126,9 +126,10 @@ describe("OrganizationPanel", () => {
       expect(listSchools).toHaveBeenCalledTimes(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "新增学校" }));
     fireEvent.change(screen.getByLabelText("学校编码"), { target: { value: "school_001" } });
     fireEvent.change(screen.getByLabelText("学校名称"), { target: { value: "第一中学" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增学校" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增学校" })[1]);
 
     await waitFor(() => {
       expect(createSchool).toHaveBeenCalledWith({ code: "school_001", name: "第一中学" });

@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import type { PageResult, PermissionItem, RoleInput, RoleItem } from "@aios/api-sdk";
 
+import { downloadCsv, paginateItems, toggleSelectAll, toggleSelection } from "./list-page-utils";
+
 export interface RbacPanelApi {
   listRoles(): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
   assignRolePermissions(id: number, body: { permission_ids: number[] }): Promise<RoleItem>;
   listPermissions(): Promise<PageResult<PermissionItem>>;
 }
+
+const pageSize = 8;
 
 const defaultForm: RoleInput = {
   code: "",
@@ -17,15 +21,24 @@ const defaultForm: RoleInput = {
   remark: ""
 };
 
+type ModalState =
+  | { type: "create" }
+  | { type: "detail"; role: RoleItem }
+  | null;
+
 export function RbacPanel({ api }: { api: RbacPanelApi }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [form, setForm] = useState<RoleInput>(defaultForm);
+  const [keyword, setKeyword] = useState("");
+  const [page, setPage] = useState(1);
+  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
   const [selectedRoleID, setSelectedRoleID] = useState<number | null>(null);
   const [selectedModule, setSelectedModule] = useState("");
   const [selectedPermissionIDs, setSelectedPermissionIDs] = useState<number[]>([]);
+  const [modal, setModal] = useState<ModalState>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -44,6 +57,11 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
   useEffect(() => {
     void loadAll();
   }, [api]);
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedIDs([]);
+  }, [keyword]);
 
   useEffect(() => {
     if (!selectedRoleID && roles.length > 0) {
@@ -76,15 +94,36 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
     return Array.from(map.entries());
   }, [permissions]);
 
+  const filteredRoles = useMemo(
+    () =>
+      roles.filter((role) =>
+        [role.name, role.code, formatPermissionNames(role.permission_ids ?? [], permissions)]
+          .join(" ")
+          .toLowerCase()
+          .includes(keyword.trim().toLowerCase())
+      ),
+    [keyword, permissions, roles]
+  );
+
+  const pagination = useMemo(() => paginateItems(filteredRoles, page, pageSize), [filteredRoles, page]);
+  const currentPageIDs = useMemo(() => pagination.items.map((item) => item.id), [pagination.items]);
+
+  useEffect(() => {
+    if (page !== pagination.page) {
+      setPage(pagination.page);
+    }
+  }, [page, pagination.page]);
+
   const modulePermissions = useMemo(
     () => permissions.filter((permission) => permission.module === selectedModule),
     [permissions, selectedModule]
   );
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await api.createRole(form);
     setForm(defaultForm);
+    setModal(null);
     await loadAll();
   }
 
@@ -99,6 +138,23 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
     );
   }
 
+  function handleExport() {
+    downloadCsv(
+      "roles.csv",
+      [
+        { key: "name", title: "角色名称" },
+        { key: "code", title: "角色编码" },
+        { key: "role_type", title: "角色类型" },
+        { key: "data_scope_type", title: "数据范围" },
+        { key: "permission_summary", title: "权限摘要" }
+      ],
+      filteredRoles.map((role) => ({
+        ...role,
+        permission_summary: formatPermissionNames(role.permission_ids ?? [], permissions)
+      }))
+    );
+  }
+
   return (
     <section aria-label="角色权限面板" className="ui-admin-page">
       <section className="ui-admin-page__hero">
@@ -106,7 +162,6 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
           <div>
             <span className="ui-admin-page__eyebrow">角色权限</span>
             <h2>角色权限</h2>
-            <p>原型中的“菜单与权限管理”在本轮映射为角色、模块、权限三栏协作，不引入新的错误路由。</p>
           </div>
         </div>
       </section>
@@ -115,157 +170,274 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
       {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
 
       {!loading ? (
-        <div className="ui-admin-layout--triple ui-admin-layout">
-          <aside className="ui-admin-tree-card">
-            <div className="ui-admin-tree-card__header">
+        <>
+          <section className="ui-admin-filters ui-admin-card">
+            <div className="ui-admin-filters__grid">
+              <div className="ui-admin-form__field">
+                <label htmlFor="role_keyword">搜索角色</label>
+                <input
+                  id="role_keyword"
+                  placeholder="输入角色名称或编码"
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="ui-admin-actions-bar ui-admin-card">
+            <div className="ui-admin-actions-bar__group">
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setModal({ type: "create" })}>
+                新增角色
+              </button>
+              <button type="button" className="ui-button ui-button--ghost" disabled>
+                批量删除
+              </button>
+              <button type="button" className="ui-button ui-button--ghost" onClick={handleExport}>
+                导出列表
+              </button>
+            </div>
+            <div className="ui-admin-pagination__info">{`已选 ${selectedIDs.length} 项`}</div>
+          </section>
+
+          <section className="ui-admin-table-card">
+            <div className="ui-admin-table-card__header">
               <div>
-                <h3>模块列表</h3>
-                <p>按权限模块聚合当前可授权能力。</p>
+                <h3>角色列表</h3>
               </div>
             </div>
-            <div className="ui-admin-tree">
-              {groupedModules.map(([module, items]) => (
-                <div
-                  key={module}
-                  className={["ui-admin-tree__leaf", selectedModule === module ? "is-active" : ""]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <strong>{formatModuleName(module)}</strong>
-                  <span className="ui-admin-subtle">{items.length} 个权限点</span>
-                  <button type="button" className="ui-admin-link" onClick={() => setSelectedModule(module)}>
-                    查看
-                  </button>
-                </div>
-              ))}
-            </div>
-          </aside>
-
-          <div className="ui-admin-main">
-            <section className="ui-admin-table-card">
-              <div className="ui-admin-table-card__header">
-                <div>
-                  <h3>权限列表</h3>
-                  <p>当前模块：{formatModuleName(selectedModule)}</p>
-                </div>
-              </div>
-              <table className="ui-admin-table">
-                <thead>
-                  <tr>
-                    <th>勾选</th>
-                    <th>权限名称</th>
-                    <th>权限标识</th>
-                    <th>资源类型</th>
+            <table className="ui-admin-table">
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      className="ui-admin-table__checkbox"
+                      aria-label="全选角色"
+                      checked={currentPageIDs.length > 0 && currentPageIDs.every((id) => selectedIDs.includes(id))}
+                      onChange={() => setSelectedIDs((current) => toggleSelectAll(current, currentPageIDs))}
+                    />
+                  </th>
+                  <th>角色名称</th>
+                  <th>角色编码</th>
+                  <th>角色类型</th>
+                  <th>权限数</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagination.items.map((role) => (
+                  <tr key={role.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="ui-admin-table__checkbox"
+                        aria-label={`选择角色-${role.id}`}
+                        checked={selectedIDs.includes(role.id)}
+                        onChange={() => setSelectedIDs((current) => toggleSelection(current, role.id))}
+                      />
+                    </td>
+                    <td>{role.name}</td>
+                    <td>{role.code}</td>
+                    <td>{role.role_type}</td>
+                    <td>{role.permission_ids?.length ?? 0}</td>
+                    <td>
+                      <div className="ui-admin-table__actions">
+                        <button
+                          type="button"
+                          className="ui-admin-link"
+                          onClick={() => {
+                            setSelectedRoleID(role.id);
+                            setModal({ type: "detail", role });
+                          }}
+                        >
+                          详情
+                        </button>
+                        <button
+                          type="button"
+                          className="ui-admin-link"
+                          onClick={() => {
+                            setSelectedRoleID(role.id);
+                            setModal({ type: "detail", role });
+                          }}
+                        >
+                          编辑
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {modulePermissions.map((permission) => (
-                    <tr key={permission.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`权限-${permission.id}`}
-                          checked={selectedPermissionIDs.includes(permission.id)}
-                          onChange={() => togglePermission(permission.id)}
-                        />
-                      </td>
-                      <td>{permission.name}</td>
-                      <td>{permission.code}</td>
-                      <td>{permission.resource_type}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          </div>
-
-          <aside className="ui-admin-side-card">
-            <section className="ui-admin-card">
-              <div className="ui-admin-card__header">
-                <div>
-                  <h3>新增角色</h3>
-                  <p>保留现有接口，只录入核心字段。</p>
-                </div>
+                ))}
+              </tbody>
+            </table>
+            <div className="ui-admin-table__footer">
+              <div className="ui-admin-pagination__info">{`共 ${pagination.total} 条，当前第 ${pagination.page} / ${pagination.pageCount} 页`}</div>
+              <div className="ui-admin-pagination">
+                <button
+                  type="button"
+                  className="ui-button ui-button--ghost"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={pagination.page <= 1}
+                >
+                  上一页
+                </button>
+                <button
+                  type="button"
+                  className="ui-button ui-button--ghost"
+                  onClick={() => setPage((current) => Math.min(pagination.pageCount, current + 1))}
+                  disabled={pagination.page >= pagination.pageCount}
+                >
+                  下一页
+                </button>
               </div>
-              <form className="ui-admin-form__grid" onSubmit={(event) => void handleSubmit(event)}>
-                <div className="ui-admin-form__field">
-                  <label htmlFor="role_code">角色编码</label>
-                  <input
-                    id="role_code"
-                    value={form.code}
-                    onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-                  />
-                </div>
-                <div className="ui-admin-form__field">
-                  <label htmlFor="role_name">角色名称</label>
-                  <input
-                    id="role_name"
-                    value={form.name}
-                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                  />
-                </div>
-                <div className="ui-admin-form__actions" style={{ gridColumn: "1 / -1" }}>
-                  <button type="submit" className="ui-button ui-button--primary">
-                    新增角色
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {modal ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="角色权限弹层">
+            {modal.type === "create" ? (
+              <>
+                <div className="ui-admin-modal__header">
+                  <div>
+                    <h3>新增角色</h3>
+                  </div>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={() => setModal(null)}>
+                    关闭
                   </button>
                 </div>
-              </form>
-            </section>
-
-            <section className="ui-admin-card">
-              <div className="ui-admin-card__header">
-                <div>
-                  <h3>角色授权</h3>
-                  <p>先选择角色，再保存当前勾选权限。</p>
-                </div>
-              </div>
-              <div className="ui-admin-list-card">
-                {roles.map((role) => (
-                  <div
-                    key={role.id}
-                    className={["ui-admin-role-card", selectedRole?.id === role.id ? "is-active" : ""]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    <strong>{role.name}</strong>
-                    <span className="ui-admin-subtle">{role.code}</span>
-                    <div className="ui-admin-chip-list">
-                      {(role.permission_ids ?? []).slice(0, 3).map((permissionID) => (
-                        <span key={permissionID} className="ui-admin-chip">
-                          {permissions.find((item) => item.id === permissionID)?.name ?? `权限-${permissionID}`}
-                        </span>
-                      ))}
+                <form onSubmit={(event) => void handleCreateRole(event)}>
+                  <div className="ui-admin-modal__body">
+                    <div className="ui-admin-form__grid">
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="role_code">角色编码</label>
+                        <input
+                          id="role_code"
+                          value={form.code}
+                          onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="role_name">角色名称</label>
+                        <input
+                          id="role_name"
+                          value={form.name}
+                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                        />
+                      </div>
                     </div>
-                    <button type="button" className="ui-admin-link" onClick={() => setSelectedRoleID(role.id)}>
-                      选择角色
+                  </div>
+                  <div className="ui-admin-modal__footer">
+                    <button type="button" className="ui-button ui-button--ghost" onClick={() => setModal(null)}>
+                      取消
+                    </button>
+                    <button type="submit" className="ui-button ui-button--primary">
+                      新增角色
                     </button>
                   </div>
-                ))}
-              </div>
-              {selectedRole ? (
-                <div className="ui-admin-side-card__actions">
+                </form>
+              </>
+            ) : (
+              <>
+                <div className="ui-admin-modal__header">
+                  <div>
+                    <h3>角色详情</h3>
+                    <p>{modal.role.name}</p>
+                  </div>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={() => setModal(null)}>
+                    关闭
+                  </button>
+                </div>
+                <div className="ui-admin-modal__body">
+                  <dl className="ui-admin-meta-list">
+                    <div>
+                      <dt>角色编码</dt>
+                      <dd>{modal.role.code}</dd>
+                    </div>
+                    <div>
+                      <dt>角色类型</dt>
+                      <dd>{modal.role.role_type}</dd>
+                    </div>
+                    <div>
+                      <dt>数据范围</dt>
+                      <dd>{modal.role.data_scope_type}</dd>
+                    </div>
+                    <div>
+                      <dt>权限摘要</dt>
+                      <dd>{formatPermissionNames(modal.role.permission_ids ?? [], permissions) || "-"}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="ui-admin-form__field">
+                    <label htmlFor="permission_module">权限模块</label>
+                    <select id="permission_module" value={selectedModule} onChange={(event) => setSelectedModule(event.target.value)}>
+                      {groupedModules.map(([module]) => (
+                        <option key={module} value={module}>
+                          {formatModuleName(module)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <table className="ui-admin-table">
+                    <thead>
+                      <tr>
+                        <th>勾选</th>
+                        <th>权限名称</th>
+                        <th>权限标识</th>
+                        <th>资源类型</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modulePermissions.map((permission) => (
+                        <tr key={permission.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              className="ui-admin-table__checkbox"
+                              aria-label={`权限-${permission.id}`}
+                              checked={selectedPermissionIDs.includes(permission.id)}
+                              onChange={() => togglePermission(permission.id)}
+                            />
+                          </td>
+                          <td>{permission.name}</td>
+                          <td>{permission.code}</td>
+                          <td>{permission.resource_type}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="ui-admin-modal__footer">
                   <button
                     type="button"
                     className="ui-button ui-button--ghost"
-                    onClick={() => void handleAssignRolePermissions(selectedRole.id, permissions.map((item) => item.id))}
+                    onClick={() => void handleAssignRolePermissions(modal.role.id, permissions.map((item) => item.id))}
                   >
-                    {`授予全部权限-${selectedRole.id}`}
+                    {`授予全部权限-${modal.role.id}`}
                   </button>
                   <button
                     type="button"
                     className="ui-button ui-button--primary"
-                    onClick={() => void handleAssignRolePermissions(selectedRole.id, selectedPermissionIDs)}
+                    onClick={() => void handleAssignRolePermissions(modal.role.id, selectedPermissionIDs)}
                   >
                     保存授权
                   </button>
                 </div>
-              ) : null}
-            </section>
-          </aside>
+              </>
+            )}
+          </section>
         </div>
       ) : null}
     </section>
   );
+}
+
+function formatPermissionNames(permissionIDs: number[], permissions: PermissionItem[]): string {
+  return permissionIDs
+    .map((permissionID) => permissions.find((item) => item.id === permissionID)?.name ?? `权限-${permissionID}`)
+    .join("、");
 }
 
 function formatModuleName(module: string): string {

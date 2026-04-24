@@ -97,6 +97,7 @@ describe("QuestionPanel", () => {
     });
     expect(screen.getAllByText("single_choice").length).toBeGreaterThan(0);
 
+    fireEvent.click(screen.getByRole("button", { name: "新增题目" }));
     fireEvent.change(screen.getByLabelText("题型"), { target: { value: "single_choice" } });
     fireEvent.change(screen.getByLabelText("难度"), { target: { value: "medium" } });
     fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1" } });
@@ -104,13 +105,13 @@ describe("QuestionPanel", () => {
     fireEvent.change(screen.getByLabelText("选项A"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("选项B"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("正确答案"), { target: { value: "B" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增题目" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增题目" })[1]);
 
     await waitFor(() => {
       expect(api.createQuestion).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "查看版本" }));
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
 
     await waitFor(() => {
       expect(screen.getByText("版本 1")).toBeTruthy();

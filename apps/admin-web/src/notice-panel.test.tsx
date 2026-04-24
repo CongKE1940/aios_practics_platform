@@ -127,10 +127,11 @@ describe("NoticePanel", () => {
       expect(listNotices).toHaveBeenCalledTimes(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "新增公告" }));
     fireEvent.change(screen.getByLabelText("公告标题"), { target: { value: "系统维护通知" } });
     fireEvent.change(screen.getByLabelText("公告内容"), { target: { value: "周五晚维护" } });
     fireEvent.change(screen.getByLabelText("发布时间"), { target: { value: "2026-04-22T09:00" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增公告" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增公告" })[1]);
 
     await waitFor(() => {
       expect(createNotice).toHaveBeenCalledTimes(1);

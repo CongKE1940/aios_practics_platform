@@ -62,10 +62,11 @@ describe("QuestionBankPanel", () => {
     });
     expect(screen.getAllByText("高一数学基础题库").length).toBeGreaterThan(0);
 
+    fireEvent.click(screen.getByRole("button", { name: "新增题库" }));
     fireEvent.change(screen.getByLabelText("题库名称"), { target: { value: "高一数学提升题库" } });
     fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText("题库说明"), { target: { value: "函数与导数" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增题库" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增题库" })[1]);
 
     await waitFor(() => {
       expect(api.createQuestionBank).toHaveBeenCalledWith({
@@ -75,6 +76,7 @@ describe("QuestionBankPanel", () => {
       });
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
     fireEvent.click(screen.getByRole("button", { name: "发布题库" }));
 
     await waitFor(() => {
@@ -84,7 +86,7 @@ describe("QuestionBankPanel", () => {
     fireEvent.change(screen.getByLabelText("下发目标类型"), { target: { value: "class" } });
     fireEvent.change(screen.getByLabelText("下发目标ID"), { target: { value: "301" } });
     fireEvent.change(screen.getByLabelText("下发用途"), { target: { value: "practice" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "下发题库" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "下发题库" }));
 
     await waitFor(() => {
       expect(api.assignQuestionBankVisibility).toHaveBeenCalledWith(1, {
