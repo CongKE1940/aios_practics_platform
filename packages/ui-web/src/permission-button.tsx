@@ -14,6 +14,7 @@ export function PermissionButton({
   fallback = null,
   children,
   type = "button",
+  className,
   ...buttonProps
 }: PermissionButtonProps) {
   if (!canAccess(permissions, requiredPermissions)) {
@@ -21,7 +22,7 @@ export function PermissionButton({
   }
 
   return (
-    <button type={type} {...buttonProps}>
+    <button type={type} className={["ui-button", className].filter(Boolean).join(" ")} {...buttonProps}>
       {children}
     </button>
   );
