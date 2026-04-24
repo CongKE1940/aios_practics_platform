@@ -34,6 +34,7 @@ vendor/
 # IDE 与系统文件
 .idea/
 .vscode/
+.superpowers/
 *.swp
 Thumbs.db
 Desktop.ini
