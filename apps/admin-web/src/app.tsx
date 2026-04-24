@@ -7,7 +7,7 @@ import {
   type LoginResponse,
   type MenuItem
 } from "@aios/api-sdk";
-import { PermissionButton } from "@aios/ui-web";
+import { AppShell, EmptyState, PageSection, PermissionButton, StatusNotice } from "@aios/ui-web";
 
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
@@ -278,120 +278,291 @@ export function AdminApp({
 
   if (!session) {
     return (
-      <main>
-        <h1>AIOS 管理端</h1>
-        <form onSubmit={handleSubmit} aria-label="登录表单">
-          <div>
-            <label htmlFor="tenant_code">组织</label>
-            <select
-              id="tenant_code"
-              name="tenant_code"
-              value={form.tenant_code}
-              onChange={(event) => setForm((current) => ({ ...current, tenant_code: event.target.value }))}
-              disabled={organizationsLoading}
+      <main className="ui-auth-page">
+        <section className="ui-auth-hero">
+          <p className="ui-auth-eyebrow">AIOS Practice Platform</p>
+          <h1>AIOS 管理端</h1>
+          <p>统一管理组织、题库、权限、导入与平台数据。</p>
+        </section>
+        <section className="ui-auth-card">
+          <form onSubmit={handleSubmit} aria-label="登录表单" className="ui-auth-form">
+            <header className="ui-auth-form__header">
+              <p className="ui-auth-eyebrow">平台管理入口</p>
+              <h2>登录后台工作台</h2>
+              <p>选择组织后进入管理端，继续处理组织、题库与平台运营。</p>
+            </header>
+            <div className="ui-field">
+              <label htmlFor="tenant_code">组织</label>
+              <select
+                id="tenant_code"
+                name="tenant_code"
+                value={form.tenant_code}
+                onChange={(event) => setForm((current) => ({ ...current, tenant_code: event.target.value }))}
+                disabled={organizationsLoading}
+              >
+                <option value="">{organizationsLoading ? "组织加载中..." : "请选择组织"}</option>
+                {organizations.map((organization) => (
+                  <option key={organization.tenant_code} value={organization.tenant_code}>
+                    {formatOrganizationLabel(organization)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {organizationsError ? (
+              <StatusNotice tone="warning" title="组织列表加载失败" description={organizationsError} />
+            ) : null}
+            <div className="ui-field">
+              <label htmlFor="username">用户名</label>
+              <input
+                id="username"
+                name="username"
+                value={form.username}
+                onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+              />
+            </div>
+            <div className="ui-field">
+              <label htmlFor="password">密码</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={form.password}
+                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+              />
+            </div>
+            {errorMessage ? <StatusNotice tone="danger" title="登录失败" description={errorMessage} /> : null}
+            <button
+              type="submit"
+              className="ui-button ui-button--primary"
+              disabled={submitting || organizationsLoading || !form.tenant_code}
             >
-              <option value="">{organizationsLoading ? "组织加载中..." : "请选择组织"}</option>
-              {organizations.map((organization) => (
-                <option key={organization.tenant_code} value={organization.tenant_code}>
-                  {formatOrganizationLabel(organization)}
-                </option>
-              ))}
-            </select>
-          </div>
-          {organizationsError ? <p>{organizationsError}</p> : null}
-          <div>
-            <label htmlFor="username">用户名</label>
-            <input
-              id="username"
-              name="username"
-              value={form.username}
-              onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
-            />
-          </div>
-          <div>
-            <label htmlFor="password">密码</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            />
-          </div>
-          {errorMessage ? <p>{errorMessage}</p> : null}
-          <button type="submit" disabled={submitting || organizationsLoading || !form.tenant_code}>
-            登录
-          </button>
-        </form>
+              {submitting ? "登录中..." : "登录"}
+            </button>
+          </form>
+        </section>
       </main>
     );
   }
 
+  const currentView = renderAdminView({
+    selectedPath,
+    organizationApi,
+    currentUserApi,
+    currentRbacApi,
+    currentNoticeApi,
+    currentQuestionBankApi,
+    currentQuestionApi,
+    currentImportApi,
+    currentAnalyticsApi,
+    currentHistoryApi
+  });
+
   return (
-    <main>
-      <h1>AIOS 管理端</h1>
-      <section aria-label="当前用户">
-        <h2>{session.user.display_name}</h2>
-        <p>{session.user.user_type}</p>
-        <button type="button" onClick={handleLogout}>
-          退出登录
-        </button>
-      </section>
-      <section aria-label="阶段 1">
-        <h2>基础平台能力</h2>
-        <PermissionButton
-          permissions={session.user.permissions ?? []}
-          requiredPermissions={["notice:manage"]}
+    <AppShell
+      brand={
+        <div className="ui-brand-block">
+          <strong>AIOS 管理端</strong>
+          <span>现代教育工作台</span>
+        </div>
+      }
+      sidebar={
+        <nav aria-label="管理菜单" className="ui-nav-tree">
+          <div className="ui-nav-tree__title">
+            <strong>管理导航</strong>
+            <span>进入组织、题库、权限与平台数据模块</span>
+          </div>
+          <ul>
+            {session.menus.map((menu) => (
+              <AdminMenuNode key={menu.id} menu={menu} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            ))}
+          </ul>
+        </nav>
+      }
+      header={
+        <section className="ui-user-chip" aria-label="当前用户">
+          <div>
+            <p>欢迎回来，{session.user.display_name}</p>
+            <strong>{getUserTypeLabel(session.user.user_type)}</strong>
+          </div>
+          <button type="button" className="ui-button ui-button--ghost" onClick={handleLogout}>
+            退出登录
+          </button>
+        </section>
+      }
+    >
+      <div className="ui-stack ui-stack--lg">
+        <PageSection title="基础平台能力" description="当前以统一后台壳承载现有业务模块。">
+          <PermissionButton
+            className="ui-button ui-button--primary"
+            permissions={session.user.permissions ?? []}
+            requiredPermissions={["notice:manage"]}
+          >
+            新增公告
+          </PermissionButton>
+        </PageSection>
+        <PageSection
+          title={selectedPath ? "模块工作区" : "当前视图"}
+          description="从左侧选择功能后在这里展开。"
+          actions={
+            selectedPath ? (
+              <span className="ui-status-chip ui-status-chip--info">当前模块：{resolveAdminPageTitle(selectedPath)}</span>
+            ) : null
+          }
         >
-          新增公告
-        </PermissionButton>
-      </section>
-      <nav aria-label="管理菜单">
+          {isKnownAdminPath(selectedPath) ? (
+            currentView
+          ) : (
+            <EmptyState title="请选择左侧功能入口。" description="已登录后可在左侧继续进入具体模块。" />
+          )}
+        </PageSection>
+      </div>
+    </AppShell>
+  );
+}
+
+interface RenderAdminViewArgs {
+  selectedPath: string;
+  organizationApi?: OrganizationApi;
+  currentUserApi?: UserPanelApi;
+  currentRbacApi?: RbacPanelApi;
+  currentNoticeApi?: NoticeApi;
+  currentQuestionBankApi?: QuestionBankPanelApi;
+  currentQuestionApi?: QuestionPanelApi;
+  currentImportApi?: ImportPanelApi;
+  currentAnalyticsApi?: AnalyticsPanelApi;
+  currentHistoryApi?: HistoryPanelApi;
+}
+
+function renderAdminView({
+  selectedPath,
+  organizationApi,
+  currentUserApi,
+  currentRbacApi,
+  currentNoticeApi,
+  currentQuestionBankApi,
+  currentQuestionApi,
+  currentImportApi,
+  currentAnalyticsApi,
+  currentHistoryApi
+}: RenderAdminViewArgs) {
+  return (
+    <>
+      {selectedPath === "/admin/org" && organizationApi ? <OrganizationPanel api={organizationApi} /> : null}
+      {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
+      {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
+      {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
+      {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
+        <QuestionBankPanel api={currentQuestionBankApi} />
+      ) : null}
+      {selectedPath === "/admin/questions" && currentQuestionApi ? <QuestionPanel api={currentQuestionApi} /> : null}
+      {selectedPath === "/admin/imports" && currentImportApi ? <ImportPanel api={currentImportApi} /> : null}
+      {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
+      {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
+    </>
+  );
+}
+
+interface AdminMenuNodeProps {
+  menu: MenuItem;
+  selectedPath: string;
+  onSelect(path: string): void;
+}
+
+function AdminMenuNode({ menu, selectedPath, onSelect }: AdminMenuNodeProps) {
+  const nextPath = getFirstMenuPath(menu);
+  const hasChildren = menu.children.length > 0;
+  const isSelected = nextPath !== "" && selectedPath === nextPath;
+
+  return (
+    <li>
+      {nextPath ? (
+        <button
+          type="button"
+          className={["ui-nav-tree__item", isSelected ? "is-active" : ""].filter(Boolean).join(" ")}
+          aria-pressed={isSelected}
+          onClick={() => onSelect(nextPath)}
+        >
+          {menu.name}
+        </button>
+      ) : (
+        <span className="ui-nav-tree__group">{menu.name}</span>
+      )}
+      {hasChildren ? (
         <ul>
-          {session.menus.map((menu) => (
-            <li key={menu.id}>
-              <span>{menu.name}</span>
-              {menu.children.length > 0 ? (
-                <ul>
-                  {menu.children.map((child) => (
-                    <li key={child.id}>
-                      <button type="button" onClick={() => setSelectedPath(child.path)}>
-                        {child.name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </li>
+          {menu.children.map((child) => (
+            <AdminMenuNode key={child.id} menu={child} selectedPath={selectedPath} onSelect={onSelect} />
           ))}
         </ul>
-      </nav>
-      <section aria-label="当前视图">
-        {selectedPath === "/admin/org" && organizationApi ? <OrganizationPanel api={organizationApi} /> : null}
-        {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
-        {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
-        {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
-        {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
-          <QuestionBankPanel api={currentQuestionBankApi} />
-        ) : null}
-        {selectedPath === "/admin/questions" && currentQuestionApi ? <QuestionPanel api={currentQuestionApi} /> : null}
-        {selectedPath === "/admin/imports" && currentImportApi ? <ImportPanel api={currentImportApi} /> : null}
-        {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
-        {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
-        {selectedPath !== "/admin/org" &&
-        selectedPath !== "/admin/users" &&
-        selectedPath !== "/admin/roles" &&
-        selectedPath !== "/admin/notices" &&
-        selectedPath !== "/admin/question-banks" &&
-        selectedPath !== "/admin/questions" &&
-        selectedPath !== "/admin/imports" &&
-        selectedPath !== "/admin/analytics" &&
-        selectedPath !== "/admin/history" ? (
-          <p>请选择左侧功能入口。</p>
-        ) : null}
-      </section>
-    </main>
+      ) : null}
+    </li>
   );
+}
+
+function getFirstMenuPath(menu: MenuItem): string {
+  if (menu.children.length > 0) {
+    for (const child of menu.children) {
+      const childPath = getFirstMenuPath(child);
+      if (childPath) {
+        return childPath;
+      }
+    }
+  }
+
+  return typeof menu.path === "string" ? menu.path : "";
+}
+
+function resolveAdminPageTitle(selectedPath: string): string {
+  switch (selectedPath) {
+    case "/admin/org":
+      return "组织管理";
+    case "/admin/users":
+      return "用户管理";
+    case "/admin/roles":
+      return "角色权限";
+    case "/admin/notices":
+      return "公告通知";
+    case "/admin/question-banks":
+      return "题库管理";
+    case "/admin/questions":
+      return "题目管理";
+    case "/admin/imports":
+      return "导入中心";
+    case "/admin/analytics":
+      return "数据看板";
+    case "/admin/history":
+      return "快照历史";
+    default:
+      return "当前视图";
+  }
+}
+
+function isKnownAdminPath(selectedPath: string): boolean {
+  return [
+    "/admin/org",
+    "/admin/users",
+    "/admin/roles",
+    "/admin/notices",
+    "/admin/question-banks",
+    "/admin/questions",
+    "/admin/imports",
+    "/admin/analytics",
+    "/admin/history"
+  ].includes(selectedPath);
+}
+
+function getUserTypeLabel(userType: LoginResponse["user"]["user_type"]): string {
+  switch (userType) {
+    case "sys_admin":
+      return "系统管理员";
+    case "school_admin":
+      return "学校管理员";
+    case "teacher":
+      return "教师";
+    case "student":
+      return "学生";
+    default:
+      return userType;
+  }
 }
 
 function formatOrganizationLabel(organization: LoginOrganization): string {

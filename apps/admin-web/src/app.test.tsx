@@ -24,6 +24,7 @@ describe("AdminApp", () => {
     );
 
     expect(screen.getByRole("heading", { name: "AIOS 管理端" })).toBeTruthy();
+    expect(screen.getByText("统一管理组织、题库、权限、导入与平台数据。")).toBeTruthy();
     expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
     expect(screen.getByLabelText("密码")).toBeTruthy();
@@ -79,9 +80,12 @@ describe("AdminApp", () => {
     });
     expect(sessionStore.savedSession?.user.display_name).toBe("系统管理员");
     expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+    expect(screen.getByText("欢迎回来，系统管理员")).toBeTruthy();
+    expect(screen.getByLabelText("管理菜单")).toBeTruthy();
     expect(screen.getByRole("button", { name: "新增公告" })).toBeTruthy();
     expect(screen.getByText("组织管理")).toBeTruthy();
     expect(screen.getByText("公告通知")).toBeTruthy();
+    expect(screen.getByText("请选择左侧功能入口。")).toBeTruthy();
   });
 
   it("returns to login form after logout", async () => {
