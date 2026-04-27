@@ -5,6 +5,7 @@ export interface AppShellProps {
   sidebar: ReactNode;
   header: ReactNode;
   children: ReactNode;
+  sidebarCollapsed?: boolean;
 }
 
 export interface PageSectionProps {
@@ -25,9 +26,9 @@ export interface EmptyStateProps {
   description?: string;
 }
 
-export function AppShell({ brand, sidebar, header, children }: AppShellProps) {
+export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = false }: AppShellProps) {
   return (
-    <div className="ui-shell">
+    <div className={["ui-shell", sidebarCollapsed ? "is-sidebar-collapsed" : ""].filter(Boolean).join(" ")}>
       <aside className="ui-shell__sidebar">
         <div className="ui-shell__brand">{brand}</div>
         <div className="ui-shell__nav">{sidebar}</div>
