@@ -1,0 +1,376 @@
+/* Final page normalization loaded last for admin-web and user-web.
+   It fixes every route that still renders raw section/form/list markup by giving it the same card, spacing, and scroll behavior as the admin pages. */
+.ui-app-frame::before,
+.ui-auth-page::before {
+  display: none !important;
+}
+
+.ui-shell__content {
+  display: block !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.ui-admin-route,
+.ui-user-route {
+  box-sizing: border-box !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+  padding: 0 4px 8px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.ui-admin-route > .ui-admin-page,
+.ui-user-route > .ui-admin-page,
+.ui-user-route > .ui-user-page,
+.ui-user-route > .ui-workbench,
+.ui-user-route > .ui-page-section,
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section),
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 100% !important;
+}
+
+.ui-admin-page,
+.ui-user-page,
+.ui-workbench,
+.ui-page-section,
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section),
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  align-self: stretch !important;
+}
+
+/* Raw top-level user/admin pages, e.g. class learning, practice review, student exam, teacher exam. */
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section),
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) {
+  position: relative !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > h2:first-child,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > h2:first-child {
+  margin: 0 !important;
+  padding: 22px !important;
+  border: 1px solid rgba(24, 35, 50, 0.12) !important;
+  border-radius: 24px !important;
+  background: rgba(255, 252, 245, 0.9) !important;
+  box-shadow: var(--ui-shadow-card) !important;
+  backdrop-filter: blur(18px) !important;
+  color: var(--ui-color-ink) !important;
+  font-size: 28px !important;
+  letter-spacing: -0.04em !important;
+}
+
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > button:first-child,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > button:first-child {
+  align-self: flex-start !important;
+}
+
+/* Cardize direct content blocks of raw pages. */
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form,
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > section,
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > ul,
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > nav,
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > div:not(.ui-status),
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > section,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > ul,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > nav,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > div:not(.ui-status),
+.ui-user-card,
+.ui-page-header {
+  box-sizing: border-box !important;
+  border: 1px solid rgba(24, 35, 50, 0.12) !important;
+  border-radius: 24px !important;
+  background: rgba(255, 252, 245, 0.9) !important;
+  box-shadow: var(--ui-shadow-card) !important;
+  backdrop-filter: blur(18px) !important;
+  padding: 22px !important;
+}
+
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) !important;
+  gap: 14px !important;
+  align-items: end !important;
+}
+
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > label,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > label {
+  display: grid !important;
+  gap: 8px !important;
+  color: #4f6998 !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+/* Pair bare labels with following inputs/selects in raw forms by making the label full-width in the grid. */
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > label:not(:has(input)),
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > label:not(:has(input)) {
+  margin-bottom: -8px !important;
+}
+
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > fieldset,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > fieldset {
+  grid-column: 1 / -1 !important;
+  min-width: 0 !important;
+  border: 1px solid rgba(24, 35, 50, 0.1) !important;
+  border-radius: 18px !important;
+  background: rgba(255, 252, 246, 0.62) !important;
+  padding: 16px !important;
+}
+
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > button,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form > button {
+  justify-self: start !important;
+}
+
+/* Nested raw sections and lists become lighter inner cards. */
+.ui-user-route section[aria-label] section[aria-label],
+.ui-admin-route section[aria-label] section[aria-label],
+.ui-user-route section[aria-label] li,
+.ui-admin-route section[aria-label] li,
+.ui-user-route section[aria-label] nav,
+.ui-admin-route section[aria-label] nav {
+  border: 1px solid rgba(24, 35, 50, 0.1) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 252, 246, 0.62) !important;
+  padding: 14px !important;
+}
+
+.ui-user-route section[aria-label] ul,
+.ui-admin-route section[aria-label] ul,
+.ui-activity-list,
+.ui-attachment-list {
+  display: grid !important;
+  gap: 10px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  list-style: none !important;
+}
+
+.ui-user-route section[aria-label] h3,
+.ui-user-route section[aria-label] h4,
+.ui-user-route section[aria-label] h5,
+.ui-admin-route section[aria-label] h3,
+.ui-admin-route section[aria-label] h4,
+.ui-admin-route section[aria-label] h5 {
+  margin: 0 0 10px !important;
+  color: var(--ui-color-ink) !important;
+}
+
+.ui-user-route section[aria-label] p,
+.ui-admin-route section[aria-label] p {
+  margin: 0 0 8px !important;
+}
+
+.ui-user-route section[aria-label] p:last-child,
+.ui-admin-route section[aria-label] p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Stretch sparse pages to the bottom without making the transparent route wrapper visible. */
+.ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > :last-child,
+.ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > :last-child,
+.ui-user-page > :last-child,
+.ui-admin-page > :last-child,
+.ui-workbench > :last-child,
+.ui-page-section > :last-child {
+  flex: 1 1 auto !important;
+}
+
+/* User-side legacy page helpers. */
+.ui-user-grid {
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.ui-user-grid--courses {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.ui-user-grid--feedback {
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) !important;
+}
+
+.ui-inline-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin-top: 14px !important;
+}
+
+.ui-user-kv {
+  display: grid !important;
+  gap: 8px !important;
+  margin: 12px 0 0 !important;
+}
+
+.ui-user-kv div {
+  display: grid !important;
+  grid-template-columns: 92px minmax(0, 1fr) !important;
+  gap: 10px !important;
+}
+
+.ui-user-kv dt {
+  color: var(--ui-color-text-muted) !important;
+  font-weight: 700 !important;
+}
+
+.ui-user-kv dd {
+  margin: 0 !important;
+}
+
+.ui-page-header h2,
+.ui-user-card h3 {
+  margin: 0 !important;
+  color: var(--ui-color-ink) !important;
+}
+
+.ui-page-breadcrumb,
+.ui-user-card__eyebrow {
+  margin: 0 0 8px !important;
+  color: var(--ui-color-primary-strong) !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+/* Buttons and raw controls in old pages should not look like browser defaults. */
+.ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link),
+.ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link) {
+  min-height: 40px !important;
+  padding: 0 16px !important;
+  border: 1px solid rgba(24, 35, 50, 0.12) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 252, 246, 0.86) !important;
+  color: var(--ui-color-ink) !important;
+  box-shadow: 0 10px 22px rgba(24, 35, 50, 0.08) !important;
+}
+
+.ui-user-route section[aria-label] button[aria-pressed="true"]:not(.ui-button),
+.ui-admin-route section[aria-label] button[aria-pressed="true"]:not(.ui-button) {
+  border-color: rgba(18, 60, 75, 0.62) !important;
+  background: linear-gradient(135deg, var(--ui-color-primary-strong), var(--ui-color-primary)) !important;
+  color: #fffaf0 !important;
+}
+
+.ui-user-route section[aria-label] textarea,
+.ui-admin-route section[aria-label] textarea {
+  min-height: 118px !important;
+  padding: 16px 18px !important;
+  resize: vertical !important;
+}
+
+.ui-user-route section[aria-label] input[type="checkbox"],
+.ui-admin-route section[aria-label] input[type="checkbox"],
+.ui-inline-checkbox input[type="checkbox"] {
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  accent-color: var(--ui-color-primary) !important;
+}
+
+.ui-user-route section[aria-label] label:has(input[type="checkbox"]),
+.ui-admin-route section[aria-label] label:has(input[type="checkbox"]),
+.ui-inline-checkbox {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 34px !important;
+  color: var(--ui-color-text) !important;
+  font-weight: 700 !important;
+}
+
+/* Practice-specific refinements remain shared with all practice pages. */
+.ui-practice-form__footer {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+.ui-practice-options {
+  display: grid !important;
+  gap: 10px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  list-style: none !important;
+}
+
+.ui-practice-options li,
+.ui-practice-stem {
+  border: 1px solid rgba(24, 35, 50, 0.1) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 252, 246, 0.62) !important;
+  padding: 14px !important;
+}
+
+.ui-practice-stem {
+  margin: 0 !important;
+}
+
+html[data-ui-theme="dark"] .ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > h2:first-child,
+html[data-ui-theme="dark"] .ui-user-card,
+html[data-ui-theme="dark"] .ui-page-header,
+html[data-ui-theme="dark"] .ui-user-route section[aria-label] section[aria-label],
+html[data-ui-theme="dark"] .ui-admin-route section[aria-label] section[aria-label],
+html[data-ui-theme="dark"] .ui-user-route section[aria-label] li,
+html[data-ui-theme="dark"] .ui-admin-route section[aria-label] li,
+body[data-ui-theme="dark"] .ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > h2:first-child,
+body[data-ui-theme="dark"] .ui-user-card,
+body[data-ui-theme="dark"] .ui-page-header,
+body[data-ui-theme="dark"] .ui-user-route section[aria-label] section[aria-label],
+body[data-ui-theme="dark"] .ui-admin-route section[aria-label] section[aria-label],
+body[data-ui-theme="dark"] .ui-user-route section[aria-label] li,
+body[data-ui-theme="dark"] .ui-admin-route section[aria-label] li {
+  border-color: rgba(106, 130, 174, 0.32) !important;
+  background: rgba(17, 27, 46, 0.82) !important;
+  color: #e8eefc !important;
+}
+
+@media (max-width: 1200px) {
+  .ui-user-grid--courses,
+  .ui-user-grid--feedback {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .ui-user-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form,
+  .ui-admin-route > section[aria-label]:not(.ui-admin-page):not(.ui-user-page):not(.ui-workbench):not(.ui-page-section) > form,
+  .ui-user-grid--courses,
+  .ui-user-grid--feedback {
+    grid-template-columns: 1fr !important;
+  }
+}
