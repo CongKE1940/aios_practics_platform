@@ -59,25 +59,25 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
       {
         label: "组织总数",
         value: summary?.school_count ?? 0,
-        delta: `较昨日 +${summary?.recent_transition_count_30d ?? 0}`,
+        delta: `近 30 天学籍变更 ${summary?.recent_transition_count_30d ?? 0}`,
         icon: "校"
       },
       {
-        label: "用户总数",
+        label: "活跃用户",
         value: (summary?.active_student_count ?? 0) + (summary?.active_teacher_count ?? 0),
-        delta: `活跃教师 ${summary?.active_teacher_count ?? 0}`,
+        delta: `教师 ${summary?.active_teacher_count ?? 0} / 学生 ${summary?.active_student_count ?? 0}`,
         icon: "人"
       },
       {
-        label: "考试总数",
+        label: "发布考试",
         value: summary?.published_exam_count ?? 0,
         delta: `待批阅 ${summary?.pending_review_count ?? 0}`,
         icon: "考"
       },
       {
-        label: "今日参与人数",
-        value: summary?.submitted_exam_attempt_count ?? 0,
-        delta: `近 7 天练题 ${summary?.practice_session_count_7d ?? 0}`,
+        label: "学习会话",
+        value: summary?.practice_session_count_7d ?? 0,
+        delta: `已提交考试 ${summary?.submitted_exam_attempt_count ?? 0}`,
         icon: "练"
       }
     ];
@@ -85,7 +85,7 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
 
   const pendingItems = useMemo<ActionItem[]>(
     () => [
-      { label: "待处理的主观题批阅", value: String(overview?.summary.pending_review_count ?? 0) },
+      { label: "主观题批阅队列", value: String(overview?.summary.pending_review_count ?? 0) },
       { label: "近 30 天学籍变更", value: String(overview?.summary.recent_transition_count_30d ?? 0) },
       { label: "近 7 天练题会话", value: String(overview?.summary.practice_session_count_7d ?? 0) },
       { label: "已发布考试", value: String(overview?.summary.published_exam_count ?? 0) }
@@ -106,17 +106,51 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
     () =>
       flattenMenuItems(menus)
         .filter((item) => item.path)
-        .slice(0, 4),
+        .slice(0, 6),
     [menus]
   );
 
+  const primaryEntry = quickEntries[0];
+
   return (
-    <section aria-label="工作台面板" className="ui-workbench">
-      <div className="ui-workbench__header">
-        <div>
-          <h2>工作台</h2>
-          <p>上午好，{userDisplayName}</p>
+    <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin">
+      <div className="ui-hero-panel">
+        <div className="ui-hero-panel__content">
+          <span className="ui-hero-panel__eyebrow">Operations cockpit</span>
+          <h2>{userDisplayName}，今天先看风险，再推进教学运营。</h2>
+          <p>
+            将组织、课程、题库、考试、公告和审计动作放在同一条运营主线上；先处理红黄状态，再进入具体模块。
+          </p>
+          <div className="ui-hero-panel__actions">
+            {primaryEntry?.path ? (
+              <button type="button" className="ui-button ui-button--primary" onClick={() => onSelect(primaryEntry.path)}>
+                进入 {primaryEntry.name}
+              </button>
+            ) : null}
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => onSelect("/admin/analytics")}>
+              查看数据看板
+            </button>
+          </div>
+          <div className="ui-hero-panel__meta" aria-label="今日运营重点">
+            <span>权限驱动导航</span>
+            <span>多租户边界</span>
+            <span>题库到考试闭环</span>
+          </div>
         </div>
+        <aside className="ui-hero-panel__aside" aria-label="运营摘要">
+          <div className="ui-hero-metric">
+            <span>待批阅</span>
+            <strong>{overview?.summary.pending_review_count ?? 0}</strong>
+          </div>
+          <div className="ui-hero-metric">
+            <span>近 7 天练题</span>
+            <strong>{overview?.summary.practice_session_count_7d ?? 0}</strong>
+          </div>
+          <div className="ui-hero-metric">
+            <span>公告数量</span>
+            <strong>{notices.length}</strong>
+          </div>
+        </aside>
       </div>
 
       <div className="ui-stat-grid">
@@ -134,24 +168,32 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
         ))}
       </div>
 
-      <div className="ui-workbench-grid">
+      <div className="ui-dashboard-panel-grid">
         <section className="ui-panel-card">
           <header className="ui-panel-card__header">
-            <h3>待处理事项</h3>
+            <div>
+              <span className="ui-kicker">Next actions</span>
+              <h3>待处理事项</h3>
+              <p>从需要人工判断的环节开始，避免运营风险堆积。</p>
+            </div>
           </header>
-          <ul className="ui-panel-list">
+          <ol className="ui-ops-list">
             {pendingItems.map((item) => (
               <li key={item.label}>
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
+                <strong>{item.label}</strong>
+                <small>{item.value}</small>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
 
         <section className="ui-panel-card">
           <header className="ui-panel-card__header">
-            <h3>近期动态</h3>
+            <div>
+              <span className="ui-kicker">Recent</span>
+              <h3>近期动态</h3>
+              <p>直接来自后端审计与公告数据，保持管理判断可追溯。</p>
+            </div>
           </header>
           <ul className="ui-panel-list">
             {recentActivities.length > 0 ? (
@@ -163,35 +205,22 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
               ))
             ) : (
               <li>
-                <span>正在接入近期动态</span>
+                <span>暂无近期审计动态</span>
+                <small>等待后端返回</small>
               </li>
             )}
           </ul>
         </section>
+      </div>
 
+      <div className="ui-workbench-grid">
         <section className="ui-panel-card">
           <header className="ui-panel-card__header">
-            <h3>系统公告</h3>
-          </header>
-          <ul className="ui-panel-list">
-            {notices.length > 0 ? (
-              notices.slice(0, 4).map((notice) => (
-                <li key={notice.id}>
-                  <span>{notice.title}</span>
-                  <small>{notice.publish_at ?? "未发布"}</small>
-                </li>
-              ))
-            ) : (
-              <li>
-                <span>暂无公告</span>
-              </li>
-            )}
-          </ul>
-        </section>
-
-        <section className="ui-panel-card">
-          <header className="ui-panel-card__header">
-            <h3>快捷入口</h3>
+            <div>
+              <span className="ui-kicker">Launchpad</span>
+              <h3>快捷入口</h3>
+              <p>仅展示当前账号菜单树中可进入的功能。</p>
+            </div>
           </header>
           <div className="ui-quick-grid">
             {quickEntries.map((entry) => (
@@ -209,6 +238,31 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="ui-panel-card">
+          <header className="ui-panel-card__header">
+            <div>
+              <span className="ui-kicker">Bulletin</span>
+              <h3>系统公告</h3>
+              <p>发布节奏、考试通知和课程运营信息统一沉淀。</p>
+            </div>
+          </header>
+          <ul className="ui-panel-list">
+            {notices.length > 0 ? (
+              notices.slice(0, 4).map((notice) => (
+                <li key={notice.id}>
+                  <span>{notice.title}</span>
+                  <small>{notice.publish_at ?? "未发布"}</small>
+                </li>
+              ))
+            ) : (
+              <li>
+                <span>暂无公告</span>
+                <small>可从公告通知中心创建</small>
+              </li>
+            )}
+          </ul>
         </section>
       </div>
     </section>
