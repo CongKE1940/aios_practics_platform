@@ -1,29 +1,43 @@
-/* Sidebar stability fixes: keep layout space, keep rail sticky, expand only from actionable targets. */
+/* Sidebar stability fixes: fixed rail, content offset, hover-only temporary expansion. */
+:root {
+  --ui-sidebar-expanded-width: 252px;
+  --ui-sidebar-collapsed-width: 72px;
+  --ui-shell-page-gap: 14px;
+}
+
 .ui-shell {
-  grid-template-columns: 252px minmax(0, 1fr);
+  display: block;
+  min-height: 100vh;
+  padding: 14px 18px 18px calc(var(--ui-sidebar-expanded-width) + 28px);
 }
 
 .ui-shell.is-sidebar-collapsed {
-  grid-template-columns: 72px minmax(0, 1fr);
+  padding-left: calc(var(--ui-sidebar-collapsed-width) + 28px);
 }
 
 .ui-shell__sidebar {
-  position: sticky;
-  left: auto;
-  top: 14px;
-  bottom: auto;
-  width: auto;
-  height: calc(100vh - 28px);
-  max-height: calc(100vh - 28px);
+  position: fixed;
+  left: var(--ui-shell-page-gap);
+  top: var(--ui-shell-page-gap);
+  bottom: var(--ui-shell-page-gap);
+  width: var(--ui-sidebar-expanded-width);
+  height: auto;
+  max-height: none;
   z-index: 30;
-  align-self: start;
+  box-sizing: border-box;
+}
+
+.ui-shell__main {
+  min-width: 0;
+  width: 100%;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar {
-  width: auto;
+  width: var(--ui-sidebar-collapsed-width);
   align-items: center;
   overflow: hidden;
-  transition: box-shadow 180ms ease;
+  box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
+  transition: width 180ms ease, box-shadow 180ms ease;
 }
 
 .ui-sidebar-user__avatar {
@@ -39,50 +53,60 @@
   border-radius: inherit;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) {
-  align-items: center;
-  box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
-}
-
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-sidebar-brand-row,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-sidebar-brand-row {
+.ui-shell.is-sidebar-collapsed .ui-sidebar-brand-row {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__caret {
+.ui-shell.is-sidebar-collapsed .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__caret {
   display: none;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__children[hidden],
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__children[hidden] {
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__children[hidden] {
+  display: none !important;
+}
+
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within {
+  width: var(--ui-sidebar-collapsed-width);
+  align-items: center;
+  box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
+}
+
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-brand-row {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__caret {
+  display: none;
+}
+
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__children[hidden] {
   display: none !important;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within {
-  width: 252px;
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) {
+  width: var(--ui-sidebar-expanded-width);
   align-items: stretch;
   overflow: hidden;
   box-shadow: 0 24px 70px rgba(15, 63, 143, 0.18);
@@ -90,8 +114,7 @@
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-brand-row,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-brand-row,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-brand-row,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-brand-row {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-brand-row {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
@@ -100,19 +123,15 @@
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-brand-block,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-brand-block,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-brand-block,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-shell__nav,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-shell__nav,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-shell__nav,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-shell__nav,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree ul,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree ul,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree ul,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree ul {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree ul {
   justify-items: stretch;
   width: 100%;
 }
@@ -120,59 +139,46 @@
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-brand-block strong,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-brand-block strong,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block strong,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-brand-block span,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-brand-block span,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block span,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user__copy,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user__copy,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__copy,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user__caret,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user__caret,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__caret,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__title,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__title,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__title,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__item span:not(.ui-nav-tree__icon),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__caret,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__caret {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__caret {
   display: initial;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__children,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__children,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__children[hidden],
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__children[hidden],
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__children[hidden] {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__children[hidden] {
   display: grid !important;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__item,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__group-trigger,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__group-trigger,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__group-trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__group-trigger,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user__trigger,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user__trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__trigger {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__trigger {
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
@@ -181,13 +187,11 @@
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user {
   width: 100%;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__menu,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__menu {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__menu {
   left: 0;
   right: 0;
   bottom: calc(100% + 10px);
@@ -195,6 +199,13 @@
 }
 
 @media (max-width: 980px) {
+  .ui-shell,
+  .ui-shell.is-sidebar-collapsed {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
   .ui-shell__sidebar {
     position: relative;
     left: auto;
