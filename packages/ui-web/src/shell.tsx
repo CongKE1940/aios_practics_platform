@@ -39,7 +39,17 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
     .filter(Boolean)
     .join(" ");
 
-  function handleSidebarMouseOver(event: MouseEvent<HTMLElement>) {
+  function handleSidebarMouseEnter(event: MouseEvent<HTMLElement>) {
+    if (!sidebarCollapsed) {
+      return;
+    }
+
+    if ((event.target as Element).closest(SIDEBAR_EXPAND_TARGET_SELECTOR)) {
+      setSidebarPeeking(true);
+    }
+  }
+
+  function handleSidebarMouseMove(event: MouseEvent<HTMLElement>) {
     if (!sidebarCollapsed || sidebarPeeking) {
       return;
     }
@@ -69,7 +79,8 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
     <div className={shellClassName}>
       <aside
         className="ui-shell__sidebar"
-        onMouseOver={handleSidebarMouseOver}
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseMove={handleSidebarMouseMove}
         onMouseLeave={handleSidebarMouseLeave}
         onClick={handleSidebarClick}
       >
