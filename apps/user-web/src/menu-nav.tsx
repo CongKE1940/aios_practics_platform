@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import type { MenuItem } from "@aios/api-sdk";
 import { EmptyState } from "@aios/ui-web";
 
@@ -30,34 +32,81 @@ interface MenuNodeProps {
   menu: MenuItem;
   selectedPath: string;
   onSelect(path: string): void;
+  depth?: number;
 }
 
-function MenuNode({ menu, selectedPath, onSelect }: MenuNodeProps) {
+function MenuNode({ menu, selectedPath, onSelect, depth = 0 }: MenuNodeProps) {
   const hasChildren = menu.children.length > 0;
   const hasPath = typeof menu.path === "string" && menu.path.length > 0;
   const nextSelectedPath = getFirstRenderablePath(menu);
+  const isActive = hasPath && selectedPath === menu.path;
+  const isTrailActive = menuContainsPath(menu, selectedPath);
+  const [open, setOpen] = useState(isTrailActive || depth === 0);
+
+  useEffect(() => {
+    if (isTrailActive) {
+      setOpen(true);
+    }
+  }, [isTrailActive]);
+
+  if (hasChildren) {
+    return (
+      <li>
+        <button
+          type="button"
+          className={[
+            "ui-nav-tree__group-trigger",
+            isActive || isTrailActive ? "is-open" : "",
+            isActive ? "is-active" : "",
+            depth > 0 ? "is-child" : ""
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-expanded={open}
+          aria-pressed={isActive}
+          onClick={() => {
+            setOpen((current) => !current);
+            if (!open && nextSelectedPath && !isTrailActive) {
+              onSelect(nextSelectedPath);
+            }
+          }}
+        >
+          <span className="ui-nav-tree__icon" aria-hidden="true">
+            {menu.name.slice(0, 1)}
+          </span>
+          <span>{menu.name}</span>
+          <span aria-hidden="true" className="ui-nav-tree__caret">
+            {open ? "⌄" : "›"}
+          </span>
+        </button>
+        <ul className="ui-nav-tree__children" hidden={!open}>
+          {menu.children.map((child) => (
+            <MenuNode key={child.id} menu={child} selectedPath={selectedPath} onSelect={onSelect} depth={depth + 1} />
+          ))}
+        </ul>
+      </li>
+    );
+  }
 
   return (
     <li>
       {hasPath ? (
         <button
           type="button"
-          className={["ui-nav-tree__item", selectedPath === nextSelectedPath ? "is-active" : ""].filter(Boolean).join(" ")}
+          className={["ui-nav-tree__item", selectedPath === nextSelectedPath ? "is-active" : "", depth > 0 ? "is-child" : ""]
+            .filter(Boolean)
+            .join(" ")}
           aria-pressed={selectedPath === nextSelectedPath}
           onClick={() => onSelect(nextSelectedPath)}
         >
-          {menu.name}
+          <span className="ui-nav-tree__icon" aria-hidden="true">
+            {menu.name.slice(0, 1)}
+          </span>
+          <span>{menu.name}</span>
         </button>
       ) : (
         <span className="ui-nav-tree__group">{menu.name}</span>
       )}
-      {hasChildren ? (
-        <ul>
-          {menu.children.map((child) => (
-            <MenuNode key={child.id} menu={child} selectedPath={selectedPath} onSelect={onSelect} />
-          ))}
-        </ul>
-      ) : null}
     </li>
   );
 }
@@ -73,4 +122,12 @@ function getFirstRenderablePath(menu: MenuItem): string {
   }
 
   return typeof menu.path === "string" ? menu.path : "";
+}
+
+function menuContainsPath(menu: MenuItem, targetPath: string): boolean {
+  if (menu.path === targetPath) {
+    return true;
+  }
+
+  return menu.children.some((child) => menuContainsPath(child, targetPath));
 }
