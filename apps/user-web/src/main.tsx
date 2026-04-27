@@ -12,6 +12,7 @@ import "@aios/ui-web/src/fixed-shell-final-overrides.css";
 import "@aios/ui-web/src/fixed-data-region-overrides.css";
 import "@aios/ui-web/src/page-normalization-final.css";
 import "@aios/ui-web/src/dark-mode-final.css";
+import "@aios/ui-web/src/dark-nav-borderless-final.css";
 
 import { UserApp } from "./app";
 
