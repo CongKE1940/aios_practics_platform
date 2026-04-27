@@ -3,11 +3,16 @@
   --ui-sidebar-expanded-width: 252px;
   --ui-sidebar-collapsed-width: 72px;
   --ui-shell-page-gap: 14px;
+  --ui-sidebar-inner-rail: 46px;
   --ui-nav-row-height: 42px;
   --ui-nav-child-row-height: 34px;
   --ui-nav-icon-size: 32px;
   --ui-nav-child-icon-size: 24px;
   --ui-sidebar-avatar-size: 40px;
+  --ui-sidebar-toggle-size: 36px;
+  --ui-brand-icon-size: 36px;
+  --ui-nav-font-size: 14px;
+  --ui-nav-child-font-size: 13px;
 }
 
 .ui-shell {
@@ -51,16 +56,71 @@
   min-height: 0;
 }
 
+/* Expanded and peek-expanded states must be visually identical. */
+.ui-shell:not(.is-sidebar-collapsed) .ui-shell__sidebar,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__sidebar {
+  width: var(--ui-sidebar-expanded-width);
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.ui-shell:not(.is-sidebar-collapsed) .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-brand-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--ui-nav-row-height);
+  height: var(--ui-nav-row-height);
+  gap: 10px;
+}
+
+.ui-shell:not(.is-sidebar-collapsed) .ui-brand-block,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block,
+.ui-shell:not(.is-sidebar-collapsed) .ui-shell__nav,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__nav,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree ul,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree ul {
+  justify-items: stretch;
+  width: 100%;
+}
+
+.ui-brand-block__row {
+  min-height: var(--ui-nav-row-height);
+}
+
+.ui-brand-block__icon,
+.ui-shell.is-sidebar-collapsed .ui-brand-block__icon,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block__icon {
+  width: var(--ui-brand-icon-size);
+  height: var(--ui-brand-icon-size);
+  min-width: var(--ui-brand-icon-size);
+  flex-basis: var(--ui-brand-icon-size);
+}
+
+.ui-sidebar-toggle,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-toggle,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-toggle {
+  width: var(--ui-sidebar-toggle-size);
+  height: var(--ui-sidebar-toggle-size);
+  min-width: var(--ui-sidebar-toggle-size);
+  flex-basis: var(--ui-sidebar-toggle-size);
+  border-radius: 14px;
+}
+
 .ui-nav-tree__item,
 .ui-nav-tree__group-trigger,
 .ui-nav-tree > ul > li > .ui-nav-tree__item,
-.ui-nav-tree > ul > li > .ui-nav-tree__group-trigger {
+.ui-nav-tree > ul > li > .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger {
   flex: 0 0 auto;
   height: var(--ui-nav-row-height);
   min-height: var(--ui-nav-row-height);
   max-height: var(--ui-nav-row-height);
   gap: 10px;
-  font-size: 14px;
+  font-size: var(--ui-nav-font-size);
   line-height: 1.2;
 }
 
@@ -71,7 +131,7 @@
   height: var(--ui-nav-child-row-height);
   min-height: var(--ui-nav-child-row-height);
   max-height: var(--ui-nav-child-row-height);
-  font-size: 13px;
+  font-size: var(--ui-nav-child-font-size);
   line-height: 1.2;
 }
 
@@ -87,9 +147,7 @@
 .ui-nav-tree > ul > li > .ui-nav-tree__item .ui-nav-tree__icon,
 .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger .ui-nav-tree__icon,
 .ui-shell.is-sidebar-collapsed .ui-nav-tree__icon,
-.ui-shell.is-sidebar-collapsed .ui-sidebar-user__avatar,
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__icon,
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__avatar {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__icon {
   width: var(--ui-nav-icon-size);
   height: var(--ui-nav-icon-size);
   min-width: var(--ui-nav-icon-size);
@@ -125,7 +183,17 @@
   border-radius: inherit;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar {
+.ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__trigger {
+  min-height: 58px;
+  height: 58px;
+  max-height: 58px;
+  gap: 12px;
+}
+
+/* Collapsed rail: keep it narrow even if a selected item keeps focus. */
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within {
   width: var(--ui-sidebar-collapsed-width);
   align-items: center;
   overflow: hidden;
@@ -133,56 +201,37 @@
   transition: width 180ms ease, box-shadow 180ms ease;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-sidebar-brand-row {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within .ui-sidebar-brand-row {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__caret {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__caret {
   display: none;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__children[hidden] {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children[hidden] {
   display: none !important;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__item,
-.ui-shell.is-sidebar-collapsed .ui-nav-tree__group-trigger,
-.ui-shell.is-sidebar-collapsed .ui-sidebar-user__trigger {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__trigger {
   justify-content: center;
-  width: 46px;
-  min-width: 46px;
+  width: var(--ui-sidebar-inner-rail);
+  min-width: var(--ui-sidebar-inner-rail);
+  max-width: var(--ui-sidebar-inner-rail);
   padding-inline: 0;
-}
-
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__sidebar {
-  width: var(--ui-sidebar-expanded-width);
-  align-items: stretch;
-  overflow: hidden;
-  box-shadow: 0 24px 70px rgba(15, 63, 143, 0.18);
-}
-
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-brand-row {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block,
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__nav,
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree,
-.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree ul {
-  justify-items: stretch;
-  width: 100%;
 }
 
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block strong,
@@ -201,15 +250,21 @@
   display: grid !important;
 }
 
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__item,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__group-trigger,
+.ui-shell:not(.is-sidebar-collapsed) .ui-sidebar-user__trigger,
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger,
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__trigger {
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
+  max-width: none;
   padding-inline: 10px;
 }
 
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__children .ui-nav-tree__item,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__children .ui-nav-tree__group-trigger,
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__group-trigger {
   padding-inline: 8px;
