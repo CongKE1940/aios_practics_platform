@@ -5,6 +5,7 @@ import "@aios/ui-web/src/ui-shell.css";
 import "@aios/ui-web/src/aios-redesign.css";
 import "@aios/ui-web/src/navigation-redesign.css";
 import "@aios/ui-web/src/blue-navigation-theme.css";
+import "@aios/ui-web/src/sidebar-interaction-fix.css";
 
 import { AdminApp } from "./app";
 
