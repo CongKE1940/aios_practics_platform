@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 
 export interface AppShellProps {
   brand: ReactNode;
@@ -26,10 +26,35 @@ export interface EmptyStateProps {
   description?: string;
 }
 
+const SIDEBAR_EXPAND_TARGET_SELECTOR = ".ui-nav-tree__item, .ui-nav-tree__group-trigger, .ui-sidebar-user__trigger";
+
 export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = false }: AppShellProps) {
+  const [sidebarPeeking, setSidebarPeeking] = useState(false);
+  const shellClassName = [
+    "ui-shell",
+    sidebarCollapsed ? "is-sidebar-collapsed" : "",
+    sidebarCollapsed && sidebarPeeking ? "is-sidebar-peeking" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  function handleSidebarMouseOver(event: MouseEvent<HTMLElement>) {
+    if (!sidebarCollapsed || sidebarPeeking) {
+      return;
+    }
+
+    if ((event.target as Element).closest(SIDEBAR_EXPAND_TARGET_SELECTOR)) {
+      setSidebarPeeking(true);
+    }
+  }
+
+  function handleSidebarMouseLeave() {
+    setSidebarPeeking(false);
+  }
+
   return (
-    <div className={["ui-shell", sidebarCollapsed ? "is-sidebar-collapsed" : ""].filter(Boolean).join(" ")}>
-      <aside className="ui-shell__sidebar">
+    <div className={shellClassName}>
+      <aside className="ui-shell__sidebar" onMouseOver={handleSidebarMouseOver} onMouseLeave={handleSidebarMouseLeave}>
         <div className="ui-shell__brand">{brand}</div>
         <div className="ui-shell__nav">{sidebar}</div>
       </aside>
