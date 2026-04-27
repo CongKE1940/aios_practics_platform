@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type { MenuItem } from "@aios/api-sdk";
-import { EmptyState } from "@aios/ui-web";
+import { EmptyState, NavigationItemIcon } from "@aios/ui-web";
 
 interface MenuNavProps {
   menus: MenuItem[];
@@ -71,9 +71,7 @@ function MenuNode({ menu, selectedPath, onSelect, depth = 0 }: MenuNodeProps) {
             }
           }}
         >
-          <span className="ui-nav-tree__icon" aria-hidden="true">
-            {menu.name.slice(0, 1)}
-          </span>
+          <NavigationItemIcon name={menu.name} path={menu.path ?? ""} />
           <span>{menu.name}</span>
           <span aria-hidden="true" className="ui-nav-tree__caret">
             {open ? "⌄" : "›"}
@@ -99,9 +97,7 @@ function MenuNode({ menu, selectedPath, onSelect, depth = 0 }: MenuNodeProps) {
           aria-pressed={selectedPath === nextSelectedPath}
           onClick={() => onSelect(nextSelectedPath)}
         >
-          <span className="ui-nav-tree__icon" aria-hidden="true">
-            {menu.name.slice(0, 1)}
-          </span>
+          <NavigationItemIcon name={menu.name} path={menu.path ?? ""} />
           <span>{menu.name}</span>
         </button>
       ) : (
