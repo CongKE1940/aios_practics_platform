@@ -24,6 +24,8 @@ export function UserWorkbenchPage({
   );
   const primaryEntry = quickEntries[0];
   const secondaryEntry = quickEntries[1];
+  const primaryPath = primaryEntry?.path ?? "";
+  const secondaryPath = secondaryEntry?.path ?? "";
 
   return (
     <section aria-label="用户工作台" className="ui-workbench ui-workbench--user">
@@ -33,13 +35,13 @@ export function UserWorkbenchPage({
           <h2>{userDisplayName}，把今天的学习推进到下一步。</h2>
           <p>{`${userTypeLabel}工作台把课程、练题、考试和通知组织成一条清晰路径；先进入最重要任务，再回看错题与反馈。`}</p>
           <div className="ui-hero-panel__actions">
-            {primaryEntry?.path ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={() => onNavigate(primaryEntry.path)}>
+            {primaryPath ? (
+              <button type="button" className="ui-button ui-button--primary" onClick={() => onNavigate(primaryPath)}>
                 继续 {primaryEntry.name}
               </button>
             ) : null}
-            {secondaryEntry?.path ? (
-              <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate(secondaryEntry.path)}>
+            {secondaryPath ? (
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate(secondaryPath)}>
                 查看 {secondaryEntry.name}
               </button>
             ) : null}
@@ -140,7 +142,11 @@ export function UserWorkbenchPage({
                 type="button"
                 className="ui-quick-button"
                 aria-label={`快捷进入${entry.name}`}
-                onClick={() => onNavigate(entry.path)}
+                onClick={() => {
+                  if (entry.path) {
+                    onNavigate(entry.path);
+                  }
+                }}
               >
                 <span className="ui-quick-button__icon" aria-hidden="true">
                   {entry.name.slice(0, 1)}
