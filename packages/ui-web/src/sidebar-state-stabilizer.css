@@ -1,0 +1,256 @@
+/* Last-mile sidebar state stabilizer.
+   This file intentionally loads after all sidebar/theme CSS and is the source of truth
+   for collapsed, expanded, and collapsed-peeking sidebar geometry. */
+:root {
+  --ui-sidebar-expanded-width: 252px;
+  --ui-sidebar-collapsed-width: 72px;
+  --ui-sidebar-rail-button: 46px;
+  --ui-sidebar-gap: 14px;
+  --ui-nav-row-height: 42px;
+  --ui-nav-child-row-height: 34px;
+  --ui-nav-icon-size: 32px;
+  --ui-nav-child-icon-size: 24px;
+  --ui-avatar-size: 40px;
+}
+
+.ui-shell {
+  display: block !important;
+  min-height: 100vh;
+  padding: 14px 18px 18px calc(var(--ui-sidebar-expanded-width) + 28px) !important;
+}
+
+.ui-shell.is-sidebar-collapsed {
+  padding-left: calc(var(--ui-sidebar-collapsed-width) + 28px) !important;
+}
+
+.ui-shell__sidebar {
+  position: fixed !important;
+  inset: var(--ui-sidebar-gap) auto var(--ui-sidebar-gap) var(--ui-sidebar-gap) !important;
+  box-sizing: border-box !important;
+  width: var(--ui-sidebar-expanded-width) !important;
+  height: auto !important;
+  max-height: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  z-index: 30 !important;
+}
+
+.ui-shell__brand {
+  flex: 0 0 auto !important;
+}
+
+.ui-shell__nav {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.ui-nav-tree {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  align-content: start !important;
+}
+
+.ui-sidebar-user {
+  flex: 0 0 auto !important;
+  margin-top: auto !important;
+  width: 100% !important;
+}
+
+.ui-shell:not(.is-sidebar-collapsed) .ui-shell__sidebar,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__sidebar {
+  width: var(--ui-sidebar-expanded-width) !important;
+  align-items: stretch !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-nav-tree__item:hover),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) {
+  width: var(--ui-sidebar-collapsed-width) !important;
+  align-items: center !important;
+}
+
+/* Collapsed rail must be visually inert on blank/sidebar/user hover until React adds .is-sidebar-peeking. */
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within .ui-sidebar-brand-row {
+  width: var(--ui-sidebar-rail-button) !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__nav,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-shell__nav,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree ul,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree ul {
+  width: 100% !important;
+  justify-items: center !important;
+  align-items: center !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__caret {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children[hidden],
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__children[hidden] {
+  display: none !important;
+}
+
+.ui-nav-tree__item,
+.ui-nav-tree__group-trigger,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__item,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger {
+  height: var(--ui-nav-row-height) !important;
+  min-height: var(--ui-nav-row-height) !important;
+  max-height: var(--ui-nav-row-height) !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+  gap: 10px !important;
+}
+
+.ui-nav-tree__children .ui-nav-tree__item,
+.ui-nav-tree__children .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__group-trigger {
+  height: var(--ui-nav-child-row-height) !important;
+  min-height: var(--ui-nav-child-row-height) !important;
+  max-height: var(--ui-nav-child-row-height) !important;
+  font-size: 13px !important;
+}
+
+.ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__icon {
+  width: var(--ui-nav-icon-size) !important;
+  height: var(--ui-nav-icon-size) !important;
+  min-width: var(--ui-nav-icon-size) !important;
+  flex: 0 0 var(--ui-nav-icon-size) !important;
+  border-radius: 12px !important;
+}
+
+.ui-nav-tree__children .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__icon {
+  width: var(--ui-nav-child-icon-size) !important;
+  height: var(--ui-nav-child-icon-size) !important;
+  min-width: var(--ui-nav-child-icon-size) !important;
+  flex: 0 0 var(--ui-nav-child-icon-size) !important;
+  border-radius: 9px !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__group-trigger {
+  width: var(--ui-sidebar-rail-button) !important;
+  min-width: var(--ui-sidebar-rail-button) !important;
+  max-width: var(--ui-sidebar-rail-button) !important;
+  padding-inline: 0 !important;
+  justify-content: center !important;
+}
+
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__item,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  padding-inline: 10px !important;
+  justify-content: flex-start !important;
+}
+
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__children .ui-nav-tree__item,
+.ui-shell:not(.is-sidebar-collapsed) .ui-nav-tree__children .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__group-trigger {
+  padding-inline: 8px !important;
+}
+
+.ui-sidebar-user__avatar,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-user__avatar,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__avatar,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__avatar {
+  width: var(--ui-avatar-size) !important;
+  height: var(--ui-avatar-size) !important;
+  min-width: var(--ui-avatar-size) !important;
+  flex: 0 0 var(--ui-avatar-size) !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user {
+  width: var(--ui-sidebar-rail-button) !important;
+  margin-top: auto !important;
+  padding-top: 10px !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__trigger {
+  width: var(--ui-sidebar-rail-button) !important;
+  min-width: var(--ui-sidebar-rail-button) !important;
+  max-width: var(--ui-sidebar-rail-button) !important;
+  padding-inline: 0 !important;
+  justify-content: center !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.ui-shell:not(.is-sidebar-collapsed) .ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__trigger {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding-inline: 10px !important;
+  justify-content: flex-start !important;
+}
+
+@media (max-width: 980px) {
+  .ui-shell,
+  .ui-shell.is-sidebar-collapsed {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    padding: 10px !important;
+  }
+
+  .ui-shell__sidebar {
+    position: relative !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}
