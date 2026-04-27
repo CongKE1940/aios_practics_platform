@@ -148,6 +148,37 @@ body {
   overscroll-behavior: contain !important;
 }
 
+.ui-admin-route,
+.ui-user-route {
+  min-height: 100% !important;
+  display: grid !important;
+  gap: 14px !important;
+  align-content: start !important;
+}
+
+.ui-user-route > .ui-workbench,
+.ui-admin-route > .ui-workbench,
+.ui-user-route > .ui-page-section,
+.ui-admin-route > .ui-page-section {
+  width: 100% !important;
+}
+
+.ui-workbench--user,
+.ui-workbench--admin {
+  margin: 0 !important;
+}
+
+.ui-workbench--user .ui-stat-grid,
+.ui-workbench--admin .ui-stat-grid,
+.ui-workbench--user .ui-dashboard-panel-grid,
+.ui-workbench--admin .ui-dashboard-panel-grid,
+.ui-workbench--user .ui-learning-plan-grid,
+.ui-workbench--admin .ui-learning-plan-grid,
+.ui-workbench--user .ui-workbench-grid,
+.ui-workbench--admin .ui-workbench-grid {
+  width: 100% !important;
+}
+
 .ui-theme-toggle {
   position: relative !important;
   display: inline-flex !important;
