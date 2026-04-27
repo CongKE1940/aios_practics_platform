@@ -1,0 +1,121 @@
+/* Loaded after all shell styles.
+   The right lower data region has a fixed viewport-derived height.
+   Overflow belongs to the route/data component, never to the page or shell. */
+html,
+body,
+#root {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+body {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overscroll-behavior: none !important;
+}
+
+.ui-app-frame,
+.ui-shell,
+.ui-shell__main {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.ui-shell__main {
+  display: grid !important;
+  grid-template-rows: 64px minmax(0, 1fr) !important;
+}
+
+.ui-shell__content {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  overscroll-behavior: none !important;
+}
+
+.ui-shell__content > * {
+  min-height: 0 !important;
+  min-width: 0 !important;
+}
+
+.ui-admin-route,
+.ui-user-route {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  display: grid !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  gap: 14px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+  padding: 0 4px 6px 0 !important;
+}
+
+.ui-admin-route > *,
+.ui-user-route > * {
+  min-width: 0 !important;
+}
+
+.ui-admin-route > .ui-workbench,
+.ui-user-route > .ui-workbench,
+.ui-admin-route > .ui-admin-page,
+.ui-user-route > .ui-page-section,
+.ui-admin-route > .ui-page-section {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 100% !important;
+}
+
+.ui-user-route > p,
+.ui-admin-route > p {
+  box-sizing: border-box !important;
+  min-height: 100% !important;
+  margin: 0 !important;
+  padding: 24px !important;
+  border: 1px solid rgba(24, 35, 50, 0.08) !important;
+  border-radius: 28px !important;
+  background: rgba(255, 252, 246, 0.58) !important;
+}
+
+.ui-admin-route::-webkit-scrollbar,
+.ui-user-route::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ui-admin-route::-webkit-scrollbar-thumb,
+.ui-user-route::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(76, 132, 244, 0.32);
+}
+
+html[data-ui-theme="dark"] .ui-user-route > p,
+html[data-ui-theme="dark"] .ui-admin-route > p,
+body[data-ui-theme="dark"] .ui-user-route > p,
+body[data-ui-theme="dark"] .ui-admin-route > p {
+  border-color: rgba(106, 130, 174, 0.32) !important;
+  background: rgba(17, 27, 46, 0.82) !important;
+  color: #e8eefc !important;
+}
+
+@media (max-width: 980px) {
+  .ui-shell__main {
+    grid-template-rows: 58px minmax(0, 1fr) !important;
+  }
+}
