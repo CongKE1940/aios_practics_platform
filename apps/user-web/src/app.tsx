@@ -10,6 +10,7 @@ import {
 import { AppShell, EmptyState, PageSection, SidebarUserMenu, StatusNotice } from "@aios/ui-web";
 
 import sceneBackground from "../../../docs/images/背景.png";
+import brandIcon from "../../../docs/images/图标.png";
 
 import { createBrowserSessionStore } from "./auth-store";
 import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-types";
@@ -243,8 +244,10 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         brand={
           <div className="ui-sidebar-brand-row">
             <div className="ui-brand-block">
-              <strong>AIOS 学习工作台</strong>
-              <span>课程、练题、考试一体化</span>
+              <div className="ui-brand-block__row">
+                <img src={brandIcon} alt="" className="ui-brand-block__icon" />
+                <strong>智慧教育平台</strong>
+              </div>
             </div>
             <button
               type="button"
@@ -281,11 +284,13 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         }
       >
         {session.menus.length === 0 ? (
-          <PageSection title="当前学习内容" description="">
-            <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />
-          </PageSection>
+          <div className="ui-admin-route ui-user-route">
+            <PageSection title="当前学习内容" description="">
+              <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />
+            </PageSection>
+          </div>
         ) : (
-          <div className="ui-stack ui-stack--lg">{content}</div>
+          <div className="ui-admin-route ui-user-route">{content}</div>
         )}
         {errorMessage ? <StatusNotice tone="danger" title="当前会话异常" description={errorMessage} /> : null}
       </AppShell>
