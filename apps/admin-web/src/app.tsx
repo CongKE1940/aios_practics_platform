@@ -7,11 +7,16 @@ import {
   type LoginResponse,
   type MenuItem
 } from "@aios/api-sdk";
-import { AppShell, EmptyState, StatusNotice } from "@aios/ui-web";
+import { AppShell, EmptyState, SidebarUserMenu, StatusNotice } from "@aios/ui-web";
 
 import sceneBackground from "../../../docs/images/背景.png";
 import brandIcon from "../../../docs/images/图标.png";
 
+import {
+  AdminMenuTree,
+  normalizeAdminNavigationMenus,
+  resolveAdminNavigationBreadcrumb
+} from "./admin-navigation";
 import { AdminWorkbench } from "./admin-workbench";
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
 import { ChallengePanel } from "./challenge-panel";
@@ -92,6 +97,7 @@ export function AdminApp({
   const [organizations, setOrganizations] = useState<LoginOrganization[]>([]);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const api = useMemo<AuthApi>(() => {
     if (authApi) {
@@ -387,61 +393,52 @@ export function AdminApp({
     currentHistoryApi,
     onNavigate: setSelectedPath
   });
+  const breadcrumb = resolveAdminNavigationBreadcrumb(selectedPath, session.menus);
 
   return (
     <div className="ui-app-frame">
       <img src={sceneBackground} alt="" className="ui-scene-image ui-scene-image--shell" />
       <AppShell
+        sidebarCollapsed={sidebarCollapsed}
         brand={
-          <div className="ui-brand-block">
-            <div className="ui-brand-block__row">
-              <img src={brandIcon} alt="" className="ui-brand-block__icon" />
-              <strong>智慧教育平台</strong>
+          <div className="ui-sidebar-brand-row">
+            <div className="ui-brand-block">
+              <div className="ui-brand-block__row">
+                <img src={brandIcon} alt="" className="ui-brand-block__icon" />
+                <strong>智慧教育平台</strong>
+              </div>
             </div>
+            <button
+              type="button"
+              className="ui-sidebar-toggle"
+              aria-label={sidebarCollapsed ? "展开左侧导航" : "收起左侧导航"}
+              aria-pressed={sidebarCollapsed}
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? "›" : "‹"}
+            </button>
           </div>
         }
         sidebar={
-          <nav aria-label="管理菜单" className="ui-nav-tree">
-            <div className="ui-nav-tree__title">
-              <strong>管理导航</strong>
-            </div>
-            <ul>
-              <li>
-                <button
-                  type="button"
-                  className={["ui-nav-tree__item", selectedPath === "" ? "is-active" : ""].filter(Boolean).join(" ")}
-                  aria-pressed={selectedPath === ""}
-                  onClick={() => setSelectedPath("")}
-                >
-                  工作台
-                </button>
-              </li>
-              {session.menus.map((menu) => (
-                <AdminMenuNode key={menu.id} menu={menu} selectedPath={selectedPath} onSelect={setSelectedPath} />
-              ))}
-            </ul>
-          </nav>
+          <>
+            <AdminMenuTree menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            <SidebarUserMenu
+              displayName={session.user.display_name}
+              userTypeLabel={getUserTypeLabel(session.user.user_type)}
+              onLogout={handleLogout}
+            />
+          </>
         }
         header={
-          <div className="ui-topbar">
-            <div className="ui-topbar__title">
-              <span className="ui-topbar__menu" aria-hidden="true">
-                ≡
-              </span>
-              <strong>{selectedPath === "" ? "工作台" : resolveAdminPageTitle(selectedPath)}</strong>
+          <div className="ui-topbar ui-topbar--breadcrumb" aria-label="当前位置">
+            <div className="ui-breadcrumb-only">
+              {breadcrumb.map((item, index) => (
+                <span key={`${item}-${index}`}>
+                  {index > 0 ? <span className="ui-breadcrumb-only__separator">/ </span> : null}
+                  {index === breadcrumb.length - 1 ? <strong>{item}</strong> : item}
+                </span>
+              ))}
             </div>
-            <section className="ui-user-chip" aria-label="当前用户">
-              <div className="ui-user-chip__avatar" aria-hidden="true">
-                {session.user.display_name.slice(0, 1)}
-              </div>
-              <div>
-                <p>{session.user.display_name}</p>
-                <strong>{getUserTypeLabel(session.user.user_type)}</strong>
-              </div>
-              <button type="button" className="ui-button ui-button--ghost" onClick={handleLogout}>
-                退出登录
-              </button>
-            </section>
           </div>
         }
       >
@@ -455,12 +452,7 @@ export function AdminApp({
           />
         ) : (
           <div className="ui-admin-route">
-            <div className="ui-admin-route__crumb">{resolveAdminBreadcrumb(selectedPath, session.menus)}</div>
-            {isKnownAdminPath(selectedPath) ? (
-              currentView
-            ) : (
-              <EmptyState title="请选择左侧功能入口。" description="" />
-            )}
+            {isKnownAdminPath(selectedPath) ? currentView : <EmptyState title="请选择左侧功能入口。" description="" />}
           </div>
         )}
       </AppShell>
@@ -532,125 +524,6 @@ function renderAdminView({
   );
 }
 
-interface AdminMenuNodeProps {
-  menu: MenuItem;
-  selectedPath: string;
-  onSelect(path: string): void;
-  depth?: number;
-}
-
-function AdminMenuNode({ menu, selectedPath, onSelect, depth = 0 }: AdminMenuNodeProps) {
-  const nextPath = getFirstMenuPath(menu);
-  const hasChildren = menu.children.length > 0;
-  const isExactSelected = Boolean(menu.path) && selectedPath === menu.path;
-  const isTrailActive = hasChildren && menuContainsPath(menu, selectedPath);
-
-  return (
-    <li>
-      {nextPath ? (
-        <button
-          type="button"
-          className={[
-            hasChildren ? "ui-nav-tree__group-trigger" : "ui-nav-tree__item",
-            isExactSelected ? "is-active" : "",
-            isTrailActive ? "is-open" : "",
-            depth > 0 ? "is-child" : ""
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          aria-pressed={isExactSelected}
-          aria-expanded={hasChildren ? isTrailActive : undefined}
-          onClick={() => onSelect(nextPath)}
-        >
-          <span>{menu.name}</span>
-          {hasChildren ? (
-            <span aria-hidden="true" className="ui-nav-tree__caret">
-              {isTrailActive ? "⌄" : "›"}
-            </span>
-          ) : null}
-        </button>
-      ) : (
-        <span className="ui-nav-tree__group">{menu.name}</span>
-      )}
-      {hasChildren ? (
-        <ul>
-          {menu.children.map((child) => (
-            <AdminMenuNode
-              key={child.id}
-              menu={child}
-              selectedPath={selectedPath}
-              onSelect={onSelect}
-              depth={depth + 1}
-            />
-          ))}
-        </ul>
-      ) : null}
-    </li>
-  );
-}
-
-function getFirstMenuPath(menu: MenuItem): string {
-  if (menu.children.length > 0) {
-    for (const child of menu.children) {
-      const childPath = getFirstMenuPath(child);
-      if (childPath) {
-        return childPath;
-      }
-    }
-  }
-
-  return typeof menu.path === "string" ? menu.path : "";
-}
-
-function menuContainsPath(menu: MenuItem, targetPath: string): boolean {
-  if (menu.path === targetPath) {
-    return true;
-  }
-
-  return menu.children.some((child) => menuContainsPath(child, targetPath));
-}
-
-function resolveAdminPageTitle(selectedPath: string): string {
-  switch (selectedPath) {
-    case "/admin/org":
-      return "学校与组织管理";
-    case "/admin/org/schools":
-      return "学校与组织管理";
-    case "/admin/org/grades":
-      return "年级管理";
-    case "/admin/org/classes":
-      return "班级管理";
-    case "/admin/courses":
-      return "课程管理";
-    case "/admin/users":
-      return "用户管理";
-    case "/admin/roles":
-      return "角色权限";
-    case "/admin/notices":
-      return "公告通知";
-    case "/admin/question-banks":
-      return "题库管理";
-    case "/admin/questions":
-      return "题目管理";
-    case "/admin/questions/editor":
-      return "题目编辑器";
-    case "/admin/imports":
-      return "导入中心";
-    case "/admin/exams":
-      return "考试管理";
-    case "/admin/exams/assembly":
-      return "随机组卷";
-    case "/admin/challenges":
-      return "质疑处理";
-    case "/admin/analytics":
-      return "数据看板";
-    case "/admin/history":
-      return "快照历史";
-    default:
-      return "当前视图";
-  }
-}
-
 function isKnownAdminPath(selectedPath: string): boolean {
   return [
     "/admin/org",
@@ -671,30 +544,6 @@ function isKnownAdminPath(selectedPath: string): boolean {
     "/admin/analytics",
     "/admin/history"
   ].includes(selectedPath);
-}
-
-function resolveAdminBreadcrumb(selectedPath: string, menus: MenuItem[]): string {
-  const labels = findMenuTrail(menus, selectedPath);
-  if (labels.length === 0) {
-    return resolveAdminPageTitle(selectedPath);
-  }
-  return labels.join(" / ");
-}
-
-function findMenuTrail(menus: MenuItem[], selectedPath: string, trail: string[] = []): string[] {
-  for (const menu of menus) {
-    const nextTrail = [...trail, menu.name];
-    if (menu.path === selectedPath) {
-      return nextTrail;
-    }
-    if (menu.children.length > 0) {
-      const childTrail = findMenuTrail(menu.children, selectedPath, nextTrail);
-      if (childTrail.length > 0) {
-        return childTrail;
-      }
-    }
-  }
-  return [];
 }
 
 function getUserTypeLabel(userType: LoginResponse["user"]["user_type"]): string {
@@ -763,70 +612,5 @@ function normalizeSession(session: SessionState | null): SessionState | null {
 }
 
 function normalizeAdminMenus(menus: MenuItem[], permissions: string[] = []): MenuItem[] {
-  const hasOrganizationRoot = menus.some((menu) => menu.path === "/admin/org" || menu.children.some((child) => child.path === "/admin/org/schools"));
-  const hasCoursesRoot = menus.some((menu) => menu.path === "/admin/courses");
-  const hasExamEntry = menus.some((menu) => menu.path === "/admin/exams" || menu.children.some((child) => child.path === "/admin/exams"));
-  const hasAssemblyEntry = menus.some((menu) =>
-    menu.path === "/admin/exams/assembly" || menu.children.some((child) => child.path === "/admin/exams/assembly")
-  );
-  const hasChallengeEntry = menus.some((menu) =>
-    menu.path === "/admin/challenges" || menu.children.some((child) => child.path === "/admin/challenges")
-  );
-
-  if (hasOrganizationRoot && hasCoursesRoot && hasExamEntry && hasAssemblyEntry && hasChallengeEntry) {
-    return menus;
-  }
-
-  const normalized: MenuItem[] = [];
-
-  for (const menu of menus) {
-    if (menu.name !== "系统管理") {
-      normalized.push(menu);
-      continue;
-    }
-
-    const orgChild = menu.children.find((child) => child.path === "/admin/org" || child.name === "组织管理");
-    const otherChildren = menu.children.filter((child) => child !== orgChild);
-
-    if (orgChild && !hasOrganizationRoot) {
-      normalized.push({
-        id: orgChild.id,
-        name: "组织管理",
-        path: "/admin/org",
-        children: [
-          { id: orgChild.id * 10 + 1, name: "学校与组织管理", path: "/admin/org/schools", children: [] },
-          { id: orgChild.id * 10 + 2, name: "年级管理", path: "/admin/org/grades", children: [] },
-          { id: orgChild.id * 10 + 3, name: "班级管理", path: "/admin/org/classes", children: [] }
-        ]
-      });
-    }
-
-    if (orgChild && !hasCoursesRoot) {
-      normalized.push({
-        id: orgChild.id * 100 + 1,
-        name: "课程管理",
-        path: "/admin/courses",
-        children: []
-      });
-    }
-
-    const nextChildren = [...otherChildren];
-    if (!hasExamEntry && permissions.includes("exam:manage")) {
-      nextChildren.push({ id: 39, name: "考试管理", path: "/admin/exams", children: [] });
-    }
-    if (!hasAssemblyEntry && permissions.includes("exam:manage")) {
-      nextChildren.push({ id: 40, name: "随机组卷", path: "/admin/exams/assembly", children: [] });
-    }
-    if (!hasChallengeEntry && permissions.includes("question:manage")) {
-      nextChildren.push({ id: 41, name: "质疑处理", path: "/admin/challenges", children: [] });
-    }
-
-    normalized.push({
-      ...menu,
-      path: "/admin/system",
-      children: nextChildren
-    });
-  }
-
-  return normalized;
+  return normalizeAdminNavigationMenus(menus, permissions);
 }
