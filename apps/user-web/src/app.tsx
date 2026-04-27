@@ -7,7 +7,7 @@ import {
   type MenuItem,
   type PracticeSessionDetail
 } from "@aios/api-sdk";
-import { AppShell, EmptyState, PageSection, StatusNotice } from "@aios/ui-web";
+import { AppShell, EmptyState, PageSection, SidebarUserMenu, StatusNotice } from "@aios/ui-web";
 
 import sceneBackground from "../../../docs/images/背景.png";
 
@@ -71,6 +71,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   const [organizations, setOrganizations] = useState<LoginOrganization[]>([]);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const selectedRoute = getRoutePath(selectedPath);
 
   function handleUnauthorized() {
@@ -232,31 +233,51 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     setPendingPracticeSession,
     setSelectedPath
   });
+  const breadcrumb = resolveUserBreadcrumb(selectedPath, session.menus);
 
   return (
     <div className="ui-app-frame">
       <img src={sceneBackground} alt="" className="ui-scene-image ui-scene-image--shell" />
       <AppShell
+        sidebarCollapsed={sidebarCollapsed}
         brand={
-          <div className="ui-brand-block">
-            <strong>AIOS 学习工作台</strong>
-            <span>课程、练题、考试一体化</span>
+          <div className="ui-sidebar-brand-row">
+            <div className="ui-brand-block">
+              <strong>AIOS 学习工作台</strong>
+              <span>课程、练题、考试一体化</span>
+            </div>
+            <button
+              type="button"
+              className="ui-sidebar-toggle"
+              aria-label={sidebarCollapsed ? "展开左侧导航" : "收起左侧导航"}
+              aria-pressed={sidebarCollapsed}
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? "›" : "‹"}
+            </button>
           </div>
         }
-        sidebar={<MenuNav menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />}
+        sidebar={
+          <>
+            <MenuNav menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            <SidebarUserMenu
+              displayName={session.user.display_name}
+              userTypeLabel={getUserTypeLabel(session.user.user_type)}
+              onLogout={handleLogout}
+            />
+          </>
+        }
         header={
-          <section aria-label="当前用户" className="ui-user-chip">
-            <div className="ui-user-chip__avatar" aria-hidden="true">
-              {session.user.display_name.slice(0, 1)}
+          <div className="ui-topbar ui-topbar--breadcrumb" aria-label="当前位置">
+            <div className="ui-breadcrumb-only">
+              {breadcrumb.map((item, index) => (
+                <span key={`${item}-${index}`}>
+                  {index > 0 ? <span className="ui-breadcrumb-only__separator">/ </span> : null}
+                  {index === breadcrumb.length - 1 ? <strong>{item}</strong> : item}
+                </span>
+              ))}
             </div>
-            <div>
-              <p>欢迎回来，{session.user.display_name}</p>
-              <strong>{getUserTypeLabel(session.user.user_type)}</strong>
-            </div>
-            <button type="button" className="ui-button ui-button--ghost" onClick={handleLogout}>
-              退出登录
-            </button>
-          </section>
+          </div>
         }
       >
         {session.menus.length === 0 ? (
@@ -556,6 +577,79 @@ function getFirstAvailablePath(menus: MenuItem[]): string {
   }
 
   return "/app/workbench";
+}
+
+function resolveUserBreadcrumb(selectedPath: string, menus: MenuItem[]): string[] {
+  const routePath = getRoutePath(selectedPath);
+  const labels = findMenuTrail(menus, routePath);
+  if (labels.length > 0) {
+    return labels;
+  }
+
+  return [getUserPageTitle(routePath)];
+}
+
+function findMenuTrail(menus: MenuItem[], selectedPath: string, trail: string[] = []): string[] {
+  for (const menu of menus) {
+    const nextTrail = [...trail, menu.name];
+    if (getRoutePath(menu.path ?? "") === selectedPath) {
+      return nextTrail;
+    }
+    if (menu.children.length > 0) {
+      const childTrail = findMenuTrail(menu.children, selectedPath, nextTrail);
+      if (childTrail.length > 0) {
+        return childTrail;
+      }
+    }
+  }
+  return [];
+}
+
+function getUserPageTitle(selectedRoute: string): string {
+  if (selectedRoute.startsWith("/app/class-learning/student/session/question")) {
+    return "单题详情";
+  }
+  if (selectedRoute.startsWith("/app/class-learning/student/session")) {
+    return "练题详情";
+  }
+  if (selectedRoute.startsWith("/app/class-learning/student")) {
+    return "学生学习详情";
+  }
+  if (selectedRoute.startsWith("/app/practice/results/")) {
+    return "练题结果";
+  }
+  if (selectedRoute.startsWith("/app/practice/history/")) {
+    return "历史详情";
+  }
+
+  switch (selectedRoute) {
+    case "/app/workbench":
+      return "工作台";
+    case "/app/courses":
+      return "课程中心";
+    case "/app/notifications":
+      return "通知中心";
+    case "/app/teacher-banks":
+      return "老师题库";
+    case "/app/questions/feedback":
+      return "题目互动";
+    case "/app/class-learning":
+      return "班级学习";
+    case "/app/exams":
+      return "考试中心";
+    case "/app/practice":
+      return "练题中心";
+    case "/app/practice/history":
+      return "练题历史";
+    case "/app/practice/wrong":
+      return "错题本";
+    case "/app/practice/mastered":
+      return "熟题本";
+    case "/app/practice/confused":
+      return "疑惑题";
+    default:
+      return "当前内容";
+  }
 }
 
 function getUserTypeLabel(userType: UserSessionState["user"]["user_type"]): string {
