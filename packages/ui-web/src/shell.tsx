@@ -27,7 +27,6 @@ export interface EmptyStateProps {
 }
 
 const SIDEBAR_EXPAND_TARGET_SELECTOR = ".ui-nav-tree__item, .ui-nav-tree__group-trigger, .ui-sidebar-user__trigger";
-const SIDEBAR_COLLAPSE_CLICK_SELECTOR = ".ui-nav-tree__item, .ui-sidebar-user__menu [role='menuitem']";
 
 export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = false }: AppShellProps) {
   const [sidebarPeeking, setSidebarPeeking] = useState(false);
@@ -64,17 +63,6 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
     blurActiveSidebarElement();
   }
 
-  function handleSidebarClick(event: MouseEvent<HTMLElement>) {
-    if (!sidebarCollapsed) {
-      return;
-    }
-
-    if ((event.target as Element).closest(SIDEBAR_COLLAPSE_CLICK_SELECTOR)) {
-      setSidebarPeeking(false);
-      blurActiveSidebarElement();
-    }
-  }
-
   return (
     <div className={shellClassName}>
       <aside
@@ -82,7 +70,6 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
         onMouseEnter={handleSidebarMouseEnter}
         onMouseMove={handleSidebarMouseMove}
         onMouseLeave={handleSidebarMouseLeave}
-        onClick={handleSidebarClick}
       >
         <div className="ui-shell__brand">{brand}</div>
         <div className="ui-shell__nav">{sidebar}</div>
