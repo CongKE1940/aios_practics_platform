@@ -26,7 +26,7 @@ export interface EmptyStateProps {
   description?: string;
 }
 
-const SIDEBAR_EXPAND_TARGET_SELECTOR = ".ui-nav-tree__item, .ui-nav-tree__group-trigger";
+const SIDEBAR_EXPAND_TARGET_SELECTOR = ".ui-nav-tree__item, .ui-nav-tree__group-trigger, .ui-sidebar-user__trigger";
 const SIDEBAR_COLLAPSE_CLICK_SELECTOR = ".ui-nav-tree__item, .ui-sidebar-user__menu [role='menuitem']";
 
 export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = false }: AppShellProps) {
