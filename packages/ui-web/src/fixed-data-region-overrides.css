@@ -3,7 +3,8 @@
    - The whole app is fixed to the viewport.
    - The right lower data region keeps a fixed height.
    - Overflow scrolls only inside the data region/card, never on the page.
-   - Collapsed sidebar menu icons stack from top to bottom and user info stays pinned at the bottom. */
+   - Collapsed sidebar menu icons stack from top to bottom and user info stays pinned at the bottom.
+   - The outer data-region wrapper is transparent; the real page/card content owns the visible surface. */
 html,
 body,
 #root {
@@ -132,7 +133,7 @@ body {
   justify-self: center !important;
 }
 
-/* Right lower data area: fixed-height card that scrolls internally. */
+/* Right lower data area: fixed-height transparent scroll layer. */
 .ui-admin-route,
 .ui-user-route,
 .ui-shell__content > .ui-workbench,
@@ -152,15 +153,15 @@ body {
 .ui-admin-route,
 .ui-user-route {
   display: grid !important;
-  grid-auto-rows: max-content !important;
-  align-content: start !important;
-  gap: 14px !important;
-  padding: 14px !important;
-  border: 1px solid rgba(24, 35, 50, 0.08) !important;
-  border-radius: 28px !important;
-  background: rgba(255, 252, 246, 0.42) !important;
-  box-shadow: 0 22px 64px rgba(24, 35, 50, 0.07) !important;
-  backdrop-filter: blur(14px) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  align-content: stretch !important;
+  gap: 0 !important;
+  padding: 0 4px 6px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 .ui-shell__content > .ui-workbench,
@@ -180,21 +181,63 @@ body {
 .ui-user-route > .ui-page-section,
 .ui-admin-route > .ui-page-section,
 .ui-admin-route > .ui-admin-card,
-.ui-user-route > .ui-panel-card {
+.ui-user-route > .ui-panel-card,
+.ui-shell__content > .ui-workbench,
+.ui-shell__content > .ui-page-section,
+.ui-shell__content > .ui-admin-page {
   box-sizing: border-box !important;
   width: 100% !important;
 }
 
 /* Preserve full-height presence when data is sparse. */
-.ui-admin-route > .ui-workbench:only-child,
-.ui-user-route > .ui-workbench:only-child,
-.ui-admin-route > .ui-admin-page:only-child,
-.ui-user-route > .ui-page-section:only-child,
-.ui-admin-route > .ui-page-section:only-child,
-.ui-shell__content > .ui-workbench:only-child,
-.ui-shell__content > .ui-page-section:only-child,
-.ui-shell__content > .ui-admin-page:only-child {
+.ui-admin-route > .ui-workbench,
+.ui-user-route > .ui-workbench,
+.ui-admin-route > .ui-admin-page,
+.ui-user-route > .ui-page-section,
+.ui-admin-route > .ui-page-section,
+.ui-shell__content > .ui-workbench,
+.ui-shell__content > .ui-page-section,
+.ui-shell__content > .ui-admin-page {
   min-height: 100% !important;
+}
+
+.ui-admin-page,
+.ui-workbench,
+.ui-page-section {
+  align-self: stretch !important;
+}
+
+.ui-admin-page {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+
+.ui-workbench,
+.ui-page-section {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.ui-admin-page > .ui-admin-layout,
+.ui-admin-page > .ui-admin-table-card:last-child,
+.ui-admin-page > .ui-admin-card:last-child,
+.ui-admin-page > .ui-admin-list-card:last-child,
+.ui-admin-page > .ui-admin-tree-card:last-child,
+.ui-workbench > .ui-workbench-grid:last-child,
+.ui-workbench > .ui-dashboard-panel-grid:last-child,
+.ui-workbench > .ui-learning-plan-grid:last-child,
+.ui-page-section > .ui-page-section__body {
+  flex: 1 1 auto !important;
+}
+
+.ui-admin-layout {
+  min-height: 0 !important;
+}
+
+.ui-admin-main,
+.ui-admin-side-card {
+  min-height: 0 !important;
 }
 
 .ui-user-route > p,
@@ -231,9 +274,9 @@ html[data-ui-theme="dark"] .ui-admin-route,
 html[data-ui-theme="dark"] .ui-user-route,
 body[data-ui-theme="dark"] .ui-admin-route,
 body[data-ui-theme="dark"] .ui-user-route {
-  border-color: rgba(106, 130, 174, 0.32) !important;
-  background: rgba(17, 27, 46, 0.64) !important;
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.24) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 html[data-ui-theme="dark"] .ui-user-route > p,
@@ -252,7 +295,6 @@ body[data-ui-theme="dark"] .ui-admin-route > p {
 
   .ui-admin-route,
   .ui-user-route {
-    padding: 10px !important;
-    border-radius: 22px !important;
+    padding: 0 2px 4px 0 !important;
   }
 }
