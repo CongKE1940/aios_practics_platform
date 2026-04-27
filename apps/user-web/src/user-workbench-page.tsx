@@ -22,25 +22,70 @@ export function UserWorkbenchPage({
         .slice(0, 6),
     [menus]
   );
+  const primaryEntry = quickEntries[0];
+  const secondaryEntry = quickEntries[1];
 
   return (
     <section aria-label="用户工作台" className="ui-workbench ui-workbench--user">
-      <div className="ui-workbench__header">
-        <div>
-          <h2>用户工作台</h2>
-          <p>{`${userTypeLabel} ${userDisplayName}，继续今天的学习任务。`}</p>
+      <div className="ui-hero-panel">
+        <div className="ui-hero-panel__content">
+          <span className="ui-hero-panel__eyebrow">Learning route</span>
+          <h2>{userDisplayName}，把今天的学习推进到下一步。</h2>
+          <p>{`${userTypeLabel}工作台把课程、练题、考试和通知组织成一条清晰路径；先进入最重要任务，再回看错题与反馈。`}</p>
+          <div className="ui-hero-panel__actions">
+            {primaryEntry?.path ? (
+              <button type="button" className="ui-button ui-button--primary" onClick={() => onNavigate(primaryEntry.path)}>
+                继续 {primaryEntry.name}
+              </button>
+            ) : null}
+            {secondaryEntry?.path ? (
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate(secondaryEntry.path)}>
+                查看 {secondaryEntry.name}
+              </button>
+            ) : null}
+          </div>
+          <div className="ui-learning-strip" aria-label="学习路径要点">
+            <span>课程入口</span>
+            <span>练题闭环</span>
+            <span>考试恢复</span>
+            <span>通知同步</span>
+          </div>
         </div>
+        <aside className="ui-hero-panel__aside" aria-label="今日学习节奏">
+          <div className="ui-hero-metric">
+            <span>可用入口</span>
+            <strong>{quickEntries.length}</strong>
+          </div>
+          <div className="ui-hero-metric">
+            <span>推荐顺序</span>
+            <strong>3</strong>
+          </div>
+          <div className="ui-hero-metric">
+            <span>当前身份</span>
+            <strong>{userTypeLabel.slice(0, 2)}</strong>
+          </div>
+        </aside>
       </div>
 
       <div className="ui-stat-grid">
         <article className="ui-stat-card">
           <div className="ui-stat-card__icon" aria-hidden="true">
-            今
+            课
           </div>
           <div className="ui-stat-card__content">
-            <span>今日学习</span>
-            <strong>继续完成练题与考试</strong>
-            <small>从下方快捷入口直接继续</small>
+            <span>第一步</span>
+            <strong>进入课程</strong>
+            <small>从课程或题库选择今天的练习来源</small>
+          </div>
+        </article>
+        <article className="ui-stat-card">
+          <div className="ui-stat-card__icon" aria-hidden="true">
+            练
+          </div>
+          <div className="ui-stat-card__content">
+            <span>第二步</span>
+            <strong>完成练题</strong>
+            <small>提交答案、标熟题、沉淀错题和疑惑</small>
           </div>
         </article>
         <article className="ui-stat-card">
@@ -48,27 +93,45 @@ export function UserWorkbenchPage({
             考
           </div>
           <div className="ui-stat-card__content">
-            <span>待处理考试</span>
-            <strong>查看最近考试与结果</strong>
-            <small>支持继续作答或查看成绩</small>
-          </div>
-        </article>
-        <article className="ui-stat-card">
-          <div className="ui-stat-card__icon" aria-hidden="true">
-            通
-          </div>
-          <div className="ui-stat-card__content">
-            <span>消息提醒</span>
-            <strong>统一进入通知中心</strong>
-            <small>查看公告、系统消息与状态变化</small>
+            <span>第三步</span>
+            <strong>处理考试</strong>
+            <small>查看考试、继续作答或回看成绩</small>
           </div>
         </article>
       </div>
 
-      <div className="ui-workbench-grid">
+      <div className="ui-learning-plan-grid">
         <section className="ui-panel-card">
           <header className="ui-panel-card__header">
-            <h3>快捷入口</h3>
+            <div>
+              <span className="ui-kicker">Plan</span>
+              <h3>今日建议</h3>
+              <p>减少后台感，把学习动作压缩成可以马上执行的三步。</p>
+            </div>
+          </header>
+          <ol className="ui-learning-steps">
+            <li>
+              <strong>打开课程或练题中心</strong>
+              <small>先确定来源和题量</small>
+            </li>
+            <li>
+              <strong>完成一轮答题</strong>
+              <small>错题、熟题、疑惑自动沉淀</small>
+            </li>
+            <li>
+              <strong>回看通知与考试</strong>
+              <small>确认截止时间和待处理事项</small>
+            </li>
+          </ol>
+        </section>
+
+        <section className="ui-panel-card">
+          <header className="ui-panel-card__header">
+            <div>
+              <span className="ui-kicker">Launchpad</span>
+              <h3>快捷入口</h3>
+              <p>根据登录后菜单树展示当前账号可用功能。</p>
+            </div>
           </header>
           <div className="ui-quick-grid">
             {quickEntries.map((entry) => (
@@ -86,23 +149,6 @@ export function UserWorkbenchPage({
               </button>
             ))}
           </div>
-        </section>
-
-        <section className="ui-panel-card">
-          <header className="ui-panel-card__header">
-            <h3>今日建议</h3>
-          </header>
-          <ul className="ui-panel-list">
-            <li>
-              <span>先进入练题中心完成日常题量</span>
-            </li>
-            <li>
-              <span>再查看考试入口或考试管理</span>
-            </li>
-            <li>
-              <span>最后统一处理通知与反馈</span>
-            </li>
-          </ul>
         </section>
       </div>
     </section>
