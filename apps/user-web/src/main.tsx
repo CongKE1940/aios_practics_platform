@@ -10,6 +10,7 @@ import "@aios/ui-web/src/sidebar-state-stabilizer.css";
 import "@aios/ui-web/src/user-fixed-shell-layout.css";
 import "@aios/ui-web/src/fixed-shell-final-overrides.css";
 import "@aios/ui-web/src/fixed-data-region-overrides.css";
+import "@aios/ui-web/src/page-normalization-final.css";
 
 import { UserApp } from "./app";
 
