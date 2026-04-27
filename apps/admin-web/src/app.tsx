@@ -442,19 +442,21 @@ export function AdminApp({
           </div>
         }
       >
-        {selectedPath === "" ? (
-          <AdminWorkbench
-            analyticsApi={currentAnalyticsApi}
-            noticeApi={currentNoticeApi}
-            menus={session.menus}
-            userDisplayName={session.user.display_name}
-            onSelect={setSelectedPath}
-          />
-        ) : (
-          <div className="ui-admin-route">
-            {isKnownAdminPath(selectedPath) ? currentView : <EmptyState title="请选择左侧功能入口。" description="" />}
-          </div>
-        )}
+        <div className="ui-admin-route">
+          {selectedPath === "" ? (
+            <AdminWorkbench
+              analyticsApi={currentAnalyticsApi}
+              noticeApi={currentNoticeApi}
+              menus={session.menus}
+              userDisplayName={session.user.display_name}
+              onSelect={setSelectedPath}
+            />
+          ) : isKnownAdminPath(selectedPath) ? (
+            currentView
+          ) : (
+            <EmptyState title="请选择左侧功能入口。" description="" />
+          )}
+        </div>
       </AppShell>
     </div>
   );
