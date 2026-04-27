@@ -111,6 +111,7 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
   );
 
   const primaryEntry = quickEntries[0];
+  const primaryPath = primaryEntry?.path ?? "";
 
   return (
     <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin">
@@ -122,8 +123,8 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
             将组织、课程、题库、考试、公告和审计动作放在同一条运营主线上；先处理红黄状态，再进入具体模块。
           </p>
           <div className="ui-hero-panel__actions">
-            {primaryEntry?.path ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={() => onSelect(primaryEntry.path)}>
+            {primaryPath ? (
+              <button type="button" className="ui-button ui-button--primary" onClick={() => onSelect(primaryPath)}>
                 进入 {primaryEntry.name}
               </button>
             ) : null}
@@ -229,7 +230,11 @@ export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName
                 type="button"
                 className="ui-quick-button"
                 aria-label={`快捷进入${entry.name}`}
-                onClick={() => onSelect(entry.path)}
+                onClick={() => {
+                  if (entry.path) {
+                    onSelect(entry.path);
+                  }
+                }}
               >
                 <span className="ui-quick-button__icon" aria-hidden="true">
                   {entry.name.slice(0, 1)}
