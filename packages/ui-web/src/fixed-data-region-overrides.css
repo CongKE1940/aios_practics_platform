@@ -1,6 +1,9 @@
 /* Loaded after all shell styles.
-   The right lower data region has a fixed viewport-derived height.
-   Overflow belongs to the route/data component, never to the page or shell. */
+   This file is the final layout arbiter for both admin-web and user-web.
+   - The whole app is fixed to the viewport.
+   - The right lower data region keeps a fixed height.
+   - Overflow scrolls only inside the data region/card, never on the page.
+   - Collapsed sidebar menu icons stack from top to bottom and user info stays pinned at the bottom. */
 html,
 body,
 #root {
@@ -35,6 +38,7 @@ body {
 }
 
 .ui-shell__content {
+  box-sizing: border-box !important;
   height: 100% !important;
   max-height: 100% !important;
   min-height: 0 !important;
@@ -50,22 +54,119 @@ body {
   min-width: 0 !important;
 }
 
+/* Sidebar: keep the middle menu area as the only scroll area and pin the user block. */
+.ui-shell__sidebar {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.ui-shell__nav {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  overflow: hidden !important;
+}
+
+.ui-nav-tree {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  overflow: hidden !important;
+  align-content: stretch !important;
+}
+
+.ui-nav-tree > ul {
+  min-height: 0 !important;
+  height: 100% !important;
+  display: grid !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  align-items: start !important;
+  justify-items: stretch !important;
+  gap: 7px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 4px !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree {
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  align-content: stretch !important;
+  align-items: stretch !important;
+  justify-items: center !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree > ul,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree > ul {
+  width: 100% !important;
+  height: 100% !important;
+  display: grid !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  align-items: start !important;
+  justify-items: center !important;
+  gap: 8px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 0 !important;
+}
+
+.ui-shell__nav > .ui-sidebar-user,
+.ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user {
+  flex: 0 0 auto !important;
+  margin-top: auto !important;
+  align-self: stretch !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user {
+  width: var(--ui-sidebar-rail-button, 46px) !important;
+  justify-self: center !important;
+}
+
+/* Right lower data area: fixed-height card that scrolls internally. */
 .ui-admin-route,
-.ui-user-route {
+.ui-user-route,
+.ui-shell__content > .ui-workbench,
+.ui-shell__content > .ui-page-section,
+.ui-shell__content > .ui-admin-page {
   box-sizing: border-box !important;
   width: 100% !important;
   height: 100% !important;
   min-height: 0 !important;
   max-height: 100% !important;
-  display: grid !important;
-  grid-auto-rows: max-content !important;
-  align-content: start !important;
-  gap: 14px !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
   overscroll-behavior: contain !important;
   scrollbar-gutter: stable !important;
-  padding: 0 4px 6px 0 !important;
+}
+
+.ui-admin-route,
+.ui-user-route {
+  display: grid !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  gap: 14px !important;
+  padding: 14px !important;
+  border: 1px solid rgba(24, 35, 50, 0.08) !important;
+  border-radius: 28px !important;
+  background: rgba(255, 252, 246, 0.42) !important;
+  box-shadow: 0 22px 64px rgba(24, 35, 50, 0.07) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
+.ui-shell__content > .ui-workbench,
+.ui-shell__content > .ui-page-section,
+.ui-shell__content > .ui-admin-page {
+  padding-right: 4px !important;
 }
 
 .ui-admin-route > *,
@@ -77,9 +178,22 @@ body {
 .ui-user-route > .ui-workbench,
 .ui-admin-route > .ui-admin-page,
 .ui-user-route > .ui-page-section,
-.ui-admin-route > .ui-page-section {
+.ui-admin-route > .ui-page-section,
+.ui-admin-route > .ui-admin-card,
+.ui-user-route > .ui-panel-card {
   box-sizing: border-box !important;
   width: 100% !important;
+}
+
+/* Preserve full-height presence when data is sparse. */
+.ui-admin-route > .ui-workbench:only-child,
+.ui-user-route > .ui-workbench:only-child,
+.ui-admin-route > .ui-admin-page:only-child,
+.ui-user-route > .ui-page-section:only-child,
+.ui-admin-route > .ui-page-section:only-child,
+.ui-shell__content > .ui-workbench:only-child,
+.ui-shell__content > .ui-page-section:only-child,
+.ui-shell__content > .ui-admin-page:only-child {
   min-height: 100% !important;
 }
 
@@ -90,19 +204,36 @@ body {
   margin: 0 !important;
   padding: 24px !important;
   border: 1px solid rgba(24, 35, 50, 0.08) !important;
-  border-radius: 28px !important;
+  border-radius: 24px !important;
   background: rgba(255, 252, 246, 0.58) !important;
 }
 
 .ui-admin-route::-webkit-scrollbar,
-.ui-user-route::-webkit-scrollbar {
+.ui-user-route::-webkit-scrollbar,
+.ui-shell__content > .ui-workbench::-webkit-scrollbar,
+.ui-shell__content > .ui-page-section::-webkit-scrollbar,
+.ui-shell__content > .ui-admin-page::-webkit-scrollbar,
+.ui-nav-tree > ul::-webkit-scrollbar {
   width: 8px;
 }
 
 .ui-admin-route::-webkit-scrollbar-thumb,
-.ui-user-route::-webkit-scrollbar-thumb {
+.ui-user-route::-webkit-scrollbar-thumb,
+.ui-shell__content > .ui-workbench::-webkit-scrollbar-thumb,
+.ui-shell__content > .ui-page-section::-webkit-scrollbar-thumb,
+.ui-shell__content > .ui-admin-page::-webkit-scrollbar-thumb,
+.ui-nav-tree > ul::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: rgba(76, 132, 244, 0.32);
+}
+
+html[data-ui-theme="dark"] .ui-admin-route,
+html[data-ui-theme="dark"] .ui-user-route,
+body[data-ui-theme="dark"] .ui-admin-route,
+body[data-ui-theme="dark"] .ui-user-route {
+  border-color: rgba(106, 130, 174, 0.32) !important;
+  background: rgba(17, 27, 46, 0.64) !important;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.24) !important;
 }
 
 html[data-ui-theme="dark"] .ui-user-route > p,
@@ -117,5 +248,11 @@ body[data-ui-theme="dark"] .ui-admin-route > p {
 @media (max-width: 980px) {
   .ui-shell__main {
     grid-template-rows: 58px minmax(0, 1fr) !important;
+  }
+
+  .ui-admin-route,
+  .ui-user-route {
+    padding: 10px !important;
+    border-radius: 22px !important;
   }
 }
