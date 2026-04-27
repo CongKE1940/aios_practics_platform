@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
 export interface AppShellProps {
   brand: ReactNode;
@@ -27,9 +27,11 @@ export interface EmptyStateProps {
 }
 
 const SIDEBAR_EXPAND_TARGET_SELECTOR = ".ui-nav-tree__item, .ui-nav-tree__group-trigger, .ui-sidebar-user__trigger";
+const THEME_STORAGE_KEY = "aios.ui.theme";
 
 export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = false }: AppShellProps) {
   const [sidebarPeeking, setSidebarPeeking] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => readInitialDarkMode());
   const shellClassName = [
     "ui-shell",
     sidebarCollapsed ? "is-sidebar-collapsed" : "",
@@ -37,6 +39,19 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
   ]
     .filter(Boolean)
     .join(" ");
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    document.documentElement.dataset.uiTheme = darkMode ? "dark" : "light";
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, darkMode ? "dark" : "light");
+    } catch {
+      // Ignore unavailable storage in restricted environments.
+    }
+  }, [darkMode]);
 
   function handleSidebarMouseEnter(event: MouseEvent<HTMLElement>) {
     if (!sidebarCollapsed) {
@@ -75,11 +90,46 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
         <div className="ui-shell__nav">{sidebar}</div>
       </aside>
       <div className="ui-shell__main">
-        <header className="ui-shell__header">{header}</header>
+        <header className="ui-shell__header">
+          <div className="ui-shell__header-content">{header}</div>
+          <div className="ui-shell__tools" aria-label="页面工具">
+            <label className="ui-theme-toggle">
+              <input
+                type="checkbox"
+                checked={darkMode}
+                onChange={(event) => setDarkMode(event.currentTarget.checked)}
+              />
+              <span className="ui-theme-toggle__track" aria-hidden="true">
+                <span className="ui-theme-toggle__thumb" />
+              </span>
+              <span className="ui-theme-toggle__label">暗夜模式</span>
+            </label>
+          </div>
+        </header>
         <div className="ui-shell__content">{children}</div>
       </div>
     </div>
   );
+}
+
+function readInitialDarkMode(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme === "dark") {
+      return true;
+    }
+    if (savedTheme === "light") {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 }
 
 function blurActiveSidebarElement() {
