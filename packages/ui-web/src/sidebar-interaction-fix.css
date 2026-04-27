@@ -60,13 +60,27 @@
   min-height: var(--ui-nav-row-height);
   max-height: var(--ui-nav-row-height);
   gap: 10px;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .ui-nav-tree__children .ui-nav-tree__item,
-.ui-nav-tree__children .ui-nav-tree__group-trigger {
+.ui-nav-tree__children .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__group-trigger {
   height: var(--ui-nav-child-row-height);
   min-height: var(--ui-nav-child-row-height);
   max-height: var(--ui-nav-child-row-height);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret) {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .ui-nav-tree__icon,
