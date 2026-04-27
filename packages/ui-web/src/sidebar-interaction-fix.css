@@ -1,8 +1,13 @@
-/* Sidebar stability fixes: fixed rail, content offset, stateful peeking, compact menu sizing. */
+/* Sidebar stability fixes: fixed rail, content offset, stateful peeking, stable sizing. */
 :root {
   --ui-sidebar-expanded-width: 252px;
   --ui-sidebar-collapsed-width: 72px;
   --ui-shell-page-gap: 14px;
+  --ui-nav-row-height: 42px;
+  --ui-nav-child-row-height: 34px;
+  --ui-nav-icon-size: 32px;
+  --ui-nav-child-icon-size: 24px;
+  --ui-sidebar-avatar-size: 40px;
 }
 
 .ui-shell {
@@ -36,10 +41,7 @@
   min-height: 0;
 }
 
-.ui-nav-tree {
-  align-content: start;
-}
-
+.ui-nav-tree,
 .ui-nav-tree ul,
 .ui-nav-tree__children {
   align-content: start;
@@ -54,18 +56,49 @@
 .ui-nav-tree > ul > li > .ui-nav-tree__item,
 .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger {
   flex: 0 0 auto;
-  height: auto;
-  min-height: 42px;
-  max-height: 48px;
+  height: var(--ui-nav-row-height);
+  min-height: var(--ui-nav-row-height);
+  max-height: var(--ui-nav-row-height);
+  gap: 10px;
 }
 
 .ui-nav-tree__children .ui-nav-tree__item,
 .ui-nav-tree__children .ui-nav-tree__group-trigger {
-  min-height: 34px;
-  max-height: 38px;
+  height: var(--ui-nav-child-row-height);
+  min-height: var(--ui-nav-child-row-height);
+  max-height: var(--ui-nav-child-row-height);
 }
 
-.ui-sidebar-user__avatar {
+.ui-nav-tree__icon,
+.ui-nav-tree > ul > li > .ui-nav-tree__item .ui-nav-tree__icon,
+.ui-nav-tree > ul > li > .ui-nav-tree__group-trigger .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-user__avatar,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__avatar {
+  width: var(--ui-nav-icon-size);
+  height: var(--ui-nav-icon-size);
+  min-width: var(--ui-nav-icon-size);
+  flex-basis: var(--ui-nav-icon-size);
+  border-radius: 12px;
+}
+
+.ui-nav-tree__children .ui-nav-tree__icon,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__icon {
+  width: var(--ui-nav-child-icon-size);
+  height: var(--ui-nav-child-icon-size);
+  min-width: var(--ui-nav-child-icon-size);
+  flex-basis: var(--ui-nav-child-icon-size);
+  border-radius: 9px;
+}
+
+.ui-sidebar-user__avatar,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-user__avatar,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__avatar {
+  width: var(--ui-sidebar-avatar-size);
+  height: var(--ui-sidebar-avatar-size);
+  min-width: var(--ui-sidebar-avatar-size);
+  flex-basis: var(--ui-sidebar-avatar-size);
   overflow: hidden;
   background: transparent;
 }
@@ -106,6 +139,15 @@
 .ui-shell.is-sidebar-collapsed .ui-nav-tree__children,
 .ui-shell.is-sidebar-collapsed .ui-nav-tree__children[hidden] {
   display: none !important;
+}
+
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed .ui-sidebar-user__trigger {
+  justify-content: center;
+  width: 46px;
+  min-width: 46px;
+  padding-inline: 0;
 }
 
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__sidebar {
@@ -156,7 +198,6 @@
 
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__group-trigger {
-  min-height: 34px;
   padding-inline: 8px;
 }
 
