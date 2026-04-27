@@ -95,17 +95,19 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
         <header className="ui-shell__header">
           <div className="ui-shell__header-content">{header}</div>
           <div className="ui-shell__tools" aria-label="页面工具">
-            <label className="ui-theme-toggle" title={darkMode ? "切换到日间模式" : "切换到暗夜模式"}>
-              <input
-                type="checkbox"
-                aria-label="暗夜模式"
-                checked={darkMode}
-                onChange={(event) => setDarkMode(event.currentTarget.checked)}
-              />
+            <button
+              type="button"
+              className="ui-theme-toggle"
+              role="switch"
+              aria-label="暗夜模式"
+              aria-checked={darkMode}
+              title={darkMode ? "切换到日间模式" : "切换到暗夜模式"}
+              onClick={() => setDarkMode((current) => !current)}
+            >
               <span className="ui-theme-toggle__track" aria-hidden="true">
                 <span className="ui-theme-toggle__thumb" />
               </span>
-            </label>
+            </button>
           </div>
         </header>
         <div className="ui-shell__content">{children}</div>
