@@ -1,4 +1,4 @@
-/* Final sidebar behavior fixes: fixed rail, targeted hover expansion, image avatar. */
+/* Sidebar stability fixes: keep layout space, keep rail sticky, expand only from actionable targets. */
 .ui-shell {
   grid-template-columns: 252px minmax(0, 1fr);
 }
@@ -8,20 +8,22 @@
 }
 
 .ui-shell__sidebar {
-  position: fixed;
-  left: 14px;
+  position: sticky;
+  left: auto;
   top: 14px;
-  bottom: 14px;
-  width: 224px;
-  height: auto;
-  max-height: none;
+  bottom: auto;
+  width: auto;
+  height: calc(100vh - 28px);
+  max-height: calc(100vh - 28px);
   z-index: 30;
+  align-self: start;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar {
-  width: 44px;
+  width: auto;
   align-items: center;
   overflow: hidden;
+  transition: box-shadow 180ms ease;
 }
 
 .ui-sidebar-user__avatar {
@@ -37,13 +39,14 @@
   border-radius: inherit;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover {
-  width: 44px;
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) {
   align-items: center;
   box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-sidebar-brand-row {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-sidebar-brand-row {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
@@ -56,12 +59,22 @@
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__title,
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__item span:not(.ui-nav-tree__icon),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__caret {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__caret,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__caret {
   display: none;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__children[hidden] {
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover .ui-nav-tree__children[hidden],
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:not(:has(.ui-nav-tree__item:hover)):not(:has(.ui-nav-tree__group-trigger:hover)):not(:has(.ui-sidebar-user__trigger:hover)):not(:focus-within) .ui-nav-tree__children[hidden] {
   display: none !important;
 }
 
@@ -69,8 +82,9 @@
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover),
 .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within {
-  width: 224px;
+  width: 252px;
   align-items: stretch;
+  overflow: hidden;
   box-shadow: 0 24px 70px rgba(15, 63, 143, 0.18);
 }
 
