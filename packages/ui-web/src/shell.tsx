@@ -45,9 +45,11 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
       return;
     }
 
-    document.documentElement.dataset.uiTheme = darkMode ? "dark" : "light";
+    const theme = darkMode ? "dark" : "light";
+    document.documentElement.dataset.uiTheme = theme;
+    document.body.dataset.uiTheme = theme;
     try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, darkMode ? "dark" : "light");
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch {
       // Ignore unavailable storage in restricted environments.
     }
@@ -93,16 +95,16 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
         <header className="ui-shell__header">
           <div className="ui-shell__header-content">{header}</div>
           <div className="ui-shell__tools" aria-label="页面工具">
-            <label className="ui-theme-toggle">
+            <label className="ui-theme-toggle" title={darkMode ? "切换到日间模式" : "切换到暗夜模式"}>
               <input
                 type="checkbox"
+                aria-label="暗夜模式"
                 checked={darkMode}
                 onChange={(event) => setDarkMode(event.currentTarget.checked)}
               />
               <span className="ui-theme-toggle__track" aria-hidden="true">
                 <span className="ui-theme-toggle__thumb" />
               </span>
-              <span className="ui-theme-toggle__label">暗夜模式</span>
             </label>
           </div>
         </header>
