@@ -51,6 +51,7 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
 
   function handleSidebarMouseLeave() {
     setSidebarPeeking(false);
+    blurActiveSidebarElement();
   }
 
   function handleSidebarClick(event: MouseEvent<HTMLElement>) {
@@ -60,9 +61,7 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
 
     if ((event.target as Element).closest(SIDEBAR_COLLAPSE_CLICK_SELECTOR)) {
       setSidebarPeeking(false);
-      if (event.target instanceof HTMLElement) {
-        event.target.blur();
-      }
+      blurActiveSidebarElement();
     }
   }
 
@@ -83,6 +82,17 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
       </div>
     </div>
   );
+}
+
+function blurActiveSidebarElement() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLElement && activeElement.closest(".ui-shell__sidebar")) {
+    activeElement.blur();
+  }
 }
 
 export function PageSection({ title, description, actions, children }: PageSectionProps) {
