@@ -191,10 +191,14 @@
   gap: 12px;
 }
 
-/* Collapsed rail: keep it narrow even if a selected item keeps focus. */
+/* Collapsed rail: keep it narrow and inert unless React adds is-sidebar-peeking. */
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar,
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within {
-  width: var(--ui-sidebar-collapsed-width);
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-nav-tree__item:hover),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) {
+  width: var(--ui-sidebar-collapsed-width) !important;
   align-items: center;
   overflow: hidden;
   box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
@@ -202,7 +206,9 @@
 }
 
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-brand-row,
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within .ui-sidebar-brand-row {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:focus-within .ui-sidebar-brand-row,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-brand-row {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
@@ -215,7 +221,17 @@
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__title,
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__caret {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__caret,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__caret {
   display: none !important;
   visibility: hidden;
 }
@@ -229,13 +245,19 @@
 }
 
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children[hidden] {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__children[hidden],
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__children[hidden] {
   display: none !important;
 }
 
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__item,
 .ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree__group-trigger,
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__trigger {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__trigger {
   justify-content: center;
   width: var(--ui-sidebar-inner-rail);
   min-width: var(--ui-sidebar-inner-rail);
@@ -243,13 +265,17 @@
   padding-inline: 0;
 }
 
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user {
   width: var(--ui-sidebar-inner-rail);
   padding-top: 10px;
   border-top: 1px solid rgba(37, 99, 235, 0.12);
 }
 
-.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__trigger {
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user__trigger,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__trigger {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
