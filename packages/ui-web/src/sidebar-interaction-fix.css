@@ -1,4 +1,4 @@
-/* Sidebar stability fixes: fixed rail, content offset, hover-only temporary expansion. */
+/* Sidebar stability fixes: fixed rail, content offset, stateful peeking, compact menu sizing. */
 :root {
   --ui-sidebar-expanded-width: 252px;
   --ui-sidebar-collapsed-width: 72px;
@@ -32,12 +32,37 @@
   width: 100%;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar {
-  width: var(--ui-sidebar-collapsed-width);
-  align-items: center;
-  overflow: hidden;
-  box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
-  transition: width 180ms ease, box-shadow 180ms ease;
+.ui-shell__nav {
+  min-height: 0;
+}
+
+.ui-nav-tree {
+  align-content: start;
+}
+
+.ui-nav-tree ul,
+.ui-nav-tree__children {
+  align-content: start;
+}
+
+.ui-nav-tree li {
+  min-height: 0;
+}
+
+.ui-nav-tree__item,
+.ui-nav-tree__group-trigger,
+.ui-nav-tree > ul > li > .ui-nav-tree__item,
+.ui-nav-tree > ul > li > .ui-nav-tree__group-trigger {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 42px;
+  max-height: 48px;
+}
+
+.ui-nav-tree__children .ui-nav-tree__item,
+.ui-nav-tree__children .ui-nav-tree__group-trigger {
+  min-height: 34px;
+  max-height: 38px;
 }
 
 .ui-sidebar-user__avatar {
@@ -51,6 +76,14 @@
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
+}
+
+.ui-shell.is-sidebar-collapsed .ui-shell__sidebar {
+  width: var(--ui-sidebar-collapsed-width);
+  align-items: center;
+  overflow: hidden;
+  box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
+  transition: width 180ms ease, box-shadow 180ms ease;
 }
 
 .ui-shell.is-sidebar-collapsed .ui-sidebar-brand-row {
@@ -75,123 +108,63 @@
   display: none !important;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within {
-  width: var(--ui-sidebar-collapsed-width);
-  align-items: center;
-  box-shadow: 0 20px 56px rgba(15, 63, 143, 0.1);
-}
-
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-brand-row {
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-}
-
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__caret {
-  display: none;
-}
-
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within .ui-nav-tree__children[hidden] {
-  display: none !important;
-}
-
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__sidebar {
   width: var(--ui-sidebar-expanded-width);
   align-items: stretch;
   overflow: hidden;
   box-shadow: 0 24px 70px rgba(15, 63, 143, 0.18);
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-brand-row,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-brand-row,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-brand-row {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-brand-row {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-brand-block,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-brand-block,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-brand-block,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-shell__nav,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-shell__nav,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-shell__nav,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree ul,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree ul,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree ul {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__nav,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree ul {
   justify-items: stretch;
   width: 100%;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-brand-block strong,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-brand-block span,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__copy,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__title,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__item span:not(.ui-nav-tree__icon),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__caret,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__caret {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block strong,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-brand-block span,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__copy,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__caret,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__title,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item span:not(.ui-nav-tree__icon),
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger span:not(.ui-nav-tree__icon):not(.ui-nav-tree__caret),
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__caret {
   display: initial;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__children,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__children[hidden],
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__children[hidden] {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children[hidden] {
   display: grid !important;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__item,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__item,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__item,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-nav-tree__group-trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-nav-tree__group-trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-nav-tree__group-trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user__trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user__trigger,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__trigger {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__group-trigger,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__trigger {
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
   padding-inline: 10px;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__item:hover) .ui-sidebar-user,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-nav-tree__group-trigger:hover) .ui-sidebar-user,
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__item,
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-nav-tree__children .ui-nav-tree__group-trigger {
+  min-height: 34px;
+  padding-inline: 8px;
+}
+
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user {
   width: 100%;
 }
 
-.ui-shell.is-sidebar-collapsed .ui-shell__sidebar:has(.ui-sidebar-user__trigger:hover) .ui-sidebar-user__menu {
+.ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-sidebar-user__menu {
   left: 0;
   right: 0;
   bottom: calc(100% + 10px);
@@ -217,8 +190,7 @@
   }
 
   .ui-shell.is-sidebar-collapsed .ui-shell__sidebar,
-  .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:hover,
-  .ui-shell.is-sidebar-collapsed .ui-shell__sidebar:focus-within {
+  .ui-shell.is-sidebar-collapsed.is-sidebar-peeking .ui-shell__sidebar {
     width: auto;
   }
 }
