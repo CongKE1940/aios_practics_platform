@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	StatusActive             = "active"
-	StatusDisabled           = "disabled"
-	ObjectTypeSchool         = "school"
-	ObjectTypeOrganization   = "organization"
-	CodeInvalidInput         = 40000
-	CodeForbidden            = 40300
-	CodeNotFound             = 40400
+	StatusActive           = "active"
+	StatusDisabled         = "disabled"
+	ObjectTypeSchool       = "school"
+	ObjectTypeOrganization = "organization"
+	CodeInvalidInput       = 40000
+	CodeForbidden          = 40300
+	CodeNotFound           = 40400
 )
 
 var (
@@ -158,8 +158,6 @@ type Repository interface {
 	CreateSchool(ctx context.Context, school School) (School, error)
 	UpdateSchool(ctx context.Context, school School) (School, error)
 	DisableSchool(ctx context.Context, tenantID int64, id int64) error
-	EnableSchool(ctx context.Context, tenantID int64, id int64) error
-	DeleteSchool(ctx context.Context, tenantID int64, id int64) error
 	ListGrades(ctx context.Context, tenantID int64, filter GradeListFilter) (PageResult[Grade], error)
 	GetGrade(ctx context.Context, tenantID int64, id int64) (Grade, error)
 	CreateGrade(ctx context.Context, grade Grade) (Grade, error)
