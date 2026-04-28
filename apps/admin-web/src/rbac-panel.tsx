@@ -1,17 +1,26 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
-import type { PageResult, PermissionItem, RoleInput, RoleItem } from "@aios/api-sdk";
+import type {
+  PageResult,
+  PermissionItem,
+  PermissionListQuery,
+  RoleInput,
+  RoleItem,
+  RoleListQuery
+} from "@aios/api-sdk";
+import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
-import { downloadCsv, paginateItems, toggleSelectAll, toggleSelection } from "./list-page-utils";
+import { downloadCsv } from "./list-page-utils";
 
 export interface RbacPanelApi {
-  listRoles(): Promise<PageResult<RoleItem>>;
+  listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   createRole(body: RoleInput): Promise<RoleItem>;
+  updateRole?(id: number, body: RoleInput): Promise<RoleItem>;
   assignRolePermissions(id: number, body: { permission_ids: number[] }): Promise<RoleItem>;
-  listPermissions(): Promise<PageResult<PermissionItem>>;
+  listPermissions(query?: PermissionListQuery): Promise<PageResult<PermissionItem>>;
 }
 
-const pageSize = 8;
+const defaultPageSize = 10;
 
 const defaultForm: RoleInput = {
   code: "",
@@ -24,6 +33,7 @@ const defaultForm: RoleInput = {
 type ModalState =
   | { type: "create" }
   | { type: "detail"; role: RoleItem }
+  | { type: "edit"; role: RoleItem }
   | null;
 
 export function RbacPanel({ api }: { api: RbacPanelApi }) {
@@ -32,58 +42,18 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [form, setForm] = useState<RoleInput>(defaultForm);
-  const [keyword, setKeyword] = useState("");
+  const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
-  const [selectedRoleID, setSelectedRoleID] = useState<number | null>(null);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [total, setTotal] = useState(0);
+  const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [selectedModule, setSelectedModule] = useState("");
   const [selectedPermissionIDs, setSelectedPermissionIDs] = useState<number[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
+  const didLoadRef = useRef(false);
 
-  async function loadAll() {
-    setLoading(true);
-    setErrorMessage("");
-    try {
-      const [roleResult, permissionResult] = await Promise.all([api.listRoles(), api.listPermissions()]);
-      setRoles(roleResult.items);
-      setPermissions(permissionResult.items);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载角色权限失败");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadAll();
-  }, [api]);
-
-  useEffect(() => {
-    setPage(1);
-    setSelectedIDs([]);
-  }, [keyword]);
-
-  useEffect(() => {
-    if (!selectedRoleID && roles.length > 0) {
-      setSelectedRoleID(roles[0].id);
-    }
-  }, [roles, selectedRoleID]);
-
-  useEffect(() => {
-    if (!selectedModule && permissions.length > 0) {
-      setSelectedModule(permissions[0].module);
-    }
-  }, [permissions, selectedModule]);
-
-  const selectedRole = useMemo(
-    () => roles.find((role) => role.id === selectedRoleID) ?? roles[0] ?? null,
-    [roles, selectedRoleID]
-  );
-
-  useEffect(() => {
-    setSelectedPermissionIDs(selectedRole?.permission_ids ?? []);
-  }, [selectedRole]);
-
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const permissionNameMap = useMemo(() => new Map(permissions.map((permission) => [permission.id, permission.name])), [permissions]);
   const groupedModules = useMemo(() => {
     const map = new Map<string, PermissionItem[]>();
     for (const permission of permissions) {
@@ -93,42 +63,133 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
     }
     return Array.from(map.entries());
   }, [permissions]);
-
-  const filteredRoles = useMemo(
-    () =>
-      roles.filter((role) =>
-        [role.name, role.code, formatPermissionNames(role.permission_ids ?? [], permissions)]
-          .join(" ")
-          .toLowerCase()
-          .includes(keyword.trim().toLowerCase())
-      ),
-    [keyword, permissions, roles]
-  );
-
-  const pagination = useMemo(() => paginateItems(filteredRoles, page, pageSize), [filteredRoles, page]);
-  const currentPageIDs = useMemo(() => pagination.items.map((item) => item.id), [pagination.items]);
-
-  useEffect(() => {
-    if (page !== pagination.page) {
-      setPage(pagination.page);
-    }
-  }, [page, pagination.page]);
-
   const modulePermissions = useMemo(
-    () => permissions.filter((permission) => permission.module === selectedModule),
+    () => permissions.filter((permission) => !selectedModule || permission.module === selectedModule),
     [permissions, selectedModule]
   );
+  const columns = useMemo<Array<FixedActionListColumn<RoleItem>>>(
+    () => [
+      {
+        key: "name",
+        title: "角色名称",
+        render: (role) => role.name
+      },
+      {
+        key: "code",
+        title: "角色编码",
+        render: (role) => role.code
+      },
+      {
+        key: "role_type",
+        title: "角色类型",
+        width: 120,
+        render: (role) => formatRoleType(role.role_type)
+      },
+      {
+        key: "data_scope_type",
+        title: "数据范围",
+        width: 130,
+        render: (role) => formatDataScopeType(role.data_scope_type)
+      },
+      {
+        key: "status",
+        title: "状态",
+        width: 110,
+        render: (role) => <span className={statusClassName(role.status)}>{formatStatusLabel(role.status)}</span>
+      },
+      {
+        key: "permission_count",
+        title: "权限数",
+        width: 100,
+        render: (role) => role.permission_ids?.length ?? 0
+      },
+      {
+        key: "remark",
+        title: "备注",
+        render: (role) => role.remark || "-"
+      }
+    ],
+    []
+  );
 
-  async function handleCreateRole(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (didLoadRef.current) {
+      return;
+    }
+    didLoadRef.current = true;
+    void loadAll(buildRoleQuery("", 1, defaultPageSize));
+  }, [api]);
+
+  useEffect(() => {
+    if (!selectedModule && groupedModules.length > 0) {
+      setSelectedModule(groupedModules[0][0]);
+    }
+  }, [groupedModules, selectedModule]);
+
+  async function loadAll(query: RoleListQuery = buildRoleQuery(status, page, pageSize)) {
+    setLoading(true);
+    setErrorMessage("");
+    try {
+      const [roleResult, permissionResult] = await Promise.all([
+        api.listRoles(query),
+        api.listPermissions({ page: 1, page_size: 200 })
+      ]);
+      setRoles(roleResult.items);
+      setPermissions(permissionResult.items);
+      setTotal(roleResult.total);
+      setPage(roleResult.page || query.page || 1);
+      setPageSize(roleResult.page_size || query.page_size || defaultPageSize);
+    } catch (error) {
+      setRoles([]);
+      setTotal(0);
+      setPage(query.page || 1);
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "角色权限数据加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleQuery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await api.createRole(form);
-    setForm(defaultForm);
-    setModal(null);
+    setSelectedIDs([]);
+    await loadAll(buildRoleQuery(status, 1, pageSize));
+  }
+
+  async function handleReset() {
+    setStatus("");
+    setSelectedIDs([]);
+    await loadAll(buildRoleQuery("", 1, defaultPageSize));
+  }
+
+  async function handlePageChange(nextPage: number) {
+    setSelectedIDs([]);
+    await loadAll(buildRoleQuery(status, nextPage, pageSize));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (modal?.type === "edit") {
+      if (!api.updateRole) {
+        setErrorMessage("当前接口暂不支持编辑角色。 ");
+        return;
+      }
+      await api.updateRole(modal.role.id, form);
+    } else {
+      await api.createRole(form);
+    }
+
+    closeModal();
     await loadAll();
   }
 
   async function handleAssignRolePermissions(roleID: number, permissionIDs: number[]) {
     await api.assignRolePermissions(roleID, { permission_ids: permissionIDs });
+    const updatedRoles = roles.map((role) => (role.id === roleID ? { ...role, permission_ids: permissionIDs } : role));
+    setRoles(updatedRoles);
+    if (modal?.type === "detail" && modal.role.id === roleID) {
+      setModal({ type: "detail", role: { ...modal.role, permission_ids: permissionIDs } });
+    }
     await loadAll();
   }
 
@@ -138,214 +199,119 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
     );
   }
 
+  function openCreateModal() {
+    setForm(defaultForm);
+    setSelectedPermissionIDs([]);
+    setModal({ type: "create" });
+  }
+
+  function openDetailModal(role: RoleItem) {
+    setSelectedPermissionIDs(role.permission_ids ?? []);
+    setModal({ type: "detail", role });
+  }
+
+  function openEditModal(role: RoleItem) {
+    setForm({
+      code: role.code,
+      name: role.name,
+      role_type: role.role_type,
+      data_scope_type: role.data_scope_type,
+      remark: role.remark ?? ""
+    });
+    setSelectedPermissionIDs(role.permission_ids ?? []);
+    setModal({ type: "edit", role });
+  }
+
+  function closeModal() {
+    setModal(null);
+    setForm(defaultForm);
+    setSelectedPermissionIDs([]);
+  }
+
   function handleExport() {
     downloadCsv(
       "roles.csv",
       [
         { key: "name", title: "角色名称" },
         { key: "code", title: "角色编码" },
-        { key: "role_type", title: "角色类型" },
-        { key: "data_scope_type", title: "数据范围" },
-        { key: "permission_summary", title: "权限摘要" }
+        { key: "role_type_label", title: "角色类型" },
+        { key: "data_scope_type_label", title: "数据范围" },
+        { key: "status_label", title: "状态" },
+        { key: "permission_summary", title: "权限摘要" },
+        { key: "remark", title: "备注" }
       ],
-      filteredRoles.map((role) => ({
+      roles.map((role) => ({
         ...role,
-        permission_summary: formatPermissionNames(role.permission_ids ?? [], permissions)
+        role_type_label: formatRoleType(role.role_type),
+        data_scope_type_label: formatDataScopeType(role.data_scope_type),
+        status_label: formatStatusLabel(role.status),
+        permission_summary: formatPermissionNames(role.permission_ids ?? [], permissionNameMap),
+        remark: role.remark ?? ""
       }))
     );
   }
 
   return (
-    <section aria-label="角色权限面板" className="ui-admin-page">
-      <section className="ui-admin-page__hero">
-        <div className="ui-admin-page__header">
-          <div>
-            <span className="ui-admin-page__eyebrow">角色权限</span>
-            <h2>角色权限</h2>
-          </div>
-        </div>
-      </section>
-
-      {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
-      {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
-
-      {!loading ? (
-        <>
-          <section className="ui-admin-filters ui-admin-card">
-            <div className="ui-admin-filters__grid">
-              <div className="ui-admin-form__field">
-                <label htmlFor="role_keyword">搜索角色</label>
-                <input
-                  id="role_keyword"
-                  placeholder="输入角色名称或编码"
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
-            </div>
-          </section>
-
-          <section className="ui-admin-actions-bar ui-admin-card">
-            <div className="ui-admin-actions-bar__group">
-              <button type="button" className="ui-button ui-button--primary" onClick={() => setModal({ type: "create" })}>
-                新增角色
-              </button>
-              <button type="button" className="ui-button ui-button--ghost" disabled>
-                批量删除
-              </button>
-              <button type="button" className="ui-button ui-button--ghost" onClick={handleExport}>
-                导出列表
-              </button>
-            </div>
-            <div className="ui-admin-pagination__info">{`已选 ${selectedIDs.length} 项`}</div>
-          </section>
-
-          <section className="ui-admin-table-card">
-            <div className="ui-admin-table-card__header">
-              <div>
-                <h3>角色列表</h3>
-              </div>
-            </div>
-            <table className="ui-admin-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      className="ui-admin-table__checkbox"
-                      aria-label="全选角色"
-                      checked={currentPageIDs.length > 0 && currentPageIDs.every((id) => selectedIDs.includes(id))}
-                      onChange={() => setSelectedIDs((current) => toggleSelectAll(current, currentPageIDs))}
-                    />
-                  </th>
-                  <th>角色名称</th>
-                  <th>角色编码</th>
-                  <th>角色类型</th>
-                  <th>权限数</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagination.items.map((role) => (
-                  <tr key={role.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        className="ui-admin-table__checkbox"
-                        aria-label={`选择角色-${role.id}`}
-                        checked={selectedIDs.includes(role.id)}
-                        onChange={() => setSelectedIDs((current) => toggleSelection(current, role.id))}
-                      />
-                    </td>
-                    <td>{role.name}</td>
-                    <td>{role.code}</td>
-                    <td>{role.role_type}</td>
-                    <td>{role.permission_ids?.length ?? 0}</td>
-                    <td>
-                      <div className="ui-admin-table__actions">
-                        <button
-                          type="button"
-                          className="ui-admin-link"
-                          onClick={() => {
-                            setSelectedRoleID(role.id);
-                            setModal({ type: "detail", role });
-                          }}
-                        >
-                          详情
-                        </button>
-                        <button
-                          type="button"
-                          className="ui-admin-link"
-                          onClick={() => {
-                            setSelectedRoleID(role.id);
-                            setModal({ type: "detail", role });
-                          }}
-                        >
-                          编辑
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="ui-admin-table__footer">
-              <div className="ui-admin-pagination__info">{`共 ${pagination.total} 条，当前第 ${pagination.page} / ${pagination.pageCount} 页`}</div>
-              <div className="ui-admin-pagination">
-                <button
-                  type="button"
-                  className="ui-button ui-button--ghost"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={pagination.page <= 1}
-                >
-                  上一页
-                </button>
-                <button
-                  type="button"
-                  className="ui-button ui-button--ghost"
-                  onClick={() => setPage((current) => Math.min(pagination.pageCount, current + 1))}
-                  disabled={pagination.page >= pagination.pageCount}
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
-          </section>
-        </>
+    <section aria-label="角色权限面板" className="ui-admin-page" style={pageStyle}>
+      {errorMessage ? (
+        <ToastNotice tone="danger" title="角色权限数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
+
+      <section className="ui-admin-card" aria-label="角色权限数据展示区" style={dataRegionStyle} aria-busy={loading}>
+        <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
+          <div className="ui-admin-form__field">
+            <label htmlFor="role_status_filter">状态 status</label>
+            <select id="role_status_filter" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">全部状态</option>
+              <option value="active">启用</option>
+              <option value="disabled">禁用</option>
+            </select>
+          </div>
+          <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
+            <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
+              {loading ? "查询中" : "查询"}
+            </button>
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()} disabled={loading}>
+              重置
+            </button>
+          </div>
+        </form>
+
+        <FixedActionList
+          rows={roles}
+          columns={columns}
+          getRowId={(role) => role.id}
+          selectedRowIds={selectedIDs}
+          onSelectionChange={setSelectedIDs}
+          onCreate={openCreateModal}
+          onExport={handleExport}
+          onDetail={openDetailModal}
+          onEdit={openEditModal}
+          currentPage={page}
+          pageCount={pageCount}
+          total={total}
+          onPageChange={(nextPage) => void handlePageChange(nextPage)}
+          minHeight="100%"
+          emptyText={loading ? "数据加载中..." : "暂无角色数据"}
+          ariaLabel="角色列表"
+          createLabel="新增"
+          deleteLabel="删除"
+          exportLabel="导出"
+          rowCheckboxLabel={(role) => `选择角色-${role.name}`}
+        />
+      </section>
 
       {modal ? (
         <div className="ui-admin-modal-backdrop">
           <section className="ui-admin-modal" aria-label="角色权限弹层">
-            {modal.type === "create" ? (
-              <>
-                <div className="ui-admin-modal__header">
-                  <div>
-                    <h3>新增角色</h3>
-                  </div>
-                  <button type="button" className="ui-button ui-button--ghost" onClick={() => setModal(null)}>
-                    关闭
-                  </button>
-                </div>
-                <form onSubmit={(event) => void handleCreateRole(event)}>
-                  <div className="ui-admin-modal__body">
-                    <div className="ui-admin-form__grid">
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="role_code">角色编码</label>
-                        <input
-                          id="role_code"
-                          value={form.code}
-                          onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
-                        />
-                      </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="role_name">角色名称</label>
-                        <input
-                          id="role_name"
-                          value={form.name}
-                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ui-admin-modal__footer">
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => setModal(null)}>
-                      取消
-                    </button>
-                    <button type="submit" className="ui-button ui-button--primary">
-                      新增角色
-                    </button>
-                  </div>
-                </form>
-              </>
-            ) : (
+            {modal.type === "detail" ? (
               <>
                 <div className="ui-admin-modal__header">
                   <div>
                     <h3>角色详情</h3>
                     <p>{modal.role.name}</p>
                   </div>
-                  <button type="button" className="ui-button ui-button--ghost" onClick={() => setModal(null)}>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
                     关闭
                   </button>
                 </div>
@@ -357,20 +323,28 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
                     </div>
                     <div>
                       <dt>角色类型</dt>
-                      <dd>{modal.role.role_type}</dd>
+                      <dd>{formatRoleType(modal.role.role_type)}</dd>
                     </div>
                     <div>
                       <dt>数据范围</dt>
-                      <dd>{modal.role.data_scope_type}</dd>
+                      <dd>{formatDataScopeType(modal.role.data_scope_type)}</dd>
+                    </div>
+                    <div>
+                      <dt>状态</dt>
+                      <dd>{formatStatusLabel(modal.role.status)}</dd>
                     </div>
                     <div>
                       <dt>权限摘要</dt>
-                      <dd>{formatPermissionNames(modal.role.permission_ids ?? [], permissions) || "-"}</dd>
+                      <dd>{formatPermissionNames(modal.role.permission_ids ?? [], permissionNameMap) || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt>备注</dt>
+                      <dd>{modal.role.remark || "-"}</dd>
                     </div>
                   </dl>
 
                   <div className="ui-admin-form__field">
-                    <label htmlFor="permission_module">权限模块</label>
+                    <label htmlFor="permission_module">权限模块 module</label>
                     <select id="permission_module" value={selectedModule} onChange={(event) => setSelectedModule(event.target.value)}>
                       {groupedModules.map(([module]) => (
                         <option key={module} value={module}>
@@ -403,28 +377,110 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
                           </td>
                           <td>{permission.name}</td>
                           <td>{permission.code}</td>
-                          <td>{permission.resource_type}</td>
+                          <td>{permission.resource_type || "-"}</td>
                         </tr>
                       ))}
+                      {modulePermissions.length === 0 ? (
+                        <tr>
+                          <td colSpan={4}>暂无权限数据</td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>
                 <div className="ui-admin-modal__footer">
-                  <button
-                    type="button"
-                    className="ui-button ui-button--ghost"
-                    onClick={() => void handleAssignRolePermissions(modal.role.id, permissions.map((item) => item.id))}
-                  >
-                    {`授予全部权限-${modal.role.id}`}
-                  </button>
-                  <button
-                    type="button"
-                    className="ui-button ui-button--primary"
-                    onClick={() => void handleAssignRolePermissions(modal.role.id, selectedPermissionIDs)}
-                  >
-                    保存授权
+                  <div className="ui-admin-actions-bar__group">
+                    <button
+                      type="button"
+                      className="ui-button ui-button--ghost"
+                      onClick={() => void handleAssignRolePermissions(modal.role.id, permissions.map((item) => item.id))}
+                    >
+                      授予全部权限
+                    </button>
+                    <button type="button" className="ui-button ui-button--ghost" onClick={() => openEditModal(modal.role)}>
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-button ui-button--primary"
+                      onClick={() => void handleAssignRolePermissions(modal.role.id, selectedPermissionIDs)}
+                    >
+                      保存授权
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="ui-admin-modal__header">
+                  <div>
+                    <h3>{modal.type === "create" ? "新增角色" : "编辑角色"}</h3>
+                  </div>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                    关闭
                   </button>
                 </div>
+                <form onSubmit={(event) => void handleSubmit(event)}>
+                  <div className="ui-admin-modal__body">
+                    <div className="ui-admin-form__grid">
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="role_code">角色编码</label>
+                        <input
+                          id="role_code"
+                          value={form.code}
+                          onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="role_name">角色名称</label>
+                        <input
+                          id="role_name"
+                          value={form.name}
+                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="role_type">角色类型</label>
+                        <select
+                          id="role_type"
+                          value={form.role_type}
+                          onChange={(event) => setForm((current) => ({ ...current, role_type: event.target.value }))}
+                        >
+                          <option value="custom">自定义</option>
+                          <option value="system">系统角色</option>
+                        </select>
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="data_scope_type">数据范围</label>
+                        <select
+                          id="data_scope_type"
+                          value={form.data_scope_type}
+                          onChange={(event) => setForm((current) => ({ ...current, data_scope_type: event.target.value }))}
+                        >
+                          <option value="all">全部数据</option>
+                          <option value="subtree">本级及下级</option>
+                          <option value="self">仅本人</option>
+                        </select>
+                      </div>
+                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                        <label htmlFor="role_remark">备注</label>
+                        <textarea
+                          id="role_remark"
+                          value={form.remark}
+                          onChange={(event) => setForm((current) => ({ ...current, remark: event.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="ui-admin-modal__footer">
+                    <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                      取消
+                    </button>
+                    <button type="submit" className="ui-button ui-button--primary">
+                      {modal.type === "create" ? "新增角色" : "保存修改"}
+                    </button>
+                  </div>
+                </form>
               </>
             )}
           </section>
@@ -434,10 +490,26 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
   );
 }
 
-function formatPermissionNames(permissionIDs: number[], permissions: PermissionItem[]): string {
-  return permissionIDs
-    .map((permissionID) => permissions.find((item) => item.id === permissionID)?.name ?? `权限-${permissionID}`)
-    .join("、");
+function buildRoleQuery(status: string, page: number, pageSize: number): RoleListQuery {
+  return {
+    status: status || undefined,
+    page,
+    page_size: pageSize
+  };
+}
+
+function normalizeErrorMessage(message: string): string {
+  if (/404|not found/i.test(message)) {
+    return "角色权限接口暂不可用，请检查后端 /api/v1/roles 或 /api/v1/permissions 服务是否已启动。";
+  }
+  if (/请求参数错误|invalid/i.test(message)) {
+    return "角色权限请求参数错误，请检查角色编码、名称或权限配置。";
+  }
+  return message || "角色权限数据加载失败";
+}
+
+function formatPermissionNames(permissionIDs: number[], permissionNameMap: Map<number, string>): string {
+  return permissionIDs.map((permissionID) => permissionNameMap.get(permissionID) ?? `权限-${permissionID}`).join("、");
 }
 
 function formatModuleName(module: string): string {
@@ -460,3 +532,75 @@ function formatModuleName(module: string): string {
       return module;
   }
 }
+
+function formatRoleType(roleType: string): string {
+  switch (roleType) {
+    case "system":
+      return "系统角色";
+    case "custom":
+      return "自定义";
+    default:
+      return roleType || "-";
+  }
+}
+
+function formatDataScopeType(scopeType: string): string {
+  switch (scopeType) {
+    case "all":
+      return "全部数据";
+    case "subtree":
+      return "本级及下级";
+    case "self":
+      return "仅本人";
+    default:
+      return scopeType || "-";
+  }
+}
+
+function statusClassName(status: string): string {
+  if (status === "active") {
+    return "ui-admin-status ui-admin-status--active";
+  }
+  if (status === "disabled") {
+    return "ui-admin-status ui-admin-status--disabled";
+  }
+  return "ui-admin-status ui-admin-status--draft";
+}
+
+function formatStatusLabel(status: string): string {
+  switch (status) {
+    case "active":
+      return "启用";
+    case "disabled":
+      return "禁用";
+    default:
+      return status || "-";
+  }
+}
+
+const pageStyle: CSSProperties = {
+  minHeight: "100%",
+  gap: 0
+};
+
+const dataRegionStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+  gap: 14,
+  minHeight: "100%",
+  padding: 22
+};
+
+const filterFormStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(220px, 300px) auto",
+  alignItems: "end",
+  gap: 14,
+  margin: 0
+};
+
+const queryActionsStyle: CSSProperties = {
+  alignItems: "center",
+  paddingBottom: 1,
+  whiteSpace: "nowrap"
+};
