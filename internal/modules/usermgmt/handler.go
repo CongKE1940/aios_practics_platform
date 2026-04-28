@@ -41,7 +41,7 @@ func (handler *Handler) listUsers(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.ListUsers(ctx.Request.Context(), claims.TenantID, UserListFilter{
+	result, err := handler.service.ListUsers(ctx.Request.Context(), readTenantID(claims), UserListFilter{
 		UserType: ctx.Query("user_type"),
 		Keyword:  ctx.Query("keyword"),
 		Page:     parseInt(ctx.Query("page")),
@@ -77,7 +77,7 @@ func (handler *Handler) getUser(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.GetUser(ctx.Request.Context(), claims.TenantID, id)
+	result, err := handler.service.GetUser(ctx.Request.Context(), readTenantID(claims), id)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -201,6 +201,13 @@ func containsPermission(permissions []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func readTenantID(claims auth.AccessClaims) int64 {
+	if claims.UserType == "sys_admin" || containsPermission(claims.Permissions, "system:manage") || containsPermission(claims.Permissions, "tenant:manage") {
+		return 0
+	}
+	return claims.TenantID
 }
 
 func bearerToken(header string) string {

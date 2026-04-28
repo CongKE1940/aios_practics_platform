@@ -39,6 +39,13 @@ export interface ApiClient {
   me(): Promise<CurrentUser>;
   logout(): Promise<boolean>;
   menus(appType: "admin" | "user"): Promise<MenuItem[]>;
+  listDictionaries(query?: DictionaryListQuery): Promise<PageResult<Dictionary>>;
+  createDictionary(body: DictionaryInput): Promise<Dictionary>;
+  updateDictionary(id: number, body: DictionaryInput): Promise<Dictionary>;
+  listDictionaryItems(query: DictionaryItemListQuery): Promise<DictionaryItem[]>;
+  listDictionaryManageItems(dictionaryId: number, query?: DictionaryItemManageListQuery): Promise<PageResult<DictionaryItem>>;
+  createDictionaryItem(dictionaryId: number, body: DictionaryItemInput): Promise<DictionaryItem>;
+  updateDictionaryItem(id: number, body: DictionaryItemInput): Promise<DictionaryItem>;
   listSchools(query?: SchoolListQuery): Promise<PageResult<School>>;
   createSchool(body: SchoolInput): Promise<School>;
   getSchool(id: number): Promise<School>;
@@ -192,9 +199,30 @@ export interface PageResult<TItem> {
   total: number;
 }
 
+export interface DictionaryItem {
+  id: number;
+  dictionary_id: number;
+  dictionary_code?: string;
+  value: number;
+  label: string;
+  sort_no: number;
+  status: string;
+  remark?: string;
+}
+
+export interface Dictionary {
+  id: number;
+  code: string;
+  name: string;
+  status: string;
+  remark?: string;
+}
+
 export interface School {
   id: number;
   tenant_id: number;
+  object_type?: number;
+  object_type_label?: string;
   code: string;
   name: string;
   status: string;
@@ -976,7 +1004,8 @@ export interface ManagedUser {
 }
 
 export interface SchoolInput {
-  code: string;
+  object_type?: number;
+  code?: string;
   name: string;
 }
 
@@ -1224,7 +1253,41 @@ export interface UserRolesInput {
   role_ids: number[];
 }
 
+export interface DictionaryInput {
+  code: string;
+  name: string;
+  status?: string;
+  remark?: string;
+}
+
+export interface DictionaryItemInput {
+  value: number;
+  label: string;
+  sort_no?: number;
+  status?: string;
+  remark?: string;
+}
+
+export interface DictionaryListQuery {
+  status?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface DictionaryItemListQuery {
+  dict_code: string;
+  active_only?: boolean;
+}
+
+export interface DictionaryItemManageListQuery {
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
 export interface SchoolListQuery {
+  object_type?: number | string;
   status?: string;
   keyword?: string;
   page?: number;
@@ -1434,6 +1497,17 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/menus?app_type=${appType}`, {
         method: "GET"
       }),
+    listDictionaries: (query) => request(fetcher, options, buildPath("/dictionaries", query), { method: "GET" }),
+    createDictionary: (body) => request(fetcher, options, "/dictionaries", { method: "POST", body: JSON.stringify(body) }),
+    updateDictionary: (id, body) =>
+      request(fetcher, options, `/dictionaries/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    listDictionaryItems: (query) => request(fetcher, options, buildPath("/dictionary-items", query), { method: "GET" }),
+    listDictionaryManageItems: (dictionaryId, query) =>
+      request(fetcher, options, buildPath(`/dictionaries/${dictionaryId}/items`, query), { method: "GET" }),
+    createDictionaryItem: (dictionaryId, body) =>
+      request(fetcher, options, `/dictionaries/${dictionaryId}/items`, { method: "POST", body: JSON.stringify(body) }),
+    updateDictionaryItem: (id, body) =>
+      request(fetcher, options, `/dictionary-items/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     listSchools: (query) => request(fetcher, options, buildPath("/schools", query), { method: "GET" }),
     createSchool: (body) => request(fetcher, options, "/schools", { method: "POST", body: JSON.stringify(body) }),
     getSchool: (id) => request(fetcher, options, `/schools/${id}`, { method: "GET" }),

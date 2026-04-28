@@ -22,6 +22,7 @@ import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
 import { ChallengePanel } from "./challenge-panel";
 import { ClassManagementPanel } from "./class-management-panel";
 import { CourseManagementPanel } from "./course-management-panel";
+import { DictionaryPanel, type DictionaryPanelApi } from "./dictionary-panel";
 import { ExamPanel, type ExamPanelApi } from "./exam-panel";
 import { GradeManagementPanel } from "./grade-management-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
@@ -53,6 +54,7 @@ interface AdminAppProps {
   examApi?: ExamPanelApi;
   userApi?: UserPanelApi;
   rbacApi?: RbacPanelApi;
+  dictionaryApi?: DictionaryPanelApi;
   analyticsApi?: AnalyticsPanelApi;
   historyApi?: HistoryPanelApi;
   sessionStore?: SessionStore;
@@ -88,6 +90,7 @@ export function AdminApp({
   examApi,
   userApi,
   rbacApi,
+  dictionaryApi,
   analyticsApi,
   historyApi,
   sessionStore
@@ -190,6 +193,18 @@ export function AdminApp({
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [rbacApi, session]);
+
+  const currentDictionaryApi = useMemo<DictionaryPanelApi | undefined>(() => {
+    if (dictionaryApi) {
+      return dictionaryApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [dictionaryApi, session]);
 
   const currentNoticeApi = useMemo<NoticeApi | undefined>(() => {
     if (noticeApi) {
@@ -388,6 +403,7 @@ export function AdminApp({
     organizationApi,
     currentUserApi,
     currentRbacApi,
+    currentDictionaryApi,
     currentNoticeApi,
     currentQuestionBankApi,
     currentQuestionApi,
@@ -471,6 +487,7 @@ interface RenderAdminViewArgs {
   organizationApi?: OrganizationApi;
   currentUserApi?: UserPanelApi;
   currentRbacApi?: RbacPanelApi;
+  currentDictionaryApi?: DictionaryPanelApi;
   currentNoticeApi?: NoticeApi;
   currentQuestionBankApi?: QuestionBankPanelApi;
   currentQuestionApi?: QuestionPanelApi;
@@ -486,6 +503,7 @@ function renderAdminView({
   organizationApi,
   currentUserApi,
   currentRbacApi,
+  currentDictionaryApi,
   currentNoticeApi,
   currentQuestionBankApi,
   currentQuestionApi,
@@ -504,6 +522,7 @@ function renderAdminView({
       {selectedPath === "/admin/courses" && organizationApi ? <CourseManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
       {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
+      {selectedPath === "/admin/dictionaries" && currentDictionaryApi ? <DictionaryPanel api={currentDictionaryApi} /> : null}
       {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
       {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
         <QuestionBankPanel api={currentQuestionBankApi} />
@@ -531,6 +550,7 @@ function isKnownAdminPath(selectedPath: string): boolean {
     "/admin/courses",
     "/admin/users",
     "/admin/roles",
+    "/admin/dictionaries",
     "/admin/notices",
     "/admin/question-banks",
     "/admin/questions",

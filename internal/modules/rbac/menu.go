@@ -75,9 +75,9 @@ type menuDef struct {
 
 var adminMenus = []menuDef{
 	{
-		id:   1,
-		name: "组织管理",
-		path: "/admin/org",
+		id:                  1,
+		name:                "组织管理",
+		path:                "/admin/org",
 		requiredPermissions: []string{"org:manage"},
 		children: []menuDef{
 			{id: 11, name: "学校与组织管理", path: "/admin/org/schools", requiredPermissions: []string{"org:manage"}},
@@ -86,9 +86,9 @@ var adminMenus = []menuDef{
 		},
 	},
 	{
-		id:   2,
-		name: "课程管理",
-		path: "/admin/courses",
+		id:                  2,
+		name:                "课程管理",
+		path:                "/admin/courses",
 		requiredPermissions: []string{"org:manage"},
 	},
 	{
@@ -98,15 +98,16 @@ var adminMenus = []menuDef{
 		children: []menuDef{
 			{id: 31, name: "用户管理", path: "/admin/users", requiredPermissions: []string{"user:manage"}},
 			{id: 32, name: "角色权限", path: "/admin/roles", requiredPermissions: []string{"role:manage"}},
-			{id: 33, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
-			{id: 34, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
-			{id: 35, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
-			{id: 36, name: "导入中心", path: "/admin/imports", requiredPermissions: []string{"import:manage"}},
-			{id: 37, name: "考试管理", path: "/admin/exams", requiredPermissions: []string{"exam:manage"}},
-			{id: 38, name: "随机组卷", path: "/admin/exams/assembly", requiredPermissions: []string{"exam:manage"}},
-			{id: 39, name: "质疑处理", path: "/admin/challenges", requiredPermissions: []string{"question:manage"}},
-			{id: 40, name: "数据看板", path: "/admin/analytics", requiredPermissions: []string{"analytics:view"}},
-			{id: 41, name: "快照历史", path: "/admin/history", requiredPermissions: []string{"audit:view"}},
+			{id: 33, name: "字典管理", path: "/admin/dictionaries", requiredPermissions: []string{"role:manage"}},
+			{id: 34, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
+			{id: 35, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
+			{id: 36, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
+			{id: 37, name: "导入中心", path: "/admin/imports", requiredPermissions: []string{"import:manage"}},
+			{id: 38, name: "考试管理", path: "/admin/exams", requiredPermissions: []string{"exam:manage"}},
+			{id: 39, name: "随机组卷", path: "/admin/exams/assembly", requiredPermissions: []string{"exam:manage"}},
+			{id: 40, name: "质疑处理", path: "/admin/challenges", requiredPermissions: []string{"question:manage"}},
+			{id: 41, name: "数据看板", path: "/admin/analytics", requiredPermissions: []string{"analytics:view"}},
+			{id: 42, name: "快照历史", path: "/admin/history", requiredPermissions: []string{"audit:view"}},
 		},
 	},
 }

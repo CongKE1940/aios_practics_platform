@@ -38,7 +38,7 @@ func (handler *AdminHandler) listRoles(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.ListRoles(ctx.Request.Context(), claims.TenantID, RoleListFilter{
+	result, err := handler.service.ListRoles(ctx.Request.Context(), readTenantID(claims), RoleListFilter{
 		Status:   ctx.Query("status"),
 		Page:     parseInt(ctx.Query("page")),
 		PageSize: parseInt(ctx.Query("page_size")),
@@ -170,6 +170,13 @@ func containsPermission(permissions []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func readTenantID(claims auth.AccessClaims) int64 {
+	if claims.UserType == "sys_admin" || containsPermission(claims.Permissions, "system:manage") || containsPermission(claims.Permissions, "tenant:manage") {
+		return 0
+	}
+	return claims.TenantID
 }
 
 func parseInt(value string) int {

@@ -9,8 +9,8 @@ import (
 const (
 	StatusActive           = "active"
 	StatusDisabled         = "disabled"
-	ObjectTypeSchool       = "school"
-	ObjectTypeOrganization = "organization"
+	ObjectTypeSchool       = 1
+	ObjectTypeOrganization = 2
 	CodeInvalidInput       = 40000
 	CodeForbidden          = 40300
 	CodeNotFound           = 40400
@@ -18,10 +18,10 @@ const (
 )
 
 var (
-	ErrInvalidInput      = errors.New("invalid input")
-	ErrForbidden         = errors.New("forbidden")
-	ErrNotFound          = errors.New("resource not found")
-	ErrDeleteRestricted  = errors.New("school has related data")
+	ErrInvalidInput     = errors.New("invalid input")
+	ErrForbidden        = errors.New("forbidden")
+	ErrNotFound         = errors.New("resource not found")
+	ErrDeleteRestricted = errors.New("school has related data")
 )
 
 type Scope struct {
@@ -38,17 +38,18 @@ type PageResult[T any] struct {
 }
 
 type School struct {
-	ID          int64     `json:"id"`
-	TenantID    int64     `json:"tenant_id"`
-	ObjectType  string    `json:"object_type"`
-	Code        string    `json:"code"`
-	Name        string    `json:"name"`
-	EnglishName string    `json:"english_name,omitempty"`
-	Address     string    `json:"address,omitempty"`
-	LogoURL     string    `json:"logo_url,omitempty"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at,omitempty"`
-	UpdatedAt   time.Time `json:"updated_at,omitempty"`
+	ID              int64     `json:"id"`
+	TenantID        int64     `json:"tenant_id"`
+	ObjectType      int       `json:"object_type"`
+	ObjectTypeLabel string    `json:"object_type_label,omitempty"`
+	Code            string    `json:"code"`
+	Name            string    `json:"name"`
+	EnglishName     string    `json:"english_name,omitempty"`
+	Address         string    `json:"address,omitempty"`
+	LogoURL         string    `json:"logo_url,omitempty"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 }
 
 type Grade struct {
@@ -101,7 +102,7 @@ func (dependencies SchoolDeleteDependencies) HasAny() bool {
 }
 
 type SchoolInput struct {
-	ObjectType  string `json:"object_type"`
+	ObjectType  int    `json:"object_type"`
 	Code        string `json:"code"`
 	Name        string `json:"name" binding:"required"`
 	EnglishName string `json:"english_name"`
@@ -139,7 +140,7 @@ type CourseInput struct {
 }
 
 type SchoolListFilter struct {
-	ObjectType string
+	ObjectType int
 	Status     string
 	Keyword    string
 	Page       int

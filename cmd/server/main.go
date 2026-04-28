@@ -10,8 +10,10 @@ import (
 
 	"aios_practice_platform/internal/bootstrap"
 	"aios_practice_platform/internal/common/config"
+	"aios_practice_platform/internal/common/logging"
 	"aios_practice_platform/internal/modules/analytics"
 	"aios_practice_platform/internal/modules/auth"
+	"aios_practice_platform/internal/modules/dictionary"
 	"aios_practice_platform/internal/modules/exam"
 	"aios_practice_platform/internal/modules/fileasset"
 	"aios_practice_platform/internal/modules/importjob"
@@ -26,6 +28,13 @@ import (
 )
 
 func main() {
+	dailyLogger, err := logging.SetupDailyFileLogger("logs", "backend")
+	if err != nil {
+		log.Fatalf("setup logger: %v", err)
+	}
+	defer dailyLogger.File.Close()
+	log.Printf("backend daily log file: %s", dailyLogger.Path)
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("load config: %v", err)
@@ -49,6 +58,7 @@ func main() {
 			issuer,
 		))
 		menuHandler := rbac.NewMenuHandler(issuer)
+		dictionaryHandler := dictionary.NewHandler(dictionary.NewService(dictionary.NewMySQLRepository(db)), issuer)
 		rbacAdminHandler := rbac.NewAdminHandler(rbac.NewAdminService(rbac.NewMySQLAdminRepository(db)), issuer)
 		fileHandler := fileasset.NewHandler(fileasset.NewService(fileasset.NewMySQLRepository(db)), issuer)
 		importHandler := importjob.NewHandler(importjob.NewService(importjob.NewMySQLRepository(db)), issuer)
@@ -88,6 +98,7 @@ func main() {
 		options = append(options,
 			bootstrap.WithAPIV1Routes(authHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(noticeHandler.RegisterRoutes),
+			bootstrap.WithAPIV1Routes(dictionaryHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(orgHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(questionBankHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(questionHandler.RegisterRoutes),

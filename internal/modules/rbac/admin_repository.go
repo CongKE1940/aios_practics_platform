@@ -17,9 +17,13 @@ func (repo *MySQLAdminRepository) ListRoles(ctx context.Context, tenantID int64,
 	query := `
 SELECT id, tenant_id, code, name, role_type, data_scope_type, status, remark, created_at, updated_at
 FROM roles
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 2)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.Status != "" {
 		query += " AND status = ?"
 		args = append(args, filter.Status)

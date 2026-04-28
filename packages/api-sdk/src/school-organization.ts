@@ -1,9 +1,12 @@
 import type { ApiClient, FileAsset, PageResult, School } from "./client";
 
-export type SchoolObjectType = "school" | "organization";
+export const SchoolObjectTypeSchool = 1;
+export const SchoolObjectTypeOrganization = 2;
+export type SchoolObjectType = typeof SchoolObjectTypeSchool | typeof SchoolObjectTypeOrganization;
 
 export interface SchoolOrganization extends School {
-  object_type: SchoolObjectType | string;
+  object_type?: SchoolObjectType | number;
+  object_type_label?: string;
   english_name?: string | null;
   address?: string | null;
   logo_url?: string | null;
@@ -18,7 +21,7 @@ export interface SchoolOrganizationInput {
 }
 
 export interface SchoolOrganizationListQuery {
-  object_type?: SchoolObjectType | string;
+  object_type?: SchoolObjectType | number | string;
   status?: string;
   keyword?: string;
   page?: number;

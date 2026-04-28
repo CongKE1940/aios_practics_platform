@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type {
+  DictionaryItem,
   FileAsset,
   PageResult,
   SchoolOrganization,
@@ -9,12 +10,13 @@ import type {
   SchoolOrganizationListQuery,
   SchoolObjectType
 } from "@aios/api-sdk";
-import { batchDeleteSchoolOrganizations, enableSchoolOrganization } from "@aios/api-sdk";
+import { batchDeleteSchoolOrganizations, enableSchoolOrganization, SchoolObjectTypeOrganization, SchoolObjectTypeSchool } from "@aios/api-sdk";
 import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
 export interface SchoolManagementApi {
+  listDictionaryItems?(query: { dict_code: string; active_only?: boolean }): Promise<DictionaryItem[]>;
   listSchools(query?: SchoolOrganizationListQuery): Promise<PageResult<SchoolOrganization>>;
   createSchool(body: SchoolOrganizationInput): Promise<SchoolOrganization>;
   getSchool?(id: number): Promise<SchoolOrganization>;
@@ -40,6 +42,10 @@ type DeleteConfirmState = {
 } | null;
 
 const defaultPageSize = 10;
+const defaultObjectTypeItems: Array<{ value: SchoolObjectType; label: string }> = [
+  { value: SchoolObjectTypeSchool, label: "学校" },
+  { value: SchoolObjectTypeOrganization, label: "组织" }
+];
 const defaultLogoDataUrl =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(
@@ -47,7 +53,7 @@ const defaultLogoDataUrl =
   );
 
 const defaultSchoolForm: SchoolFormState = {
-  object_type: "school",
+  object_type: SchoolObjectTypeSchool,
   name: "",
   english_name: "",
   address: "",
@@ -69,6 +75,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
   const [objectType, setObjectType] = useState("");
+  const [objectTypeItems, setObjectTypeItems] = useState(defaultObjectTypeItems);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
@@ -79,6 +86,8 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const currentUserType = useMemo(() => readCurrentUserType(), []);
   const isSystemAdmin = currentUserType === "sys_admin";
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const formatSchoolType = (school: SchoolOrganization) => school.object_type_label || formatDictionaryObjectType(school.object_type, objectTypeItems);
+  const formatFormType = (value?: string | number | null) => formatDictionaryObjectType(value, objectTypeItems);
 
   const columns = useMemo<Array<FixedActionListColumn<SchoolOrganization>>>(
     () => [
@@ -92,7 +101,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
         key: "object_type",
         title: "类型",
         width: 140,
-        render: (school) => <span style={typePillStyle}>{formatObjectType(school.object_type)}</span>
+        render: (school) => <span style={typePillStyle}>{formatSchoolType(school)}</span>
       },
       {
         key: "address",
@@ -106,7 +115,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
         render: (school) => <span className={statusClassName(school.status)}>{formatStatusLabel(school.status)}</span>
       }
     ],
-    []
+    [objectTypeItems]
   );
 
   useEffect(() => {
@@ -114,8 +123,27 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       return;
     }
     didLoadRef.current = true;
+    void loadDictionaries();
     void loadSchools(buildSchoolQuery("", "", "", 1, defaultPageSize));
   }, [api]);
+
+  async function loadDictionaries() {
+    if (!api.listDictionaryItems) {
+      return;
+    }
+    try {
+      const items = await api.listDictionaryItems({ dict_code: "school_object_type" });
+      const normalizedItems = items
+        .filter((item) => item.status === "active")
+        .map((item) => ({ value: normalizeSchoolObjectType(item.value), label: item.label }))
+        .filter((item, index, all) => all.findIndex((candidate) => candidate.value === item.value) === index);
+      if (normalizedItems.length > 0) {
+        setObjectTypeItems(normalizedItems);
+      }
+    } catch {
+      setObjectTypeItems(defaultObjectTypeItems);
+    }
+  }
 
   async function loadSchools(query: SchoolOrganizationListQuery = buildSchoolQuery(keyword, status, objectType, page, pageSize)) {
     setLoading(true);
@@ -295,7 +323,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       ],
       schools.map((school) => ({
         ...school,
-        object_type_label: formatObjectType(school.object_type),
+        object_type_label: formatSchoolType(school),
         english_name: school.english_name ?? "",
         address: school.address ?? "",
         logo_url: school.logo_url ?? "",
@@ -325,8 +353,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
             <label htmlFor="school_filter_type">类型 object_type</label>
             <select id="school_filter_type" value={objectType} onChange={(event) => setObjectType(event.target.value)}>
               <option value="">全部类型</option>
-              <option value="school">学校</option>
-              <option value="organization">组织</option>
+              {objectTypeItems.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </div>
           <div className="ui-admin-form__field">
@@ -368,7 +395,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           createLabel="新增"
           deleteLabel={selectedIDs.length > 0 ? `删除已选 ${selectedIDs.length} 项` : "删除"}
           exportLabel="导出"
-          rowCheckboxLabel={(school) => `选择${formatObjectType(school.object_type)}-${school.name}`}
+          rowCheckboxLabel={(school) => `选择${formatSchoolType(school)}-${school.name}`}
         />
       </section>
 
@@ -419,7 +446,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
               <>
                 <div className="ui-admin-modal__header">
                   <div>
-                    <h3>{formatObjectType(modal.school.object_type)}详情</h3>
+                    <h3>{formatSchoolType(modal.school)}详情</h3>
                     <p>{modal.school.name}</p>
                   </div>
                   <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>关闭</button>
@@ -428,7 +455,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                   <div style={profileHeaderStyle}>
                     <img src={modal.school.logo_url || defaultLogoDataUrl} alt="" style={profileLogoStyle} onError={(event) => { event.currentTarget.src = defaultLogoDataUrl; }} />
                     <dl className="ui-admin-meta-list" style={profileMetaStyle}>
-                      <div><dt>类型</dt><dd>{formatObjectType(modal.school.object_type)}</dd></div>
+                      <div><dt>类型</dt><dd>{formatSchoolType(modal.school)}</dd></div>
                       <div><dt>名称</dt><dd>{modal.school.name}</dd></div>
                       <div><dt>英文名</dt><dd>{modal.school.english_name || "-"}</dd></div>
                       <div><dt>系统编码</dt><dd>{modal.school.code}</dd></div>
@@ -461,7 +488,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                     <span style={logoCardLabelStyle}>头像预览</span>
                     <img src={form.logo_url || defaultLogoDataUrl} alt="" style={editorLogoStyle} />
                     <strong style={previewNameStyle}>{form.name.trim() || "未命名对象"}</strong>
-                    <span style={previewTypeStyle}>{formatObjectType(form.object_type)}</span>
+                    <span style={previewTypeStyle}>{formatFormType(form.object_type)}</span>
                     <div className="ui-admin-form__field" style={logoUploadFieldStyle}>
                       <label htmlFor="school_logo_file">上传校徽/头像</label>
                       <input id="school_logo_file" type="file" accept="image/*" onChange={(event) => void handleLogoFile(event.target.files?.[0] ?? null)} />
@@ -483,8 +510,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                           disabled={!isSystemAdmin || modal.type === "edit"}
                           onChange={(event) => setForm((current) => ({ ...current, object_type: normalizeSchoolObjectType(event.target.value) }))}
                         >
-                          <option value="school">学校</option>
-                          <option value="organization">组织</option>
+                          {objectTypeItems.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -552,8 +578,8 @@ function buildSchoolPayload(form: SchoolFormState): SchoolOrganizationInput {
 
 function readCurrentUserType(): string { if (typeof window === "undefined" || !window.localStorage) { return ""; } const raw = window.localStorage.getItem("aios.admin.session"); if (!raw) { return ""; } try { return (JSON.parse(raw) as { user?: { user_type?: string } }).user?.user_type ?? ""; } catch { return ""; } }
 function readFileAsDataUrl(file: File): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result ?? "")); reader.onerror = () => reject(reader.error ?? new Error("文件读取失败")); reader.readAsDataURL(file); }); }
-function normalizeSchoolObjectType(value?: string | null): SchoolObjectType { return value === "organization" ? "organization" : "school"; }
-function formatObjectType(value?: string | null): string { return normalizeSchoolObjectType(value) === "organization" ? "组织" : "学校"; }
+function normalizeSchoolObjectType(value?: string | number | null): SchoolObjectType { return Number(value) === SchoolObjectTypeOrganization || value === "organization" ? SchoolObjectTypeOrganization : SchoolObjectTypeSchool; }
+function formatDictionaryObjectType(value: string | number | null | undefined, items: Array<{ value: SchoolObjectType; label: string }>): string { const normalized = normalizeSchoolObjectType(value); return items.find((item) => item.value === normalized)?.label ?? defaultObjectTypeItems.find((item) => item.value === normalized)?.label ?? "学校"; }
 function normalizeErrorMessage(message: string): string { if (/409|关联|存在年级|存在班级|存在学生|delete restricted|school has related data/i.test(message)) { return "该学校或组织下存在年级、班级或学生，请先处理关联数据，或在删除确认中选择同时删除关联数据。"; } if (/403|forbidden|无权限/i.test(message)) { return "当前账号无权执行该系统级管理操作。"; } if (/404|not found/i.test(message)) { return "学校与组织接口暂不可用，请检查后端 /api/v1/schools 服务是否已启动。"; } return message || "学校与组织数据加载失败"; }
 function statusClassName(status: string): string { if (["active", "published", "enabled"].includes(status)) { return "ui-admin-status ui-admin-status--active"; } if (["disabled", "inactive"].includes(status)) { return "ui-admin-status ui-admin-status--disabled"; } return "ui-admin-status ui-admin-status--draft"; }
 function formatStatusLabel(status: string): string { switch (status) { case "active": return "启用"; case "disabled": case "inactive": return "停用"; default: return status; } }

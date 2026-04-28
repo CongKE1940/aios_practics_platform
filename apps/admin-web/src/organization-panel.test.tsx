@@ -150,6 +150,8 @@ function createOrganizationApi(seed?: {
     createSchool: async (body) => ({
       id: 1,
       tenant_id: 1,
+      object_type: body.object_type ?? 1,
+      code: body.code ?? "school_001",
       status: "active",
       ...body
     }),

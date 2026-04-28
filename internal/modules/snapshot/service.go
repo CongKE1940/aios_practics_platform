@@ -24,7 +24,7 @@ func (service *Service) ListAuditLogs(ctx context.Context, scope Scope, filter A
 	filter.ResourceType = strings.TrimSpace(filter.ResourceType)
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListAuditLogs(ctx, scope.TenantID, filter)
+	return service.repo.ListAuditLogs(ctx, readTenantID(scope), filter)
 }
 
 func (service *Service) ListEntitySnapshots(
@@ -41,7 +41,7 @@ func (service *Service) ListEntitySnapshots(
 	filter.EntityType = strings.TrimSpace(filter.EntityType)
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListEntitySnapshots(ctx, scope.TenantID, filter)
+	return service.repo.ListEntitySnapshots(ctx, readTenantID(scope), filter)
 }
 
 func (service *Service) ListStudentTransitions(
@@ -58,7 +58,7 @@ func (service *Service) ListStudentTransitions(
 	filter.TransitionType = strings.TrimSpace(strings.ToLower(filter.TransitionType))
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListStudentTransitions(ctx, scope.TenantID, filter)
+	return service.repo.ListStudentTransitions(ctx, readTenantID(scope), filter)
 }
 
 func (service *Service) RecordStudentTransition(
@@ -99,7 +99,14 @@ func (service *Service) ListTeacherAssignmentHistories(
 	}
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListTeacherAssignmentHistories(ctx, scope.TenantID, filter)
+	return service.repo.ListTeacherAssignmentHistories(ctx, readTenantID(scope), filter)
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" || containsPermission(scope.Permissions, "system:manage") || containsPermission(scope.Permissions, "tenant:manage") {
+		return 0
+	}
+	return scope.TenantID
 }
 
 func (service *Service) RecordTeacherAssignmentChange(

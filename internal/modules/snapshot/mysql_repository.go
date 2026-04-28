@@ -20,9 +20,13 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 func (repo *MySQLRepository) ListAuditLogs(ctx context.Context, tenantID int64, filter AuditLogListFilter) (PageResult[AuditLog], error) {
 	base := `
 FROM audit_logs
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 4)
+	if tenantID > 0 {
+		base += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.ModuleName != "" {
 		base += " AND module_name = ?"
 		args = append(args, filter.ModuleName)
@@ -73,9 +77,13 @@ func (repo *MySQLRepository) ListEntitySnapshots(
 ) (PageResult[EntitySnapshot], error) {
 	base := `
 FROM entity_snapshots
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 4)
+	if tenantID > 0 {
+		base += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.EntityType != "" {
 		base += " AND entity_type = ?"
 		args = append(args, filter.EntityType)
@@ -125,9 +133,13 @@ func (repo *MySQLRepository) ListStudentTransitions(
 ) (PageResult[StudentTransition], error) {
 	base := `
 FROM student_transitions
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 4)
+	if tenantID > 0 {
+		base += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.StudentID > 0 {
 		base += " AND student_id = ?"
 		args = append(args, filter.StudentID)
@@ -178,9 +190,13 @@ func (repo *MySQLRepository) ListTeacherAssignmentHistories(
 ) (PageResult[TeacherAssignmentHistory], error) {
 	base := `
 FROM teacher_assignment_histories
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 5)
+	if tenantID > 0 {
+		base += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.TeacherID > 0 {
 		base += " AND teacher_id = ?"
 		args = append(args, filter.TeacherID)
@@ -337,19 +353,19 @@ INSERT INTO student_transitions (
   to_school_id, to_grade_id, to_class_id, occurred_at, operator_id, remark, created_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `,
-			tenantID,
-			input.StudentID,
-			input.TransitionType,
-			nullInt64Value(transition.FromSchoolID),
-			nullInt64Value(transition.FromGradeID),
-			nullInt64Value(transition.FromClassID),
-			nullInt64Value(transition.ToSchoolID),
-			nullInt64Value(transition.ToGradeID),
-			nullInt64Value(transition.ToClassID),
-			input.OccurredAt,
-			operatorUserID,
-			nullString(input.Remark),
-			now,
+		tenantID,
+		input.StudentID,
+		input.TransitionType,
+		nullInt64Value(transition.FromSchoolID),
+		nullInt64Value(transition.FromGradeID),
+		nullInt64Value(transition.FromClassID),
+		nullInt64Value(transition.ToSchoolID),
+		nullInt64Value(transition.ToGradeID),
+		nullInt64Value(transition.ToClassID),
+		input.OccurredAt,
+		operatorUserID,
+		nullString(input.Remark),
+		now,
 	)
 	if err != nil {
 		return StudentTransition{}, err
@@ -361,11 +377,11 @@ INSERT INTO student_transitions (
 	transition.ID = id
 
 	snapshotPayload := map[string]any{
-		"student_id":       input.StudentID,
-		"transition_type":  input.TransitionType,
-		"occurred_at":      input.OccurredAt.Format(time.RFC3339),
-		"from_class_id":    valueOrNil(transition.FromClassID),
-		"to_class_id":      valueOrNil(transition.ToClassID),
+		"student_id":        input.StudentID,
+		"transition_type":   input.TransitionType,
+		"occurred_at":       input.OccurredAt.Format(time.RFC3339),
+		"from_class_id":     valueOrNil(transition.FromClassID),
+		"to_class_id":       valueOrNil(transition.ToClassID),
 		"enrollment_status": enrollmentStatus,
 	}
 	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "student", input.StudentID, "transition", snapshotPayload, input.TransitionType, now); err != nil {
@@ -458,12 +474,12 @@ INSERT INTO teacher_assignment_histories (
 	history.ID = id
 
 	snapshotPayload := map[string]any{
-		"teacher_id":      input.TeacherID,
-		"class_id":        input.ClassID,
-		"course_id":       input.CourseID,
-		"change_type":     input.ChangeType,
-		"effective_from":  history.EffectiveFrom.Format(time.RFC3339),
-		"effective_to":    timeOrNil(history.EffectiveTo),
+		"teacher_id":     input.TeacherID,
+		"class_id":       input.ClassID,
+		"course_id":      input.CourseID,
+		"change_type":    input.ChangeType,
+		"effective_from": history.EffectiveFrom.Format(time.RFC3339),
+		"effective_to":   timeOrNil(history.EffectiveTo),
 	}
 	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "teacher_assignment", input.TeacherID, "event", snapshotPayload, input.ChangeType, now); err != nil {
 		return TeacherAssignmentHistory{}, err
@@ -503,11 +519,11 @@ type studentProfile struct {
 }
 
 type studentMembership struct {
-	ID        int64
-	SchoolID  int64
-	GradeID   int64
-	ClassID   int64
-	JoinedAt  time.Time
+	ID       int64
+	SchoolID int64
+	GradeID  int64
+	ClassID  int64
+	JoinedAt time.Time
 }
 
 type teacherAssignment struct {

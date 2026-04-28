@@ -74,42 +74,42 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 func (repo *MySQLRepository) GetAdminOverview(ctx context.Context, tenantID int64) (AdminOverviewResult, error) {
 	const summaryQuery = `
 SELECT
-  (SELECT COUNT(*) FROM schools s WHERE s.tenant_id = ? AND s.deleted_at IS NULL AND s.status = 'active') AS school_count,
-  (SELECT COUNT(*) FROM classes c WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.status = 'active') AS class_count,
-  (SELECT COUNT(*) FROM courses c WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.status = 'active') AS course_count,
+  (SELECT COUNT(*) FROM schools s WHERE (? = 0 OR s.tenant_id = ?) AND s.deleted_at IS NULL AND s.status = 'active') AS school_count,
+  (SELECT COUNT(*) FROM classes c WHERE (? = 0 OR c.tenant_id = ?) AND c.deleted_at IS NULL AND c.status = 'active') AS class_count,
+  (SELECT COUNT(*) FROM courses c WHERE (? = 0 OR c.tenant_id = ?) AND c.deleted_at IS NULL AND c.status = 'active') AS course_count,
   (
     SELECT COUNT(*)
     FROM student_profiles sp
     JOIN users u ON u.id = sp.user_id AND u.tenant_id = sp.tenant_id
-    WHERE sp.tenant_id = ? AND sp.enrollment_status = 'active' AND u.status = 'active'
+    WHERE (? = 0 OR sp.tenant_id = ?) AND sp.enrollment_status = 'active' AND u.status = 'active'
   ) AS active_student_count,
   (
     SELECT COUNT(*)
     FROM teacher_profiles tp
     JOIN users u ON u.id = tp.user_id AND u.tenant_id = tp.tenant_id
-    WHERE tp.tenant_id = ? AND u.status = 'active'
+    WHERE (? = 0 OR tp.tenant_id = ?) AND u.status = 'active'
   ) AS active_teacher_count,
   (
     SELECT COUNT(DISTINCT ps.id)
     FROM practice_sessions ps
-    WHERE ps.tenant_id = ? AND ps.started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+    WHERE (? = 0 OR ps.tenant_id = ?) AND ps.started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
   ) AS practice_session_count_7d,
   (
     SELECT COUNT(*)
     FROM exams e
-    WHERE e.tenant_id = ? AND e.status = 'published'
+    WHERE (? = 0 OR e.tenant_id = ?) AND e.status = 'published'
   ) AS published_exam_count,
   (
     SELECT COUNT(*)
     FROM exam_attempts ea
-    WHERE ea.tenant_id = ? AND ea.status IN ('submitted', 'timeout_submitted')
+    WHERE (? = 0 OR ea.tenant_id = ?) AND ea.status IN ('submitted', 'timeout_submitted')
   ) AS submitted_exam_attempt_count,
   (
     SELECT COUNT(*)
     FROM exam_attempt_answers eaa
     JOIN exam_attempts ea ON ea.id = eaa.attempt_id AND ea.tenant_id = eaa.tenant_id
     JOIN questions q ON q.id = eaa.question_id AND q.tenant_id = eaa.tenant_id
-    WHERE eaa.tenant_id = ?
+    WHERE (? = 0 OR eaa.tenant_id = ?)
       AND ea.status IN ('submitted', 'timeout_submitted')
       AND q.question_type IN ('short_answer', 'essay')
       AND (eaa.reviewer_user_id IS NULL OR eaa.reviewed_at IS NULL)
@@ -117,13 +117,23 @@ SELECT
   (
     SELECT COUNT(*)
     FROM student_transitions st
-    WHERE st.tenant_id = ? AND st.occurred_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+    WHERE (? = 0 OR st.tenant_id = ?) AND st.occurred_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
   ) AS recent_transition_count_30d
 `
 	result := AdminOverviewResult{}
 	if err := repo.db.QueryRowContext(
 		ctx,
 		summaryQuery,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
+		tenantID,
 		tenantID,
 		tenantID,
 		tenantID,
@@ -167,11 +177,11 @@ JOIN users u ON u.id = st.student_id
 LEFT JOIN classes fc ON fc.id = st.from_class_id
 LEFT JOIN classes tc ON tc.id = st.to_class_id
 LEFT JOIN users op ON op.id = st.operator_id
-WHERE st.tenant_id = ?
+WHERE (? = 0 OR st.tenant_id = ?)
 ORDER BY st.occurred_at DESC, st.id DESC
 LIMIT 8
 `
-	transitionRows, err := repo.db.QueryContext(ctx, recentTransitionsQuery, tenantID)
+	transitionRows, err := repo.db.QueryContext(ctx, recentTransitionsQuery, tenantID, tenantID)
 	if err != nil {
 		return AdminOverviewResult{}, err
 	}
@@ -224,11 +234,11 @@ SELECT
   al.created_at
 FROM audit_logs al
 LEFT JOIN users u ON u.id = al.operator_user_id
-WHERE al.tenant_id = ?
+WHERE (? = 0 OR al.tenant_id = ?)
 ORDER BY al.created_at DESC, al.id DESC
 LIMIT 8
 `
-	logRows, err := repo.db.QueryContext(ctx, recentAuditLogsQuery, tenantID)
+	logRows, err := repo.db.QueryContext(ctx, recentAuditLogsQuery, tenantID, tenantID)
 	if err != nil {
 		return AdminOverviewResult{}, err
 	}

@@ -158,6 +158,7 @@ export function normalizeAdminNavigationMenus(menus: MenuItem[], permissions: st
     "/admin/org/classes",
     "/admin/users",
     "/admin/roles",
+    "/admin/dictionaries",
     "/admin/analytics",
     "/admin/history"
   ]);
@@ -192,8 +193,9 @@ export function normalizeAdminNavigationMenus(menus: MenuItem[], permissions: st
     children: [
       menu("/admin/users", "用户管理", 30_001),
       menu("/admin/roles", "角色权限", 30_002),
-      menu("/admin/analytics", "数据看板", 30_003),
-      menu("/admin/history", "快照历史", 30_004)
+      menu("/admin/dictionaries", "字典管理", 30_003),
+      menu("/admin/analytics", "数据看板", 30_004),
+      menu("/admin/history", "快照历史", 30_005)
     ]
   });
 
@@ -241,6 +243,8 @@ export function resolveAdminPageTitle(selectedPath: string): string {
       return "用户管理";
     case "/admin/roles":
       return "角色权限";
+    case "/admin/dictionaries":
+      return "字典管理";
     case "/admin/notices":
       return "公告通知";
     case "/admin/question-banks":

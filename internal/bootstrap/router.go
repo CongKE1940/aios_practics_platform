@@ -30,6 +30,7 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 	}
 
 	router := gin.New()
+	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 	router.Use(corsMiddleware())
 

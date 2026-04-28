@@ -187,12 +187,12 @@ describe("AdminApp", () => {
       <AdminApp
         orgApi={{
           listSchools: async () => ({
-            items: [{ id: 1, tenant_id: 1, code: "school_001", name: "第一中学", status: "active" }],
+            items: [{ id: 1, tenant_id: 1, object_type: 1, code: "school_001", name: "第一中学", status: "active" }],
             page: 1,
             page_size: 20,
             total: 1
           }),
-          createSchool: async (body) => ({ id: 1, tenant_id: 1, status: "active", ...body }),
+          createSchool: async (body) => ({ id: 1, tenant_id: 1, object_type: body.object_type ?? 1, code: body.code ?? "school_001", status: "active", ...body }),
           disableSchool: async () => true,
           listGrades: async () => ({ items: [], page: 1, page_size: 20, total: 0 }),
           createGrade: async (body) => ({ id: 2, tenant_id: 1, status: "active", ...body }),

@@ -18,7 +18,7 @@ func TestLoadUsesDefaultsForLocalDevelopment(t *testing.T) {
 	if cfg.App.Env != "local" {
 		t.Fatalf("App.Env = %q", cfg.App.Env)
 	}
-	if cfg.HTTP.Addr != ":8080" {
+	if cfg.HTTP.Addr != ":18081" {
 		t.Fatalf("HTTP.Addr = %q", cfg.HTTP.Addr)
 	}
 	if cfg.PlatformTenantID != 1 {

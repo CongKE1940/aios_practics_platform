@@ -29,7 +29,14 @@ func (service *Service) GetAdminOverview(ctx context.Context, scope Scope) (Admi
 	default:
 		return AdminOverviewResult{}, ErrForbidden
 	}
-	return service.repo.GetAdminOverview(ctx, scope.TenantID)
+	return service.repo.GetAdminOverview(ctx, readTenantID(scope))
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" || containsPermission(scope.Permissions, "system:manage") || containsPermission(scope.Permissions, "tenant:manage") {
+		return 0
+	}
+	return scope.TenantID
 }
 
 func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query ExamOverviewQuery) (ExamOverviewResult, error) {

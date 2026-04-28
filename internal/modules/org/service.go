@@ -32,11 +32,11 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) ListSchools(ctx context.Context, scope Scope, filter SchoolListFilter) (PageResult[School], error) {
-	return service.repo.ListSchools(ctx, scope.TenantID, normalizeSchoolListFilter(filter))
+	return service.repo.ListSchools(ctx, readTenantID(scope), normalizeSchoolListFilter(filter))
 }
 
 func (service *Service) GetSchool(ctx context.Context, scope Scope, id int64) (School, error) {
-	return service.repo.GetSchool(ctx, scope.TenantID, id)
+	return service.repo.GetSchool(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) CreateSchool(ctx context.Context, scope Scope, input SchoolInput) (School, error) {
@@ -45,7 +45,7 @@ func (service *Service) CreateSchool(ctx context.Context, scope Scope, input Sch
 	}
 
 	objectType := normalizeObjectType(input.ObjectType)
-	if objectType == "" || strings.TrimSpace(input.Name) == "" {
+	if objectType == 0 || strings.TrimSpace(input.Name) == "" {
 		return School{}, ErrInvalidInput
 	}
 
@@ -71,7 +71,7 @@ func (service *Service) UpdateSchool(ctx context.Context, scope Scope, id int64,
 	}
 
 	objectType := normalizeObjectType(input.ObjectType)
-	if objectType != "" && isSystemAdmin(scope) {
+	if objectType != 0 && isSystemAdmin(scope) {
 		current.ObjectType = objectType
 	}
 	if strings.TrimSpace(input.Name) == "" {
@@ -168,11 +168,11 @@ func (service *Service) countSchoolDeleteDependencies(ctx context.Context, tenan
 }
 
 func (service *Service) ListGrades(ctx context.Context, scope Scope, filter GradeListFilter) (PageResult[Grade], error) {
-	return service.repo.ListGrades(ctx, scope.TenantID, normalizeGradeListFilter(filter))
+	return service.repo.ListGrades(ctx, readTenantID(scope), normalizeGradeListFilter(filter))
 }
 
 func (service *Service) GetGrade(ctx context.Context, scope Scope, id int64) (Grade, error) {
-	return service.repo.GetGrade(ctx, scope.TenantID, id)
+	return service.repo.GetGrade(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) CreateGrade(ctx context.Context, scope Scope, input GradeInput) (Grade, error) {
@@ -206,11 +206,11 @@ func (service *Service) DisableGrade(ctx context.Context, scope Scope, id int64)
 }
 
 func (service *Service) ListClasses(ctx context.Context, scope Scope, filter ClassListFilter) (PageResult[Class], error) {
-	return service.repo.ListClasses(ctx, scope.TenantID, normalizeClassListFilter(filter))
+	return service.repo.ListClasses(ctx, readTenantID(scope), normalizeClassListFilter(filter))
 }
 
 func (service *Service) GetClass(ctx context.Context, scope Scope, id int64) (Class, error) {
-	return service.repo.GetClass(ctx, scope.TenantID, id)
+	return service.repo.GetClass(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) CreateClass(ctx context.Context, scope Scope, input ClassInput) (Class, error) {
@@ -244,11 +244,11 @@ func (service *Service) DisableClass(ctx context.Context, scope Scope, id int64)
 }
 
 func (service *Service) ListCourses(ctx context.Context, scope Scope, filter CourseListFilter) (PageResult[Course], error) {
-	return service.repo.ListCourses(ctx, scope.TenantID, normalizeCourseListFilter(filter))
+	return service.repo.ListCourses(ctx, readTenantID(scope), normalizeCourseListFilter(filter))
 }
 
 func (service *Service) GetCourse(ctx context.Context, scope Scope, id int64) (Course, error) {
-	return service.repo.GetCourse(ctx, scope.TenantID, id)
+	return service.repo.GetCourse(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) CreateCourse(ctx context.Context, scope Scope, input CourseInput) (Course, error) {
@@ -314,23 +314,35 @@ func normalizeCourseListFilter(filter CourseListFilter) CourseListFilter {
 	return filter
 }
 
-func normalizeObjectType(value string) string {
-	switch strings.TrimSpace(value) {
-	case "", ObjectTypeSchool:
+func normalizeObjectType(value int) int {
+	switch value {
+	case 0, ObjectTypeSchool:
 		return ObjectTypeSchool
 	case ObjectTypeOrganization:
 		return ObjectTypeOrganization
 	default:
-		return ""
+		return 0
 	}
 }
 
-func generateSchoolCode(objectType string) string {
+func generateSchoolCode(objectType int) string {
 	prefix := "SCH"
 	if objectType == ObjectTypeOrganization {
 		prefix = "ORG"
 	}
 	return fmt.Sprintf("%s%d", prefix, time.Now().UnixNano())
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" {
+		return 0
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return 0
+		}
+	}
+	return scope.TenantID
 }
 
 func isSystemAdmin(scope Scope) bool {
