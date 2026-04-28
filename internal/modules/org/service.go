@@ -19,6 +19,14 @@ type schoolDeleteRepository interface {
 	DeleteSchool(ctx context.Context, tenantID int64, id int64) error
 }
 
+type schoolCascadeDeleteRepository interface {
+	DeleteSchoolWithCascade(ctx context.Context, tenantID int64, id int64) error
+}
+
+type schoolDependencyRepository interface {
+	CountSchoolDeleteDependencies(ctx context.Context, tenantID int64, id int64) (SchoolDeleteDependencies, error)
+}
+
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
@@ -100,14 +108,63 @@ func (service *Service) EnableSchool(ctx context.Context, scope Scope, id int64)
 	return err
 }
 
-func (service *Service) DeleteSchool(ctx context.Context, scope Scope, id int64) error {
+func (service *Service) DeleteSchool(ctx context.Context, scope Scope, id int64, cascadeDelete bool) error {
 	if !isSystemAdmin(scope) {
 		return ErrForbidden
 	}
-	if repo, ok := service.repo.(schoolDeleteRepository); ok {
-		return repo.DeleteSchool(ctx, scope.TenantID, id)
+	return service.deleteSchool(ctx, scope.TenantID, id, cascadeDelete)
+}
+
+func (service *Service) BatchDeleteSchools(ctx context.Context, scope Scope, input SchoolBatchDeleteInput) error {
+	if !isSystemAdmin(scope) {
+		return ErrForbidden
 	}
-	return service.repo.DisableSchool(ctx, scope.TenantID, id)
+	ids := normalizeIDs(input.IDs)
+	if len(ids) == 0 {
+		return ErrInvalidInput
+	}
+	for _, id := range ids {
+		if err := service.deleteSchool(ctx, scope.TenantID, id, input.CascadeDelete); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (service *Service) deleteSchool(ctx context.Context, tenantID int64, id int64, cascadeDelete bool) error {
+	if id <= 0 {
+		return ErrInvalidInput
+	}
+	if dependencies, err := service.countSchoolDeleteDependencies(ctx, tenantID, id); err != nil {
+		return err
+	} else if dependencies.HasAny() && !cascadeDelete {
+		return ErrDeleteRestricted
+	}
+	if cascadeDelete {
+		if repo, ok := service.repo.(schoolCascadeDeleteRepository); ok {
+			return repo.DeleteSchoolWithCascade(ctx, tenantID, id)
+		}
+		return ErrDeleteRestricted
+	}
+	if repo, ok := service.repo.(schoolDeleteRepository); ok {
+		return repo.DeleteSchool(ctx, tenantID, id)
+	}
+	return service.repo.DisableSchool(ctx, tenantID, id)
+}
+
+func (service *Service) countSchoolDeleteDependencies(ctx context.Context, tenantID int64, id int64) (SchoolDeleteDependencies, error) {
+	if repo, ok := service.repo.(schoolDependencyRepository); ok {
+		return repo.CountSchoolDeleteDependencies(ctx, tenantID, id)
+	}
+	grades, err := service.repo.ListGrades(ctx, tenantID, GradeListFilter{SchoolID: id, Page: 1, PageSize: 1})
+	if err != nil {
+		return SchoolDeleteDependencies{}, err
+	}
+	classes, err := service.repo.ListClasses(ctx, tenantID, ClassListFilter{SchoolID: id, Page: 1, PageSize: 1})
+	if err != nil {
+		return SchoolDeleteDependencies{}, err
+	}
+	return SchoolDeleteDependencies{GradeCount: grades.Total, ClassCount: classes.Total}, nil
 }
 
 func (service *Service) ListGrades(ctx context.Context, scope Scope, filter GradeListFilter) (PageResult[Grade], error) {
@@ -289,6 +346,22 @@ func isSystemAdmin(scope Scope) bool {
 		}
 	}
 	return false
+}
+
+func normalizeIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func normalizePage(page int) int {
