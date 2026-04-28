@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
-import type { ManagedUser, ManagedUserInput, PageResult, RoleItem } from "@aios/api-sdk";
+import type { ManagedUser, ManagedUserInput, ManagedUserListQuery, PageResult, RoleItem, RoleListQuery } from "@aios/api-sdk";
 
 import { downloadCsv, paginateItems, toggleSelectAll, toggleSelection } from "./list-page-utils";
 
 export interface UserPanelApi {
-  listUsers(): Promise<PageResult<ManagedUser>>;
+  listUsers(query?: ManagedUserListQuery): Promise<PageResult<ManagedUser>>;
   createUser(body: ManagedUserInput): Promise<ManagedUser>;
   assignUserRoles(id: number, body: { role_ids: number[] }): Promise<ManagedUser>;
   disableUser(id: number): Promise<ManagedUser>;
-  listRoles(): Promise<PageResult<RoleItem>>;
+  listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   updateUser?(id: number, body: ManagedUserInput): Promise<ManagedUser>;
 }
 
@@ -41,14 +41,18 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   const [modal, setModal] = useState<ModalState>(null);
   const [page, setPage] = useState(1);
 
-  async function loadAll() {
+  async function loadAll(query: ManagedUserListQuery = buildUserQuery(keyword, userTypeFilter)) {
     setLoading(true);
     setErrorMessage("");
     try {
-      const [userResult, roleResult] = await Promise.all([api.listUsers(), api.listRoles()]);
+      const [userResult, roleResult] = await Promise.all([
+        api.listUsers(query),
+        api.listRoles({ page: 1, page_size: 100 })
+      ]);
       setUsers(userResult.items);
       setRoles(roleResult.items);
     } catch (error) {
+      setUsers([]);
       setErrorMessage(error instanceof Error ? error.message : "加载用户数据失败");
     } finally {
       setLoading(false);
@@ -56,7 +60,7 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   }
 
   useEffect(() => {
-    void loadAll();
+    void loadAll(buildUserQuery("", ""));
   }, [api]);
 
   useEffect(() => {
@@ -65,20 +69,7 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
 
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role.name])), [roles]);
 
-  const filteredUsers = useMemo(
-    () =>
-      users.filter((user) => {
-        const matchesKeyword = [user.username, user.display_name, user.user_type]
-          .join(" ")
-          .toLowerCase()
-          .includes(keyword.trim().toLowerCase());
-        const matchesType = !userTypeFilter || user.user_type === userTypeFilter;
-        return matchesKeyword && matchesType;
-      }),
-    [keyword, userTypeFilter, users]
-  );
-
-  const pagination = useMemo(() => paginateItems(filteredUsers, page, pageSize), [filteredUsers, page]);
+  const pagination = useMemo(() => paginateItems(users, page, pageSize), [users, page]);
   const currentPageIDs = useMemo(() => pagination.items.map((item) => item.id), [pagination.items]);
 
   useEffect(() => {
@@ -86,6 +77,13 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
       setPage(pagination.page);
     }
   }, [page, pagination.page]);
+
+  async function handleQuery(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    setSelectedIDs([]);
+    setPage(1);
+    await loadAll(buildUserQuery(keyword, userTypeFilter));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -138,7 +136,7 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
         { key: "user_type", title: "用户类型" },
         { key: "status", title: "状态" }
       ],
-      filteredUsers
+      users
     );
   }
 
@@ -179,19 +177,19 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
 
       {!loading ? (
         <>
-          <section className="ui-admin-filters ui-admin-card">
+          <form className="ui-admin-filters ui-admin-card" onSubmit={(event) => void handleQuery(event)}>
             <div className="ui-admin-filters__grid">
               <div className="ui-admin-form__field">
-                <label htmlFor="user_filter_keyword">搜索用户</label>
+                <label htmlFor="user_filter_keyword">关键字 keyword</label>
                 <input
                   id="user_filter_keyword"
-                  placeholder="输入用户名、姓名或类型"
+                  placeholder="输入用户名或姓名"
                   value={keyword}
                   onChange={(event) => setKeyword(event.target.value)}
                 />
               </div>
               <div className="ui-admin-form__field">
-                <label htmlFor="user_type_filter">用户类型</label>
+                <label htmlFor="user_type_filter">用户类型 user_type</label>
                 <select
                   id="user_type_filter"
                   value={userTypeFilter}
@@ -203,8 +201,30 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                   <option value="staff">职员</option>
                 </select>
               </div>
+              <div className="ui-admin-form__field">
+                <label htmlFor="user_page_size">分页 page_size</label>
+                <input id="user_page_size" value={pageSize} readOnly />
+              </div>
             </div>
-          </section>
+            <div className="ui-admin-actions-bar__group">
+              <button type="submit" className="ui-button ui-button--primary">
+                查询列表
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button--ghost"
+                onClick={() => {
+                  setKeyword("");
+                  setUserTypeFilter("");
+                  setSelectedIDs([]);
+                  setPage(1);
+                  void loadAll(buildUserQuery("", ""));
+                }}
+              >
+                重置参数
+              </button>
+            </div>
+          </form>
 
           <section className="ui-admin-actions-bar ui-admin-card">
             <div className="ui-admin-actions-bar__group">
@@ -451,6 +471,15 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
       ) : null}
     </section>
   );
+}
+
+function buildUserQuery(keyword: string, userType: string): ManagedUserListQuery {
+  return {
+    keyword: keyword.trim() || undefined,
+    user_type: userType || undefined,
+    page: 1,
+    page_size: 100
+  };
 }
 
 function formatUserType(userType: string): string {
