@@ -28,8 +28,8 @@ export interface SchoolOrganizationListQuery {
 export interface SchoolOrganizationApi {
   listSchools(query?: SchoolOrganizationListQuery): Promise<PageResult<SchoolOrganization>>;
   createSchool(body: SchoolOrganizationInput): Promise<SchoolOrganization>;
-  getSchool(id: number): Promise<SchoolOrganization>;
-  updateSchool(id: number, body: SchoolOrganizationInput): Promise<SchoolOrganization>;
+  getSchool?(id: number): Promise<SchoolOrganization>;
+  updateSchool?(id: number, body: SchoolOrganizationInput): Promise<SchoolOrganization>;
   disableSchool(id: number): Promise<boolean>;
   enableSchool?(id: number): Promise<boolean>;
   deleteSchool?(id: number): Promise<boolean>;
@@ -37,16 +37,24 @@ export interface SchoolOrganizationApi {
   post?<TData, TBody = unknown>(path: string, body?: TBody): Promise<TData>;
 }
 
-export async function enableSchoolOrganization(api: Pick<ApiClient, "post"> | SchoolOrganizationApi, id: number): Promise<boolean> {
+type SchoolOrganizationActionApi = Pick<ApiClient, "post"> | SchoolOrganizationApi;
+
+export async function enableSchoolOrganization(api: SchoolOrganizationActionApi, id: number): Promise<boolean> {
   if ("enableSchool" in api && api.enableSchool) {
     return api.enableSchool(id);
   }
-  return api.post<boolean>(`/schools/${id}/enable`);
+  const post = getPostMethod(api);
+  return post ? post<boolean>(`/schools/${id}/enable`) : false;
 }
 
-export async function deleteSchoolOrganization(api: Pick<ApiClient, "post"> | SchoolOrganizationApi, id: number): Promise<boolean> {
+export async function deleteSchoolOrganization(api: SchoolOrganizationActionApi, id: number): Promise<boolean> {
   if ("deleteSchool" in api && api.deleteSchool) {
     return api.deleteSchool(id);
   }
-  return api.post<boolean>(`/schools/${id}/delete`);
+  const post = getPostMethod(api);
+  return post ? post<boolean>(`/schools/${id}/delete`) : false;
+}
+
+function getPostMethod(api: SchoolOrganizationActionApi): ApiClient["post"] | undefined {
+  return typeof api.post === "function" ? api.post.bind(api) : undefined;
 }
