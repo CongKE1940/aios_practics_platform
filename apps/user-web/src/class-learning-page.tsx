@@ -8,7 +8,14 @@ import type {
   ClassPracticeSummaryResult,
   PageResult
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 export interface ClassLearningApi {
   listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
@@ -275,42 +282,36 @@ export function ClassLearningPage({ api, onNavigate }: ClassLearningPageProps) {
 
       <section className="ui-admin-card" aria-label="班级学习数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="class_learning_class_course">班级课程 class_id / course_id</label>
-            <select
-              id="class_learning_class_course"
-              value={form.class_course}
-              onChange={(event) => {
-                setForm((current) => ({ ...current, class_course: event.target.value }));
-                setSelectedIDs([]);
-              }}
-            >
-              <option value="">请选择班级课程</option>
+          <ClearableFilterSelect
+            id="class_learning_class_course"
+            label="班级课程"
+            placeholder="请选择班级课程"
+            value={form.class_course}
+            onChange={(value) => {
+              setForm((current) => ({ ...current, class_course: value }));
+              setSelectedIDs([]);
+            }}
+          >
               {flattenedOptions.map((item) => (
                 <option key={toClassCourseValue(item)} value={toClassCourseValue(item)}>
                   {item.class_name} / {item.course_name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="class_learning_start_date">开始日期 start_at</label>
-            <input
-              id="class_learning_start_date"
-              type="date"
-              value={form.startDate}
-              onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="class_learning_end_date">结束日期 end_at</label>
-            <input
-              id="class_learning_end_date"
-              type="date"
-              value={form.endDate}
-              onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
-            />
-          </div>
+          </ClearableFilterSelect>
+          <ClearableFilterInput
+            id="class_learning_start_date"
+            label="开始日期"
+            type="date"
+            value={form.startDate}
+            onChange={(value) => setForm((current) => ({ ...current, startDate: value }))}
+          />
+          <ClearableFilterInput
+            id="class_learning_end_date"
+            label="结束日期"
+            type="date"
+            value={form.endDate}
+            onChange={(value) => setForm((current) => ({ ...current, endDate: value }))}
+          />
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading || !selectedCourse}>
               {loading ? "查询中" : "查询"}

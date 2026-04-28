@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { Course, CourseInput, CourseListQuery, MenuItem, PageResult } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 export interface CourseOverviewApi {
   listCourses(query?: CourseListQuery): Promise<PageResult<Course>>;
@@ -77,7 +84,7 @@ export function CourseOverviewPage({ api, menus, userType, onNavigate }: CourseO
   const [courses, setCourses] = useState<Course[]>([]);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("active");
+  const [status, setStatus] = useState("");
   const [activeAt, setActiveAt] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
@@ -102,7 +109,7 @@ export function CourseOverviewPage({ api, menus, userType, onNavigate }: CourseO
       return;
     }
     didLoadRef.current = true;
-    void loadCourses(buildCourseQuery("", "active", "", 1, defaultPageSize));
+    void loadCourses(buildCourseQuery("", "", "", 1, defaultPageSize));
   }, [api]);
 
   async function loadCourses(query: CourseListQuery = buildCourseQuery(keyword, status, activeAt, page, pageSize)) {
@@ -132,10 +139,10 @@ export function CourseOverviewPage({ api, menus, userType, onNavigate }: CourseO
 
   async function handleReset() {
     setKeyword("");
-    setStatus("active");
+    setStatus("");
     setActiveAt("");
     setSelectedIDs([]);
-    await loadCourses(buildCourseQuery("", "active", "", 1, defaultPageSize));
+    await loadCourses(buildCourseQuery("", "", "", 1, defaultPageSize));
   }
 
   async function handlePageChange(nextPage: number) {
@@ -237,33 +244,13 @@ export function CourseOverviewPage({ api, menus, userType, onNavigate }: CourseO
 
       <section className="ui-admin-card" aria-label="课程数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="course_filter_keyword">关键字 keyword</label>
-            <input
-              id="course_filter_keyword"
-              placeholder="输入课程名称或编码"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="course_filter_status">状态 status</label>
-            <select id="course_filter_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          <ClearableFilterInput id="course_filter_keyword" label="关键字" placeholder="输入课程名称或编码" value={keyword} onChange={setKeyword} />
+          <ClearableFilterSelect id="course_filter_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="active">启用</option>
               <option value="disabled">禁用</option>
               <option value="inactive">停用</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="course_filter_active_at">生效时间 active_at</label>
-            <input
-              id="course_filter_active_at"
-              type="datetime-local"
-              value={activeAt}
-              onChange={(event) => setActiveAt(event.target.value)}
-            />
-          </div>
+          </ClearableFilterSelect>
+          <ClearableFilterInput id="course_filter_active_at" label="生效时间" type="datetime-local" value={activeAt} onChange={setActiveAt} />
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}

@@ -14,7 +14,14 @@ import type {
   QuestionVersion,
   QuestionVersionInput
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -81,7 +88,6 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const bankNameMap = useMemo(() => new Map(banks.map((bank) => [bank.id, bank.name])), [banks]);
-  const courseNameMap = useMemo(() => new Map(courses.map((course) => [course.id, course.name])), [courses]);
   const columns = useMemo<Array<FixedActionListColumn<Question>>>(
     () => [
       {
@@ -311,56 +317,32 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
       <section className="ui-admin-card" aria-label="题目数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_keyword">关键字 keyword</label>
-            <input
-              id="question_keyword"
-              placeholder="输入题目关键字"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_type_filter">题型 question_type</label>
-            <select id="question_type_filter" value={questionType} onChange={(event) => setQuestionType(event.target.value)}>
-              <option value="">全部题型</option>
+          <ClearableFilterInput id="question_keyword" label="关键字" placeholder="输入题目关键字" value={keyword} onChange={setKeyword} />
+          <ClearableFilterSelect id="question_type_filter" label="题型" placeholder="请选择题型" value={questionType} onChange={setQuestionType}>
               <option value="single_choice">单选题</option>
               <option value="multiple_choice">多选题</option>
               <option value="true_false">判断题</option>
               <option value="fill_blank">填空题</option>
               <option value="short_answer">简答题</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_course_id">课程 course_id</label>
-            <select id="question_course_id" value={courseID} onChange={(event) => setCourseID(event.target.value)}>
-              <option value="">全部课程</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="question_course_id" label="课程" placeholder="请选择课程" value={courseID} onChange={setCourseID}>
               {courses.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_bank_id_filter">题库 bank_id</label>
-            <select id="question_bank_id_filter" value={bankID} onChange={(event) => setBankID(event.target.value)}>
-              <option value="">全部题库</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="question_bank_id_filter" label="题库" placeholder="请选择题库" value={bankID} onChange={setBankID}>
               {banks.map((bank) => (
                 <option key={bank.id} value={bank.id}>
                   {bank.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_status_filter">状态 status</label>
-            <select id="question_status_filter" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="question_status_filter" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="active">启用</option>
               <option value="disabled">禁用</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}

@@ -10,7 +10,14 @@ import type {
   ExamListQuery,
   PageResult
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 export interface StudentExamApi {
   listExams(query?: ExamListQuery): Promise<PageResult<Exam>>;
@@ -77,7 +84,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [status, setStatus] = useState("published");
+  const [status, setStatus] = useState("");
   const [keyword, setKeyword] = useState("");
   const [targetType, setTargetType] = useState("");
   const [targetID, setTargetID] = useState("");
@@ -98,7 +105,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
       return;
     }
     didLoadRef.current = true;
-    void loadExams(buildExamQuery("published", "", "", "", 1, defaultPageSize), true);
+    void loadExams(buildExamQuery("", "", "", "", 1, defaultPageSize), true);
   }, [api]);
 
   const submitCurrentAttempt = useCallback(
@@ -205,11 +212,11 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
 
   async function handleReset() {
     setKeyword("");
-    setStatus("published");
+    setStatus("");
     setTargetType("");
     setTargetID("");
     setSelectedIDs([]);
-    await loadExams(buildExamQuery("published", "", "", "", 1, defaultPageSize));
+    await loadExams(buildExamQuery("", "", "", "", 1, defaultPageSize));
   }
 
   async function handlePageChange(nextPage: number) {
@@ -294,43 +301,18 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
 
       <section className="ui-admin-card" aria-label="考试数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="student_exam_keyword">关键字 keyword</label>
-            <input
-              id="student_exam_keyword"
-              placeholder="输入考试名称"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="student_exam_status">状态 status</label>
-            <select id="student_exam_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          <ClearableFilterInput id="student_exam_keyword" label="关键字" placeholder="输入考试名称" value={keyword} onChange={setKeyword} />
+          <ClearableFilterSelect id="student_exam_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="published">已发布</option>
               <option value="draft">草稿</option>
               <option value="closed">已结束</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="student_exam_target_type">对象 target_type</label>
-            <select id="student_exam_target_type" value={targetType} onChange={(event) => setTargetType(event.target.value)}>
-              <option value="">全部对象</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="student_exam_target_type" label="对象" placeholder="请选择对象" value={targetType} onChange={setTargetType}>
               <option value="class">班级</option>
               <option value="course">课程</option>
               <option value="user">用户</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="student_exam_target_id">对象 ID target_id</label>
-            <input
-              id="student_exam_target_id"
-              inputMode="numeric"
-              placeholder="输入对象 ID"
-              value={targetID}
-              onChange={(event) => setTargetID(event.target.value)}
-            />
-          </div>
+          </ClearableFilterSelect>
+          <ClearableFilterInput id="student_exam_target_id" label="对象编号" inputMode="numeric" placeholder="输入对象编号" value={targetID} onChange={setTargetID} />
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}
@@ -441,7 +423,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
               <section className="ui-admin-card" aria-label="当前题目">
                 <div className="ui-admin-card__header">
                   <div>
-                    <h3>{`${formatQuestionType(currentQuestion.question_type)} · ${currentQuestion.score} 分`}</h3>
+                    <h3>{`${formatQuestionType(currentQuestion.question_type ?? "")} · ${currentQuestion.score} 分`}</h3>
                   </div>
                 </div>
                 <p className="ui-admin-subtle">{questionText(currentQuestion) || "本题暂无题干文本。"}</p>

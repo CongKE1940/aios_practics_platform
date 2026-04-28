@@ -13,6 +13,7 @@ import type {
   ExamTarget,
   PageResult
 } from "@aios/api-sdk";
+import { ClearableFilterInput, ClearableFilterSelect } from "@aios/ui-web";
 
 export interface TeacherExamApi {
   listExams(query?: { page?: number; page_size?: number; status?: string; keyword?: string }): Promise<PageResult<Exam>>;
@@ -515,36 +516,32 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
                   <section aria-label="成绩列表">
                     <h5>成绩列表</h5>
                     <div>
-                      <label htmlFor="teacher_exam_attempt_status_filter">作答状态筛选</label>
-                      <select
+                      <ClearableFilterSelect
                         id="teacher_exam_attempt_status_filter"
+                        label="作答状态筛选"
+                        placeholder="请选择作答状态"
                         value={overviewFilter.attemptStatus}
-                        onChange={(event) =>
-                          setOverviewFilter((current) => ({ ...current, attemptStatus: event.target.value }))
-                        }
+                        onChange={(value) => setOverviewFilter((current) => ({ ...current, attemptStatus: value }))}
                       >
-                        <option value="">全部</option>
                         <option value="not_started">未开始</option>
                         <option value="in_progress">作答中</option>
                         <option value="submitted">已交卷</option>
-                      </select>
-                      <label htmlFor="teacher_exam_review_status_filter">批阅状态筛选</label>
-                      <select
+                      </ClearableFilterSelect>
+                      <ClearableFilterSelect
                         id="teacher_exam_review_status_filter"
+                        label="批阅状态筛选"
+                        placeholder="请选择批阅状态"
                         value={overviewFilter.reviewStatus}
-                        onChange={(event) =>
-                          setOverviewFilter((current) => ({ ...current, reviewStatus: event.target.value }))
-                        }
+                        onChange={(value) => setOverviewFilter((current) => ({ ...current, reviewStatus: value }))}
                       >
-                        <option value="">全部</option>
                         <option value="pending">待批阅</option>
                         <option value="reviewed">已批阅</option>
-                      </select>
-                      <label htmlFor="teacher_exam_keyword_filter">学生搜索</label>
-                      <input
+                      </ClearableFilterSelect>
+                      <ClearableFilterInput
                         id="teacher_exam_keyword_filter"
+                        label="学生搜索"
                         value={overviewFilter.keyword}
-                        onChange={(event) => setOverviewFilter((current) => ({ ...current, keyword: event.target.value }))}
+                        onChange={(value) => setOverviewFilter((current) => ({ ...current, keyword: value }))}
                       />
                       <button type="button" onClick={() => void handleOverviewSearch()}>
                         查询成绩

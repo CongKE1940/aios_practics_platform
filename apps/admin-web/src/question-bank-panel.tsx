@@ -9,7 +9,14 @@ import type {
   QuestionBankListQuery,
   QuestionBankVisibilityInput
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -244,34 +251,18 @@ export function QuestionBankPanel({ api }: { api: QuestionBankPanelApi }) {
 
       <section className="ui-admin-card" aria-label="题库数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_bank_keyword">关键字 keyword</label>
-            <input
-              id="question_bank_keyword"
-              placeholder="输入题库名称或说明"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_bank_course_id">所属课程 course_id</label>
-            <select id="question_bank_course_id" value={courseID} onChange={(event) => setCourseID(event.target.value)}>
-              <option value="">全部课程</option>
+          <ClearableFilterInput id="question_bank_keyword" label="关键字" placeholder="输入题库名称或说明" value={keyword} onChange={setKeyword} />
+          <ClearableFilterSelect id="question_bank_course_id" label="所属课程" placeholder="请选择所属课程" value={courseID} onChange={setCourseID}>
               {courses.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="question_bank_status">状态 status</label>
-            <select id="question_bank_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="question_bank_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="draft">草稿</option>
               <option value="active">已发布</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}

@@ -8,7 +8,13 @@ import type {
   RoleItem,
   RoleListQuery
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -259,14 +265,10 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
 
       <section className="ui-admin-card" aria-label="角色权限数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="role_status_filter">状态 status</label>
-            <select id="role_status_filter" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          <ClearableFilterSelect id="role_status_filter" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="active">启用</option>
               <option value="disabled">禁用</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}
@@ -466,7 +468,7 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
                         <label htmlFor="role_remark">备注</label>
                         <textarea
                           id="role_remark"
-                          value={form.remark}
+                          value={form.remark ?? ""}
                           onChange={(event) => setForm((current) => ({ ...current, remark: event.target.value }))}
                         />
                       </div>

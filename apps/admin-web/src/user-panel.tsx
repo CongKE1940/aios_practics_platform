@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { ManagedUser, ManagedUserInput, ManagedUserListQuery, PageResult, RoleItem, RoleListQuery } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -234,30 +241,20 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
 
       <section className="ui-admin-card" aria-label="用户数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="user_filter_keyword">关键字 keyword</label>
-            <input
-              id="user_filter_keyword"
-              placeholder="输入用户名或姓名"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="user_type_filter">用户类型 user_type</label>
-            <select
-              id="user_type_filter"
-              value={userTypeFilter}
-              onChange={(event) => setUserTypeFilter(event.target.value)}
-            >
-              <option value="">全部类型</option>
+          <ClearableFilterInput id="user_filter_keyword" label="关键字" placeholder="输入用户名或姓名" value={keyword} onChange={setKeyword} />
+          <ClearableFilterSelect
+            id="user_type_filter"
+            label="用户类型"
+            placeholder="请选择用户类型"
+            value={userTypeFilter}
+            onChange={setUserTypeFilter}
+          >
               <option value="sys_admin">平台管理员</option>
               <option value="school_admin">学校管理员</option>
               <option value="teacher">教师</option>
               <option value="student">学生</option>
               <option value="staff">职员</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}

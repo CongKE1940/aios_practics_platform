@@ -10,6 +10,7 @@ import type {
   UserQuestionState,
   UserQuestionStateListQuery
 } from "@aios/api-sdk";
+import { ClearableFilterInput } from "@aios/ui-web";
 
 export interface PracticeReviewApi {
   listPracticeSessions(query?: PracticeSessionListQuery): Promise<PageResult<PracticeSessionListItem>>;
@@ -121,12 +122,12 @@ export function PracticeHistoryPage({ api, onNavigate }: PracticePageProps) {
   return (
       <section aria-label="练题记录页">
       <h2>练题记录</h2>
-      <label htmlFor="practice_history_course_id">课程ID筛选</label>
-      <input
+      <ClearableFilterInput
         id="practice_history_course_id"
+        label="课程筛选"
         inputMode="numeric"
         value={courseId}
-        onChange={(event) => setCourseId(event.target.value)}
+        onChange={setCourseId}
       />
       <button type="button" onClick={() => void handleFilter()}>
         筛选记录
@@ -246,12 +247,12 @@ export function PracticeStateListPage({ api, stateType, bankId, onNavigate, onPr
   return (
       <section aria-label={`${title}页面`}>
       <h2>{title}</h2>
-      <label htmlFor="practice_state_course_id">课程ID筛选</label>
-      <input
+      <ClearableFilterInput
         id="practice_state_course_id"
+        label="课程筛选"
         inputMode="numeric"
         value={courseId}
-        onChange={(event) => setCourseId(event.target.value)}
+        onChange={setCourseId}
       />
       <button type="button" onClick={() => void handleFilter()}>
         筛选题目

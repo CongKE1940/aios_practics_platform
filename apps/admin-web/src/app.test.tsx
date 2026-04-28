@@ -266,6 +266,25 @@ describe("AdminApp", () => {
             status: "draft",
             ...body
           }),
+          getNotice: async (id) => ({
+            id,
+            tenant_id: 1,
+            title: "系统维护通知",
+            content: "周五晚维护",
+            notice_type: "system",
+            publisher_id: 1,
+            publish_scope_type: "all",
+            publish_scope: {},
+            publish_at: "2026-04-22T09:00:00+08:00",
+            status: "draft"
+          }),
+          updateNotice: async (id, body) => ({
+            id,
+            tenant_id: 1,
+            publisher_id: 1,
+            status: "draft",
+            ...body
+          }),
           publishNotice: async (id) => ({
             id,
             tenant_id: 1,
@@ -1008,6 +1027,30 @@ describe("AdminApp", () => {
             page: 1,
             page_size: 20,
             total: 1
+          }),
+          createExam: async (body) => ({
+            id: 10,
+            name: body.name,
+            exam_mode: body.exam_mode,
+            status: "draft",
+            start_time: body.start_time,
+            end_time: body.end_time,
+            duration_minutes: body.duration_minutes ?? 120,
+            targets: body.targets ?? [],
+            fixed_questions: body.fixed_questions ?? [],
+            paper_rules: body.paper_rules ?? []
+          }),
+          updateExam: async (id, body) => ({
+            id,
+            name: body.name,
+            exam_mode: body.exam_mode,
+            status: "draft",
+            start_time: body.start_time,
+            end_time: body.end_time,
+            duration_minutes: body.duration_minutes ?? 120,
+            targets: body.targets ?? [],
+            fixed_questions: body.fixed_questions ?? [],
+            paper_rules: body.paper_rules ?? []
           }),
           getExam: async (id) => ({
             id,

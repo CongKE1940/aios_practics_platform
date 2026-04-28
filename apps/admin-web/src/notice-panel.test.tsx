@@ -85,7 +85,7 @@ describe("NoticePanel", () => {
       publish_at: "2026-04-22T09:00:00+08:00",
       status: "draft"
     });
-    const markNotificationRead = vi.fn<NoticeApi["markNotificationRead"]>().mockResolvedValue({
+    const markNotificationRead = vi.fn<NonNullable<NoticeApi["markNotificationRead"]>>().mockResolvedValue({
       id: 10,
       tenant_id: 1,
       recipient_user_id: 1,
@@ -154,6 +154,25 @@ function createNoticeApi(seed?: {
     listNotices: async () => pageOf(seed?.notices ?? []),
     createNotice: async (body) => ({
       id: 1,
+      tenant_id: 1,
+      publisher_id: 1,
+      status: "draft",
+      ...body
+    }),
+    getNotice: async (id) => ({
+      id,
+      tenant_id: 1,
+      title: "系统维护通知",
+      content: "周五晚维护",
+      notice_type: "system",
+      publisher_id: 1,
+      publish_scope_type: "all",
+      publish_scope: {},
+      publish_at: "2026-04-22T09:00:00+08:00",
+      status: "draft"
+    }),
+    updateNotice: async (id, body) => ({
+      id,
       tenant_id: 1,
       publisher_id: 1,
       status: "draft",
