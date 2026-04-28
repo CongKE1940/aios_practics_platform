@@ -16,9 +16,9 @@ import { downloadCsv } from "./list-page-utils";
 export interface SchoolManagementApi {
   listSchools(query?: SchoolOrganizationListQuery): Promise<PageResult<SchoolOrganization>>;
   createSchool(body: SchoolOrganizationInput): Promise<SchoolOrganization>;
-  getSchool(id: number): Promise<SchoolOrganization>;
+  getSchool?(id: number): Promise<SchoolOrganization>;
   disableSchool(id: number): Promise<boolean>;
-  updateSchool(id: number, body: SchoolOrganizationInput): Promise<SchoolOrganization>;
+  updateSchool?(id: number, body: SchoolOrganizationInput): Promise<SchoolOrganization>;
   enableSchool?(id: number): Promise<boolean>;
   deleteSchool?(id: number): Promise<boolean>;
   uploadFile?(body: FormData): Promise<FileAsset>;
@@ -178,29 +178,27 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   }
 
   async function openDetailModal(school: SchoolOrganization) {
-    const latest = await loadSchoolDetail(school.id);
-    if (latest) {
-      setModal({ type: "detail", school: latest });
-    }
+    const latest = await loadSchoolDetail(school);
+    setModal({ type: "detail", school: latest });
   }
 
   async function openEditModal(school: SchoolOrganization) {
-    const latest = await loadSchoolDetail(school.id);
-    if (!latest) {
-      return;
-    }
+    const latest = await loadSchoolDetail(school);
     setFormFromSchool(latest);
     setModal({ type: "edit", school: latest });
   }
 
-  async function loadSchoolDetail(id: number): Promise<SchoolOrganization | null> {
+  async function loadSchoolDetail(school: SchoolOrganization): Promise<SchoolOrganization> {
+    if (!api.getSchool) {
+      return school;
+    }
     setModalLoading(true);
     setErrorMessage("");
     try {
-      return await api.getSchool(id);
+      return await api.getSchool(school.id);
     } catch (error) {
       setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "学校与组织详情加载失败");
-      return null;
+      return school;
     } finally {
       setModalLoading(false);
     }
@@ -229,8 +227,11 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
     }
 
     const payload = buildSchoolPayload(form);
-    if (modal?.type === "edit") {
+    if (modal?.type === "edit" && api.updateSchool) {
       await api.updateSchool(modal.school.id, payload);
+    } else if (modal?.type === "edit") {
+      setErrorMessage("当前接口暂不支持编辑学校或组织基础信息。 ");
+      return;
     } else if (isSystemAdmin) {
       await api.createSchool(payload);
     }
@@ -279,10 +280,8 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       await enableSchoolOrganization(api, school.id);
     }
     await loadSchools();
-    const latest = await loadSchoolDetail(school.id);
-    if (latest) {
-      setModal({ type: "detail", school: latest });
-    }
+    const latest = await loadSchoolDetail(school);
+    setModal({ type: "detail", school: latest });
   }
 
   function handleExport() {
