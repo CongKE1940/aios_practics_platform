@@ -7,15 +7,18 @@ import (
 )
 
 const (
-	StatusActive     = "active"
-	StatusDisabled   = "disabled"
-	CodeInvalidInput = 40000
-	CodeForbidden    = 40300
-	CodeNotFound     = 40400
+	StatusActive             = "active"
+	StatusDisabled           = "disabled"
+	ObjectTypeSchool         = "school"
+	ObjectTypeOrganization   = "organization"
+	CodeInvalidInput         = 40000
+	CodeForbidden            = 40300
+	CodeNotFound             = 40400
 )
 
 var (
 	ErrInvalidInput = errors.New("invalid input")
+	ErrForbidden    = errors.New("forbidden")
 	ErrNotFound     = errors.New("resource not found")
 )
 
@@ -33,13 +36,17 @@ type PageResult[T any] struct {
 }
 
 type School struct {
-	ID        int64     `json:"id"`
-	TenantID  int64     `json:"tenant_id"`
-	Code      string    `json:"code"`
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	ID          int64     `json:"id"`
+	TenantID    int64     `json:"tenant_id"`
+	ObjectType  string    `json:"object_type"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	EnglishName string    `json:"english_name,omitempty"`
+	Address     string    `json:"address,omitempty"`
+	LogoURL     string    `json:"logo_url,omitempty"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at,omitempty"`
 }
 
 type Grade struct {
@@ -82,8 +89,12 @@ type Course struct {
 }
 
 type SchoolInput struct {
-	Code string `json:"code" binding:"required"`
-	Name string `json:"name" binding:"required"`
+	ObjectType  string `json:"object_type"`
+	Code        string `json:"code"`
+	Name        string `json:"name" binding:"required"`
+	EnglishName string `json:"english_name"`
+	Address     string `json:"address"`
+	LogoURL     string `json:"logo_url"`
 }
 
 type GradeInput struct {
@@ -111,10 +122,11 @@ type CourseInput struct {
 }
 
 type SchoolListFilter struct {
-	Status   string
-	Keyword  string
-	Page     int
-	PageSize int
+	ObjectType string
+	Status     string
+	Keyword    string
+	Page       int
+	PageSize   int
 }
 
 type GradeListFilter struct {
@@ -146,6 +158,8 @@ type Repository interface {
 	CreateSchool(ctx context.Context, school School) (School, error)
 	UpdateSchool(ctx context.Context, school School) (School, error)
 	DisableSchool(ctx context.Context, tenantID int64, id int64) error
+	EnableSchool(ctx context.Context, tenantID int64, id int64) error
+	DeleteSchool(ctx context.Context, tenantID int64, id int64) error
 	ListGrades(ctx context.Context, tenantID int64, filter GradeListFilter) (PageResult[Grade], error)
 	GetGrade(ctx context.Context, tenantID int64, id int64) (Grade, error)
 	CreateGrade(ctx context.Context, grade Grade) (Grade, error)
