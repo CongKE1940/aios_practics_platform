@@ -97,6 +97,10 @@ type SchoolInput struct {
 	LogoURL     string `json:"logo_url"`
 }
 
+type SchoolBatchDeleteInput struct {
+	IDs []int64 `json:"ids" binding:"required"`
+}
+
 type GradeInput struct {
 	SchoolID   int64  `json:"school_id" binding:"required"`
 	Code       string `json:"code" binding:"required"`
