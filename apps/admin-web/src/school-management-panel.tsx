@@ -1,33 +1,32 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
-import type { FileAsset, PageResult, School, SchoolInput, SchoolListQuery } from "@aios/api-sdk";
+import type {
+  FileAsset,
+  PageResult,
+  SchoolOrganization,
+  SchoolOrganizationInput,
+  SchoolOrganizationListQuery,
+  SchoolObjectType
+} from "@aios/api-sdk";
+import { deleteSchoolOrganization, enableSchoolOrganization } from "@aios/api-sdk";
 import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
 export interface SchoolManagementApi {
-  listSchools(query?: SchoolListQuery & { object_type?: string }): Promise<PageResult<School>>;
-  createSchool(body: SchoolInput | SchoolFormState): Promise<School>;
+  listSchools(query?: SchoolOrganizationListQuery): Promise<PageResult<SchoolOrganization>>;
+  createSchool(body: SchoolOrganizationInput): Promise<SchoolOrganization>;
+  getSchool(id: number): Promise<SchoolOrganization>;
   disableSchool(id: number): Promise<boolean>;
-  updateSchool?(id: number, body: SchoolInput | SchoolFormState): Promise<School>;
+  updateSchool(id: number, body: SchoolOrganizationInput): Promise<SchoolOrganization>;
   enableSchool?(id: number): Promise<boolean>;
   deleteSchool?(id: number): Promise<boolean>;
   uploadFile?(body: FormData): Promise<FileAsset>;
   post?<TData, TBody = unknown>(path: string, body?: TBody): Promise<TData>;
 }
 
-type SchoolObjectType = "school" | "organization";
-
-type SchoolWithProfile = School & {
-  object_type?: SchoolObjectType | string;
-  english_name?: string | null;
-  address?: string | null;
-  logo_url?: string | null;
-};
-
-type SchoolFormState = {
+type SchoolFormState = Required<Pick<SchoolOrganizationInput, "name">> & {
   object_type: SchoolObjectType;
-  name: string;
   english_name: string;
   address: string;
   logo_url: string;
@@ -50,14 +49,15 @@ const defaultSchoolForm: SchoolFormState = {
 
 type ModalState =
   | { type: "create" }
-  | { type: "detail"; school: SchoolWithProfile }
-  | { type: "edit"; school: SchoolWithProfile }
+  | { type: "detail"; school: SchoolOrganization }
+  | { type: "edit"; school: SchoolOrganization }
   | null;
 
 export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const [loading, setLoading] = useState(true);
+  const [modalLoading, setModalLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [schools, setSchools] = useState<SchoolWithProfile[]>([]);
+  const [schools, setSchools] = useState<SchoolOrganization[]>([]);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
@@ -72,7 +72,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const isSystemAdmin = currentUserType === "sys_admin";
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  const columns = useMemo<Array<FixedActionListColumn<SchoolWithProfile>>>(
+  const columns = useMemo<Array<FixedActionListColumn<SchoolOrganization>>>(
     () => [
       {
         key: "logo_url",
@@ -134,12 +134,12 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
     void loadSchools(buildSchoolQuery("", "", "", 1, defaultPageSize));
   }, [api]);
 
-  async function loadSchools(query: SchoolListQuery & { object_type?: string } = buildSchoolQuery(keyword, status, objectType, page, pageSize)) {
+  async function loadSchools(query: SchoolOrganizationListQuery = buildSchoolQuery(keyword, status, objectType, page, pageSize)) {
     setLoading(true);
     setErrorMessage("");
     try {
       const result = await api.listSchools(query);
-      setSchools(result.items as SchoolWithProfile[]);
+      setSchools(result.items);
       setTotal(result.total);
       setPage(result.page || query.page || 1);
       setPageSize(result.page_size || query.page_size || defaultPageSize);
@@ -177,7 +177,36 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
     setModal({ type: "create" });
   }
 
-  function openEditModal(school: SchoolWithProfile) {
+  async function openDetailModal(school: SchoolOrganization) {
+    const latest = await loadSchoolDetail(school.id);
+    if (latest) {
+      setModal({ type: "detail", school: latest });
+    }
+  }
+
+  async function openEditModal(school: SchoolOrganization) {
+    const latest = await loadSchoolDetail(school.id);
+    if (!latest) {
+      return;
+    }
+    setFormFromSchool(latest);
+    setModal({ type: "edit", school: latest });
+  }
+
+  async function loadSchoolDetail(id: number): Promise<SchoolOrganization | null> {
+    setModalLoading(true);
+    setErrorMessage("");
+    try {
+      return await api.getSchool(id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "学校与组织详情加载失败");
+      return null;
+    } finally {
+      setModalLoading(false);
+    }
+  }
+
+  function setFormFromSchool(school: SchoolOrganization) {
     setForm({
       object_type: normalizeSchoolObjectType(school.object_type),
       name: school.name,
@@ -185,7 +214,6 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       address: school.address ?? "",
       logo_url: school.logo_url ?? ""
     });
-    setModal({ type: "edit", school });
   }
 
   function closeModal() {
@@ -200,10 +228,11 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       return;
     }
 
-    if (modal?.type === "edit" && api.updateSchool) {
-      await api.updateSchool(modal.school.id, form);
+    const payload = buildSchoolPayload(form);
+    if (modal?.type === "edit") {
+      await api.updateSchool(modal.school.id, payload);
     } else if (isSystemAdmin) {
-      await api.createSchool(form);
+      await api.createSchool(payload);
     }
 
     closeModal();
@@ -235,21 +264,25 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       return;
     }
 
-    await Promise.all(ids.map((id) => deleteSchool(api, id)));
+    await Promise.all(ids.map((id) => deleteSchoolOrganization(api, id)));
     setSelectedIDs([]);
     await loadSchools();
   }
 
-  async function handleToggleStatus(school: SchoolWithProfile) {
+  async function handleToggleStatus(school: SchoolOrganization) {
     if (!isSystemAdmin) {
       return;
     }
     if (school.status === "active") {
       await api.disableSchool(school.id);
     } else {
-      await enableSchool(api, school.id);
+      await enableSchoolOrganization(api, school.id);
     }
     await loadSchools();
+    const latest = await loadSchoolDetail(school.id);
+    if (latest) {
+      setModal({ type: "detail", school: latest });
+    }
   }
 
   function handleExport() {
@@ -281,7 +314,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
         <ToastNotice tone="danger" title="学校与组织数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
 
-      <section className="ui-admin-card" aria-label="学校与组织数据展示区" style={dataRegionStyle} aria-busy={loading}>
+      <section className="ui-admin-card" aria-label="学校与组织数据展示区" style={dataRegionStyle} aria-busy={loading || modalLoading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
           <div className="ui-admin-form__field">
             <label htmlFor="school_filter_keyword">关键字 keyword</label>
@@ -327,8 +360,8 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           onCreate={isSystemAdmin ? openCreateModal : undefined}
           onDelete={isSystemAdmin ? (rowIds) => void handleDelete(rowIds) : undefined}
           onExport={handleExport}
-          onDetail={(school) => setModal({ type: "detail", school })}
-          onEdit={openEditModal}
+          onDetail={(school) => void openDetailModal(school)}
+          onEdit={(school) => void openEditModal(school)}
           currentPage={page}
           pageCount={pageCount}
           total={total}
@@ -389,6 +422,10 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                         <dd>{modal.school.address || "-"}</dd>
                       </div>
                       <div>
+                        <dt>校徽地址</dt>
+                        <dd>{modal.school.logo_url || "默认图像"}</dd>
+                      </div>
+                      <div>
                         <dt>状态</dt>
                         <dd>{formatStatusLabel(modal.school.status)}</dd>
                       </div>
@@ -401,7 +438,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                       {modal.school.status === "active" ? "停用" : "启用"}
                     </button>
                   ) : null}
-                  <button type="button" className="ui-button ui-button--primary" onClick={() => openEditModal(modal.school)}>
+                  <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(modal.school)}>
                     编辑基础信息
                   </button>
                 </div>
@@ -411,7 +448,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                 <div className="ui-admin-modal__header">
                   <div>
                     <h3>{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3>
-                    <p>{modal.type === "create" ? "编码由系统自动生成" : "编码不可手动修改"}</p>
+                    <p>{modal.type === "create" ? "编码由系统自动生成" : `系统编码：${modal.school.code}`}</p>
                   </div>
                   <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
                     关闭
@@ -495,7 +532,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   );
 }
 
-function buildSchoolQuery(keyword: string, status: string, objectType: string, page: number, pageSize: number): SchoolListQuery & { object_type?: string } {
+function buildSchoolQuery(keyword: string, status: string, objectType: string, page: number, pageSize: number): SchoolOrganizationListQuery {
   return {
     keyword: keyword.trim() || undefined,
     status: status || undefined,
@@ -505,24 +542,14 @@ function buildSchoolQuery(keyword: string, status: string, objectType: string, p
   };
 }
 
-async function enableSchool(api: SchoolManagementApi, id: number): Promise<boolean> {
-  if (api.enableSchool) {
-    return api.enableSchool(id);
-  }
-  if (api.post) {
-    return api.post<boolean>(`/schools/${id}/enable`);
-  }
-  return false;
-}
-
-async function deleteSchool(api: SchoolManagementApi, id: number): Promise<boolean> {
-  if (api.deleteSchool) {
-    return api.deleteSchool(id);
-  }
-  if (api.post) {
-    return api.post<boolean>(`/schools/${id}/disable`);
-  }
-  return api.disableSchool(id);
+function buildSchoolPayload(form: SchoolFormState): SchoolOrganizationInput {
+  return {
+    object_type: form.object_type,
+    name: form.name.trim(),
+    english_name: form.english_name.trim(),
+    address: form.address.trim(),
+    logo_url: form.logo_url.trim()
+  };
 }
 
 function readCurrentUserType(): string {
@@ -642,7 +669,8 @@ const profileHeaderStyle: CSSProperties = {
 };
 
 const profileMetaStyle: CSSProperties = {
-  margin: 0
+  margin: 0,
+  wordBreak: "break-word"
 };
 
 const logoUploadRowStyle: CSSProperties = {
