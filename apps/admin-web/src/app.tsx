@@ -30,6 +30,7 @@ import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-pa
 import { QuestionEditorPanel } from "./question-editor-panel";
 import { QuestionPanel, type QuestionPanelApi } from "./question-panel";
 import { RbacPanel, type RbacPanelApi } from "./rbac-panel";
+import { SchoolManagementPanel } from "./school-management-panel";
 import { UserPanel, type UserPanelApi } from "./user-panel";
 
 interface AuthApi {
@@ -493,10 +494,8 @@ function renderAdminView({
 }: RenderAdminViewArgs) {
   return (
     <>
-      {selectedPath === "/admin/org" && organizationApi ? <OrganizationPanel api={organizationApi} view="schools" /> : null}
-      {selectedPath === "/admin/org/schools" && organizationApi ? (
-        <OrganizationPanel api={organizationApi} view="schools" />
-      ) : null}
+      {selectedPath === "/admin/org" && organizationApi ? <SchoolManagementPanel api={organizationApi} /> : null}
+      {selectedPath === "/admin/org/schools" && organizationApi ? <SchoolManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/org/grades" && organizationApi ? (
         <OrganizationPanel api={organizationApi} view="grades" />
       ) : null}
