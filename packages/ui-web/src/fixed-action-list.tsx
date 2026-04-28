@@ -23,6 +23,7 @@ export interface FixedActionListProps<TRow> {
   onEdit?(row: TRow): void;
   currentPage?: number;
   pageCount?: number;
+  total?: number;
   onPageChange?(page: number): void;
   height?: number | string;
   minHeight?: number | string;
@@ -49,6 +50,7 @@ export function FixedActionList<TRow>({
   onEdit,
   currentPage,
   pageCount,
+  total,
   onPageChange,
   height = 420,
   minHeight = 360,
@@ -104,8 +106,8 @@ export function FixedActionList<TRow>({
   }
 
   return (
-    <div className="ui-fixed-action-list" aria-label={ariaLabel}>
-      <div className="ui-admin-actions-bar__group" style={{ marginBottom: 12 }}>
+    <div className="ui-fixed-action-list" aria-label={ariaLabel} style={listStyle}>
+      <div className="ui-admin-actions-bar__group" style={actionsStyle}>
         <button type="button" className="ui-button ui-button--primary" onClick={onCreate} disabled={!onCreate}>
           {createLabel}
         </button>
@@ -122,8 +124,8 @@ export function FixedActionList<TRow>({
         </button>
       </div>
 
-      <div style={{ height: tableHeight, minHeight: tableMinHeight, overflow: "auto" }}>
-        <table className="ui-admin-table" style={{ width: "100%" }}>
+      <div style={{ ...tableWrapStyle, height: tableHeight, minHeight: tableMinHeight }}>
+        <table className="ui-admin-table" style={tableStyle}>
           <thead>
             <tr>
               <th style={{ width: 54 }}>
@@ -179,7 +181,9 @@ export function FixedActionList<TRow>({
             })}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + 2}>{emptyText}</td>
+                <td colSpan={columns.length + 2} style={emptyCellStyle}>
+                  {emptyText}
+                </td>
               </tr>
             ) : null}
           </tbody>
@@ -187,22 +191,41 @@ export function FixedActionList<TRow>({
       </div>
 
       {showPagination ? (
-        <div className="ui-admin-table__footer">
-          <div className="ui-admin-pagination__info">{`第 ${normalizedCurrentPage} / ${normalizedPageCount} 页`}</div>
-          <div className="ui-admin-pagination">
+        <div className="ui-admin-table__footer" style={paginationBarStyle}>
+          <div className="ui-admin-pagination__info">{`共 ${total ?? rows.length} 条`}</div>
+          <div className="ui-admin-pagination" style={paginationControlsStyle}>
             <button
               type="button"
               className="ui-button ui-button--ghost"
+              style={pagerButtonStyle}
               onClick={() => goToPage(normalizedCurrentPage - 1)}
               disabled={normalizedCurrentPage <= 1}
             >
               上一页
             </button>
+            {buildCompactPages(normalizedCurrentPage, normalizedPageCount).map((item, index) =>
+              item === "ellipsis" ? (
+                <span key={`ellipsis-${index}`} style={ellipsisStyle}>
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={item}
+                  type="button"
+                  className={item === normalizedCurrentPage ? "ui-button ui-button--primary" : "ui-button ui-button--ghost"}
+                  style={pageButtonStyle}
+                  onClick={() => goToPage(item)}
+                >
+                  {item}
+                </button>
+              )
+            )}
             <select
               aria-label="选择页数"
               value={normalizedCurrentPage}
               onChange={(event) => goToPage(Number(event.target.value))}
               disabled={normalizedPageCount <= 1}
+              style={pageSelectStyle}
             >
               {Array.from({ length: normalizedPageCount }, (_, index) => index + 1).map((page) => (
                 <option key={page} value={page}>
@@ -213,6 +236,7 @@ export function FixedActionList<TRow>({
             <button
               type="button"
               className="ui-button ui-button--ghost"
+              style={pagerButtonStyle}
               onClick={() => goToPage(normalizedCurrentPage + 1)}
               disabled={normalizedCurrentPage >= normalizedPageCount}
             >
@@ -231,3 +255,102 @@ function buildCellStyle<TRow>(column: FixedActionListColumn<TRow>): CSSPropertie
     textAlign: column.align
   };
 }
+
+function buildCompactPages(currentPage: number, pageCount: number): Array<number | "ellipsis"> {
+  if (pageCount <= 7) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+
+  const pages = new Set<number>([1, pageCount, currentPage]);
+  if (currentPage > 1) {
+    pages.add(currentPage - 1);
+  }
+  if (currentPage < pageCount) {
+    pages.add(currentPage + 1);
+  }
+
+  const sortedPages = [...pages].sort((a, b) => a - b);
+  const result: Array<number | "ellipsis"> = [];
+  sortedPages.forEach((page, index) => {
+    const previous = sortedPages[index - 1];
+    if (previous && page - previous > 1) {
+      result.push("ellipsis");
+    }
+    result.push(page);
+  });
+  return result;
+}
+
+const listStyle: CSSProperties = {
+  display: "grid",
+  gap: 12,
+  minHeight: 0
+};
+
+const actionsStyle: CSSProperties = {
+  alignItems: "center",
+  marginTop: 6,
+  marginBottom: 0
+};
+
+const tableWrapStyle: CSSProperties = {
+  minHeight: 360,
+  overflow: "auto"
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 760
+};
+
+const emptyCellStyle: CSSProperties = {
+  height: 330,
+  verticalAlign: "top",
+  paddingTop: 18
+};
+
+const paginationBarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 16,
+  paddingTop: 12,
+  flexWrap: "wrap"
+};
+
+const paginationControlsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: 8,
+  flexWrap: "wrap"
+};
+
+const pagerButtonStyle: CSSProperties = {
+  minHeight: 36,
+  padding: "0 14px"
+};
+
+const pageButtonStyle: CSSProperties = {
+  minWidth: 36,
+  minHeight: 36,
+  padding: "0 10px",
+  borderRadius: 10
+};
+
+const ellipsisStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 28,
+  minHeight: 36,
+  color: "var(--ui-color-text-muted)",
+  fontWeight: 700
+};
+
+const pageSelectStyle: CSSProperties = {
+  width: 116,
+  minHeight: 36,
+  padding: "0 12px",
+  borderRadius: 12
+};
