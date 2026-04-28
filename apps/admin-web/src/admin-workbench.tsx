@@ -1,7 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
-import type { AdminOverviewResult } from "@aios/api-sdk";
-
 import type { AnalyticsPanelApi } from "./analytics-panel";
 import type { ExamPanelApi } from "./exam-panel";
 import type { NoticeApi } from "./notice-panel";
@@ -195,7 +193,7 @@ async function loadExamStats(api?: ExamPanelApi) {
     return { examCount: 0, passRate: 0 };
   }
 
-  const exams = await settleValue(() => api.listExams({ page: 1, page_size: 10 }));
+  const exams = await settleValue(() => api.listExams({ page: 1, page_size: 100 }));
   if (!exams) {
     return { examCount: 0, passRate: 0 };
   }
