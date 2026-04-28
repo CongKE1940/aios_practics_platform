@@ -4,11 +4,12 @@ import type {
   FileAsset,
   PageResult,
   SchoolOrganization,
+  SchoolOrganizationBatchDeleteInput,
   SchoolOrganizationInput,
   SchoolOrganizationListQuery,
   SchoolObjectType
 } from "@aios/api-sdk";
-import { deleteSchoolOrganization, enableSchoolOrganization } from "@aios/api-sdk";
+import { batchDeleteSchoolOrganizations, enableSchoolOrganization } from "@aios/api-sdk";
 import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
@@ -21,6 +22,7 @@ export interface SchoolManagementApi {
   updateSchool?(id: number, body: SchoolOrganizationInput): Promise<SchoolOrganization>;
   enableSchool?(id: number): Promise<boolean>;
   deleteSchool?(id: number): Promise<boolean>;
+  batchDeleteSchools?(body: SchoolOrganizationBatchDeleteInput): Promise<boolean>;
   uploadFile?(body: FormData): Promise<FileAsset>;
   post?<TData, TBody = unknown>(path: string, body?: TBody): Promise<TData>;
 }
@@ -31,6 +33,11 @@ type SchoolFormState = Required<Pick<SchoolOrganizationInput, "name">> & {
   address: string;
   logo_url: string;
 };
+
+type DeleteConfirmState = {
+  ids: number[];
+  cascadeDelete: boolean;
+} | null;
 
 const defaultPageSize = 10;
 const defaultLogoDataUrl =
@@ -66,6 +73,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>(null);
   const [form, setForm] = useState<SchoolFormState>(defaultSchoolForm);
   const didLoadRef = useRef(false);
   const currentUserType = useMemo(() => readCurrentUserType(), []);
@@ -89,33 +97,11 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           />
         )
       },
-      {
-        key: "object_type",
-        title: "类型",
-        width: 110,
-        render: (school) => formatObjectType(school.object_type)
-      },
-      {
-        key: "name",
-        title: "名称",
-        render: (school) => school.name
-      },
-      {
-        key: "english_name",
-        title: "英文名",
-        render: (school) => school.english_name || "-"
-      },
-      {
-        key: "code",
-        title: "系统编码",
-        width: 180,
-        render: (school) => school.code
-      },
-      {
-        key: "address",
-        title: "地址",
-        render: (school) => school.address || "-"
-      },
+      { key: "object_type", title: "类型", width: 110, render: (school) => formatObjectType(school.object_type) },
+      { key: "name", title: "名称", render: (school) => school.name },
+      { key: "english_name", title: "英文名", render: (school) => school.english_name || "-" },
+      { key: "code", title: "系统编码", width: 180, render: (school) => school.code },
+      { key: "address", title: "地址", render: (school) => school.address || "-" },
       {
         key: "status",
         title: "状态",
@@ -256,7 +242,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
     setForm((current) => ({ ...current, logo_url: dataUrl }));
   }
 
-  async function handleDelete(rowIds: FixedActionListRowId[]) {
+  function handleDelete(rowIds: FixedActionListRowId[]) {
     if (!isSystemAdmin) {
       return;
     }
@@ -264,10 +250,24 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
     if (ids.length === 0) {
       return;
     }
+    setDeleteConfirm({ ids, cascadeDelete: false });
+  }
 
-    await Promise.all(ids.map((id) => deleteSchoolOrganization(api, id)));
-    setSelectedIDs([]);
-    await loadSchools();
+  async function confirmDeleteSchools() {
+    if (!deleteConfirm) {
+      return;
+    }
+    try {
+      await batchDeleteSchoolOrganizations(api, {
+        ids: deleteConfirm.ids,
+        cascade_delete: deleteConfirm.cascadeDelete
+      });
+      setDeleteConfirm(null);
+      setSelectedIDs([]);
+      await loadSchools();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "删除失败");
+    }
   }
 
   async function handleToggleStatus(school: SchoolOrganization) {
@@ -357,7 +357,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           selectedRowIds={selectedIDs}
           onSelectionChange={isSystemAdmin ? setSelectedIDs : undefined}
           onCreate={isSystemAdmin ? openCreateModal : undefined}
-          onDelete={isSystemAdmin ? (rowIds) => void handleDelete(rowIds) : undefined}
+          onDelete={isSystemAdmin ? handleDelete : undefined}
           onExport={handleExport}
           onDetail={(school) => void openDetailModal(school)}
           onEdit={(school) => void openEditModal(school)}
@@ -369,11 +369,51 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           emptyText={loading ? "数据加载中..." : "暂无学校与组织数据"}
           ariaLabel="学校与组织列表"
           createLabel="新增"
-          deleteLabel="删除"
+          deleteLabel={selectedIDs.length > 0 ? `删除已选 ${selectedIDs.length} 项` : "删除"}
           exportLabel="导出"
           rowCheckboxLabel={(school) => `选择${formatObjectType(school.object_type)}-${school.name}`}
         />
       </section>
+
+      {deleteConfirm ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="删除学校与组织确认">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>确认删除</h3>
+                <p>{`已选择 ${deleteConfirm.ids.length} 个学校/组织`}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDeleteConfirm(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="ui-admin-modal__body">
+              <p className="ui-admin-subtle">
+                默认删除会先检查所选学校/组织下是否存在年级、班级或学生；存在关联数据时系统会拒绝删除。
+              </p>
+              <label style={cascadeOptionStyle}>
+                <input
+                  type="checkbox"
+                  checked={deleteConfirm.cascadeDelete}
+                  onChange={(event) => setDeleteConfirm((current) => current ? { ...current, cascadeDelete: event.target.checked } : current)}
+                />
+                <span>同时删除所选学校/组织下的所有年级、班级、学生</span>
+              </label>
+              {deleteConfirm.cascadeDelete ? (
+                <p style={dangerHintStyle}>该操作会软删除年级、班级，并将学生置为离校/禁用，请谨慎确认。</p>
+              ) : null}
+            </div>
+            <div className="ui-admin-modal__footer">
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDeleteConfirm(null)}>
+                取消
+              </button>
+              <button type="button" className="ui-button ui-button--primary" onClick={() => void confirmDeleteSchools()}>
+                确认删除
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {modal ? (
         <div className="ui-admin-modal-backdrop">
@@ -385,73 +425,32 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                     <h3>{formatObjectType(modal.school.object_type)}详情</h3>
                     <p>{modal.school.name}</p>
                   </div>
-                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
-                    关闭
-                  </button>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>关闭</button>
                 </div>
                 <div className="ui-admin-modal__body">
                   <div style={profileHeaderStyle}>
-                    <img
-                      src={modal.school.logo_url || defaultLogoDataUrl}
-                      alt=""
-                      style={profileLogoStyle}
-                      onError={(event) => {
-                        event.currentTarget.src = defaultLogoDataUrl;
-                      }}
-                    />
+                    <img src={modal.school.logo_url || defaultLogoDataUrl} alt="" style={profileLogoStyle} onError={(event) => { event.currentTarget.src = defaultLogoDataUrl; }} />
                     <dl className="ui-admin-meta-list" style={profileMetaStyle}>
-                      <div>
-                        <dt>类型</dt>
-                        <dd>{formatObjectType(modal.school.object_type)}</dd>
-                      </div>
-                      <div>
-                        <dt>名称</dt>
-                        <dd>{modal.school.name}</dd>
-                      </div>
-                      <div>
-                        <dt>英文名</dt>
-                        <dd>{modal.school.english_name || "-"}</dd>
-                      </div>
-                      <div>
-                        <dt>系统编码</dt>
-                        <dd>{modal.school.code}</dd>
-                      </div>
-                      <div>
-                        <dt>地址</dt>
-                        <dd>{modal.school.address || "-"}</dd>
-                      </div>
-                      <div>
-                        <dt>校徽地址</dt>
-                        <dd>{modal.school.logo_url || "默认图像"}</dd>
-                      </div>
-                      <div>
-                        <dt>状态</dt>
-                        <dd>{formatStatusLabel(modal.school.status)}</dd>
-                      </div>
+                      <div><dt>类型</dt><dd>{formatObjectType(modal.school.object_type)}</dd></div>
+                      <div><dt>名称</dt><dd>{modal.school.name}</dd></div>
+                      <div><dt>英文名</dt><dd>{modal.school.english_name || "-"}</dd></div>
+                      <div><dt>系统编码</dt><dd>{modal.school.code}</dd></div>
+                      <div><dt>地址</dt><dd>{modal.school.address || "-"}</dd></div>
+                      <div><dt>校徽地址</dt><dd>{modal.school.logo_url || "默认图像"}</dd></div>
+                      <div><dt>状态</dt><dd>{formatStatusLabel(modal.school.status)}</dd></div>
                     </dl>
                   </div>
                 </div>
                 <div className="ui-admin-modal__footer">
-                  {isSystemAdmin ? (
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleToggleStatus(modal.school)}>
-                      {modal.school.status === "active" ? "停用" : "启用"}
-                    </button>
-                  ) : null}
-                  <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(modal.school)}>
-                    编辑基础信息
-                  </button>
+                  {isSystemAdmin ? <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleToggleStatus(modal.school)}>{modal.school.status === "active" ? "停用" : "启用"}</button> : null}
+                  <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(modal.school)}>编辑基础信息</button>
                 </div>
               </>
             ) : (
               <>
                 <div className="ui-admin-modal__header">
-                  <div>
-                    <h3>{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3>
-                    <p>{modal.type === "create" ? "编码由系统自动生成" : `系统编码：${modal.school.code}`}</p>
-                  </div>
-                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
-                    关闭
-                  </button>
+                  <div><h3>{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3><p>{modal.type === "create" ? "编码由系统自动生成" : `系统编码：${modal.school.code}`}</p></div>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>关闭</button>
                 </div>
                 <form onSubmit={(event) => void handleSubmit(event)}>
                   <div className="ui-admin-modal__body">
@@ -464,63 +463,14 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                       </div>
                     </div>
                     <div className="ui-admin-form__grid">
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="school_object_type">类型</label>
-                        <select
-                          id="school_object_type"
-                          value={form.object_type}
-                          disabled={!isSystemAdmin || modal.type === "edit"}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, object_type: normalizeSchoolObjectType(event.target.value) }))
-                          }
-                        >
-                          <option value="school">学校</option>
-                          <option value="organization">组织</option>
-                        </select>
-                      </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="school_name">名称</label>
-                        <input
-                          id="school_name"
-                          value={form.name}
-                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                        />
-                      </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="school_english_name">英文名</label>
-                        <input
-                          id="school_english_name"
-                          value={form.english_name}
-                          onChange={(event) => setForm((current) => ({ ...current, english_name: event.target.value }))}
-                        />
-                      </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="school_logo_url">校徽地址 logo_url</label>
-                        <input
-                          id="school_logo_url"
-                          value={form.logo_url}
-                          placeholder="可粘贴图片 URL，也可上传文件"
-                          onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))}
-                        />
-                      </div>
-                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
-                        <label htmlFor="school_address">地址</label>
-                        <input
-                          id="school_address"
-                          value={form.address}
-                          onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
-                        />
-                      </div>
+                      <div className="ui-admin-form__field"><label htmlFor="school_object_type">类型</label><select id="school_object_type" value={form.object_type} disabled={!isSystemAdmin || modal.type === "edit"} onChange={(event) => setForm((current) => ({ ...current, object_type: normalizeSchoolObjectType(event.target.value) }))}><option value="school">学校</option><option value="organization">组织</option></select></div>
+                      <div className="ui-admin-form__field"><label htmlFor="school_name">名称</label><input id="school_name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></div>
+                      <div className="ui-admin-form__field"><label htmlFor="school_english_name">英文名</label><input id="school_english_name" value={form.english_name} onChange={(event) => setForm((current) => ({ ...current, english_name: event.target.value }))} /></div>
+                      <div className="ui-admin-form__field"><label htmlFor="school_logo_url">校徽地址 logo_url</label><input id="school_logo_url" value={form.logo_url} placeholder="可粘贴图片 URL，也可上传文件" onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} /></div>
+                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}><label htmlFor="school_address">地址</label><input id="school_address" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} /></div>
                     </div>
                   </div>
-                  <div className="ui-admin-modal__footer">
-                    <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
-                      取消
-                    </button>
-                    <button type="submit" className="ui-button ui-button--primary">
-                      {modal.type === "create" ? "新增" : "保存修改"}
-                    </button>
-                  </div>
+                  <div className="ui-admin-modal__footer"><button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>取消</button><button type="submit" className="ui-button ui-button--primary">{modal.type === "create" ? "新增" : "保存修改"}</button></div>
                 </form>
               </>
             )}
@@ -532,149 +482,29 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
 }
 
 function buildSchoolQuery(keyword: string, status: string, objectType: string, page: number, pageSize: number): SchoolOrganizationListQuery {
-  return {
-    keyword: keyword.trim() || undefined,
-    status: status || undefined,
-    object_type: objectType || undefined,
-    page,
-    page_size: pageSize
-  };
+  return { keyword: keyword.trim() || undefined, status: status || undefined, object_type: objectType || undefined, page, page_size: pageSize };
 }
 
 function buildSchoolPayload(form: SchoolFormState): SchoolOrganizationInput {
-  return {
-    object_type: form.object_type,
-    name: form.name.trim(),
-    english_name: form.english_name.trim(),
-    address: form.address.trim(),
-    logo_url: form.logo_url.trim()
-  };
+  return { object_type: form.object_type, name: form.name.trim(), english_name: form.english_name.trim(), address: form.address.trim(), logo_url: form.logo_url.trim() };
 }
 
-function readCurrentUserType(): string {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return "";
-  }
-  const raw = window.localStorage.getItem("aios.admin.session");
-  if (!raw) {
-    return "";
-  }
-  try {
-    return (JSON.parse(raw) as { user?: { user_type?: string } }).user?.user_type ?? "";
-  } catch {
-    return "";
-  }
-}
+function readCurrentUserType(): string { if (typeof window === "undefined" || !window.localStorage) { return ""; } const raw = window.localStorage.getItem("aios.admin.session"); if (!raw) { return ""; } try { return (JSON.parse(raw) as { user?: { user_type?: string } }).user?.user_type ?? ""; } catch { return ""; } }
+function readFileAsDataUrl(file: File): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result ?? "")); reader.onerror = () => reject(reader.error ?? new Error("文件读取失败")); reader.readAsDataURL(file); }); }
+function normalizeSchoolObjectType(value?: string | null): SchoolObjectType { return value === "organization" ? "organization" : "school"; }
+function formatObjectType(value?: string | null): string { return normalizeSchoolObjectType(value) === "organization" ? "组织" : "学校"; }
+function normalizeErrorMessage(message: string): string { if (/409|关联|存在年级|存在班级|存在学生|delete restricted|school has related data/i.test(message)) { return "该学校或组织下存在年级、班级或学生，请先处理关联数据，或在删除确认中选择同时删除关联数据。"; } if (/403|forbidden|无权限/i.test(message)) { return "当前账号无权执行该系统级管理操作。"; } if (/404|not found/i.test(message)) { return "学校与组织接口暂不可用，请检查后端 /api/v1/schools 服务是否已启动。"; } return message || "学校与组织数据加载失败"; }
+function statusClassName(status: string): string { if (["active", "published", "enabled"].includes(status)) { return "ui-admin-status ui-admin-status--active"; } if (["disabled", "inactive"].includes(status)) { return "ui-admin-status ui-admin-status--disabled"; } return "ui-admin-status ui-admin-status--draft"; }
+function formatStatusLabel(status: string): string { switch (status) { case "active": return "启用"; case "disabled": case "inactive": return "停用"; default: return status; } }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error ?? new Error("文件读取失败"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function normalizeSchoolObjectType(value?: string | null): SchoolObjectType {
-  return value === "organization" ? "organization" : "school";
-}
-
-function formatObjectType(value?: string | null): string {
-  return normalizeSchoolObjectType(value) === "organization" ? "组织" : "学校";
-}
-
-function normalizeErrorMessage(message: string): string {
-  if (/403|forbidden|无权限/i.test(message)) {
-    return "当前账号无权执行该系统级管理操作。";
-  }
-  if (/404|not found/i.test(message)) {
-    return "学校与组织接口暂不可用，请检查后端 /api/v1/schools 服务是否已启动。";
-  }
-  return message || "学校与组织数据加载失败";
-}
-
-function statusClassName(status: string): string {
-  if (["active", "published", "enabled"].includes(status)) {
-    return "ui-admin-status ui-admin-status--active";
-  }
-  if (["disabled", "inactive"].includes(status)) {
-    return "ui-admin-status ui-admin-status--disabled";
-  }
-  return "ui-admin-status ui-admin-status--draft";
-}
-
-function formatStatusLabel(status: string): string {
-  switch (status) {
-    case "active":
-      return "启用";
-    case "disabled":
-    case "inactive":
-      return "停用";
-    default:
-      return status;
-  }
-}
-
-const pageStyle: CSSProperties = {
-  minHeight: "100%",
-  gap: 0
-};
-
-const dataRegionStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateRows: "auto minmax(0, 1fr)",
-  gap: 14,
-  minHeight: "100%",
-  padding: 22
-};
-
-const filterFormStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(240px, 360px) minmax(160px, 220px) minmax(180px, 240px) auto",
-  alignItems: "end",
-  gap: 14,
-  margin: 0
-};
-
-const queryActionsStyle: CSSProperties = {
-  alignItems: "center",
-  paddingBottom: 1,
-  whiteSpace: "nowrap"
-};
-
-const logoStyle: CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 12,
-  objectFit: "cover",
-  border: "1px solid rgba(148, 163, 184, 0.35)",
-  background: "#f8fafc"
-};
-
-const profileLogoStyle: CSSProperties = {
-  width: 96,
-  height: 96,
-  borderRadius: 24,
-  objectFit: "cover",
-  border: "1px solid rgba(148, 163, 184, 0.35)",
-  background: "#f8fafc"
-};
-
-const profileHeaderStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "auto minmax(0, 1fr)",
-  gap: 18,
-  alignItems: "start"
-};
-
-const profileMetaStyle: CSSProperties = {
-  margin: 0,
-  wordBreak: "break-word"
-};
-
-const logoUploadRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 16,
-  marginBottom: 18
-};
+const pageStyle: CSSProperties = { minHeight: "100%", gap: 0 };
+const dataRegionStyle: CSSProperties = { display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: 14, minHeight: "100%", padding: 22 };
+const filterFormStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(240px, 360px) minmax(160px, 220px) minmax(180px, 240px) auto", alignItems: "end", gap: 14, margin: 0 };
+const queryActionsStyle: CSSProperties = { alignItems: "center", paddingBottom: 1, whiteSpace: "nowrap" };
+const logoStyle: CSSProperties = { width: 42, height: 42, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc" };
+const profileLogoStyle: CSSProperties = { width: 96, height: 96, borderRadius: 24, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc" };
+const profileHeaderStyle: CSSProperties = { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 18, alignItems: "start" };
+const profileMetaStyle: CSSProperties = { margin: 0, wordBreak: "break-word" };
+const logoUploadRowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 16, marginBottom: 18 };
+const cascadeOptionStyle: CSSProperties = { display: "flex", alignItems: "flex-start", gap: 10, marginTop: 16, fontWeight: 700 };
+const dangerHintStyle: CSSProperties = { marginTop: 12, color: "#b91c1c", fontWeight: 700 };
