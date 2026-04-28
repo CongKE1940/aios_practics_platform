@@ -71,6 +71,7 @@ export function FixedActionList<TRow>({
   const normalizedPageCount = Math.max(1, pageCount ?? 1);
   const normalizedCurrentPage = Math.min(Math.max(1, currentPage ?? 1), normalizedPageCount);
   const showPagination = Boolean(onPageChange && currentPage && pageCount);
+  const isEmpty = rows.length === 0;
 
   function handleToggleAll() {
     if (!onSelectionChange) {
@@ -125,7 +126,7 @@ export function FixedActionList<TRow>({
       </div>
 
       <div style={tableWrapStyle}>
-        <table className="ui-admin-table" style={{ ...tableStyle, height: rows.length === 0 ? "100%" : undefined }}>
+        <table className="ui-admin-table" style={tableStyle}>
           <thead>
             <tr>
               <th style={{ width: 54 }}>
@@ -134,7 +135,7 @@ export function FixedActionList<TRow>({
                   className="ui-admin-table__checkbox"
                   aria-label="全选当前列表"
                   checked={allCurrentRowsSelected}
-                  disabled={!onSelectionChange || rows.length === 0}
+                  disabled={!onSelectionChange || isEmpty}
                   onChange={handleToggleAll}
                 />
               </th>
@@ -146,48 +147,44 @@ export function FixedActionList<TRow>({
               <th style={{ width: 132, textAlign: "center" }}>操作</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((row, rowIndex) => {
-              const rowId = getRowId(row);
-              return (
-                <tr key={String(rowId)}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      className="ui-admin-table__checkbox"
-                      aria-label={rowCheckboxLabel?.(row) ?? `选择-${rowId}`}
-                      checked={selectedSet.has(rowId)}
-                      disabled={!onSelectionChange}
-                      onChange={() => handleToggleRow(rowId)}
-                    />
-                  </td>
-                  {columns.map((column) => (
-                    <td key={column.key} style={buildCellStyle(column)}>
-                      {column.render(row, rowIndex)}
+          {!isEmpty ? (
+            <tbody>
+              {rows.map((row, rowIndex) => {
+                const rowId = getRowId(row);
+                return (
+                  <tr key={String(rowId)}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="ui-admin-table__checkbox"
+                        aria-label={rowCheckboxLabel?.(row) ?? `选择-${rowId}`}
+                        checked={selectedSet.has(rowId)}
+                        disabled={!onSelectionChange}
+                        onChange={() => handleToggleRow(rowId)}
+                      />
                     </td>
-                  ))}
-                  <td>
-                    <div className="ui-admin-table__actions">
-                      <button type="button" className="ui-admin-link" onClick={() => onDetail?.(row)} disabled={!onDetail}>
-                        {detailLabel}
-                      </button>
-                      <button type="button" className="ui-admin-link" onClick={() => onEdit?.(row)} disabled={!onEdit}>
-                        {editLabel}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length + 2} style={emptyCellStyle}>
-                  {emptyText}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
+                    {columns.map((column) => (
+                      <td key={column.key} style={buildCellStyle(column)}>
+                        {column.render(row, rowIndex)}
+                      </td>
+                    ))}
+                    <td>
+                      <div className="ui-admin-table__actions">
+                        <button type="button" className="ui-admin-link" onClick={() => onDetail?.(row)} disabled={!onDetail}>
+                          {detailLabel}
+                        </button>
+                        <button type="button" className="ui-admin-link" onClick={() => onEdit?.(row)} disabled={!onEdit}>
+                          {editLabel}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          ) : null}
         </table>
+        {isEmpty ? <div style={emptyOverlayStyle}>{emptyText}</div> : null}
       </div>
 
       {showPagination ? (
@@ -296,6 +293,7 @@ const actionsStyle: CSSProperties = {
 };
 
 const tableWrapStyle: CSSProperties = {
+  position: "relative",
   minHeight: 0,
   overflowX: "auto",
   overflowY: "visible"
@@ -306,9 +304,18 @@ const tableStyle: CSSProperties = {
   minWidth: 760
 };
 
-const emptyCellStyle: CSSProperties = {
-  verticalAlign: "top",
-  paddingTop: 18
+const emptyOverlayStyle: CSSProperties = {
+  position: "absolute",
+  inset: "48px 0 0",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 120,
+  padding: 24,
+  color: "var(--ui-color-text-muted)",
+  fontWeight: 700,
+  pointerEvents: "none",
+  textAlign: "center"
 };
 
 const paginationBarStyle: CSSProperties = {
