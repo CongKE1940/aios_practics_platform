@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { ManagedUser, ManagedUserInput, ManagedUserListQuery, PageResult, RoleItem, RoleListQuery } from "@aios/api-sdk";
+import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
-import { downloadCsv, paginateItems, toggleSelectAll, toggleSelection } from "./list-page-utils";
+import { downloadCsv } from "./list-page-utils";
 
 export interface UserPanelApi {
   listUsers(query?: ManagedUserListQuery): Promise<PageResult<ManagedUser>>;
@@ -13,15 +14,19 @@ export interface UserPanelApi {
   updateUser?(id: number, body: ManagedUserInput): Promise<ManagedUser>;
 }
 
-const pageSize = 8;
+const defaultPageSize = 10;
 
 const defaultForm = {
   username: "",
   display_name: "",
   user_type: "teacher",
+  phone: "",
+  email: "",
   password: "",
   role_id: ""
 };
+
+type UserFormState = typeof defaultForm;
 
 type ModalState =
   | { type: "create" }
@@ -36,12 +41,63 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [keyword, setKeyword] = useState("");
   const [userTypeFilter, setUserTypeFilter] = useState("");
-  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
-  const [form, setForm] = useState(defaultForm);
+  const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
+  const [form, setForm] = useState<UserFormState>(defaultForm);
   const [modal, setModal] = useState<ModalState>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [total, setTotal] = useState(0);
+  const didLoadRef = useRef(false);
 
-  async function loadAll(query: ManagedUserListQuery = buildUserQuery(keyword, userTypeFilter)) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role.name])), [roles]);
+  const columns = useMemo<Array<FixedActionListColumn<ManagedUser>>>(
+    () => [
+      {
+        key: "username",
+        title: "用户名",
+        render: (user) => user.username
+      },
+      {
+        key: "display_name",
+        title: "姓名",
+        render: (user) => user.display_name
+      },
+      {
+        key: "user_type",
+        title: "用户类型",
+        width: 120,
+        render: (user) => formatUserType(user.user_type)
+      },
+      {
+        key: "status",
+        title: "状态",
+        width: 120,
+        render: (user) => <span className={statusClassName(user.status)}>{formatStatusLabel(user.status)}</span>
+      },
+      {
+        key: "contact",
+        title: "联系方式",
+        render: (user) => formatContact(user)
+      },
+      {
+        key: "roles",
+        title: "角色",
+        render: (user) => formatRoleNames(user.role_ids, roleMap)
+      }
+    ],
+    [roleMap]
+  );
+
+  useEffect(() => {
+    if (didLoadRef.current) {
+      return;
+    }
+    didLoadRef.current = true;
+    void loadAll(buildUserQuery("", "", 1, defaultPageSize));
+  }, [api]);
+
+  async function loadAll(query: ManagedUserListQuery = buildUserQuery(keyword, userTypeFilter, page, pageSize)) {
     setLoading(true);
     setErrorMessage("");
     try {
@@ -51,59 +107,50 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
       ]);
       setUsers(userResult.items);
       setRoles(roleResult.items);
+      setTotal(userResult.total);
+      setPage(userResult.page || query.page || 1);
+      setPageSize(userResult.page_size || query.page_size || defaultPageSize);
     } catch (error) {
       setUsers([]);
-      setErrorMessage(error instanceof Error ? error.message : "加载用户数据失败");
+      setTotal(0);
+      setPage(query.page || 1);
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "用户数据加载失败");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    void loadAll(buildUserQuery("", ""));
-  }, [api]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [keyword, userTypeFilter]);
-
-  const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role.name])), [roles]);
-
-  const pagination = useMemo(() => paginateItems(users, page, pageSize), [users, page]);
-  const currentPageIDs = useMemo(() => pagination.items.map((item) => item.id), [pagination.items]);
-
-  useEffect(() => {
-    if (page !== pagination.page) {
-      setPage(pagination.page);
-    }
-  }, [page, pagination.page]);
-
-  async function handleQuery(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
+  async function handleQuery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSelectedIDs([]);
-    setPage(1);
-    await loadAll(buildUserQuery(keyword, userTypeFilter));
+    await loadAll(buildUserQuery(keyword, userTypeFilter, 1, pageSize));
+  }
+
+  async function handleReset() {
+    setKeyword("");
+    setUserTypeFilter("");
+    setSelectedIDs([]);
+    await loadAll(buildUserQuery("", "", 1, defaultPageSize));
+  }
+
+  async function handlePageChange(nextPage: number) {
+    setSelectedIDs([]);
+    await loadAll(buildUserQuery(keyword, userTypeFilter, nextPage, pageSize));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (modal?.type === "edit" && api.updateUser) {
-      await api.updateUser(modal.user.id, {
-        username: form.username,
-        display_name: form.display_name,
-        user_type: form.user_type,
-        password: form.password || undefined,
-        role_ids: form.role_id ? [Number(form.role_id)] : []
-      });
+    const body = buildUserPayload(form, modal?.type === "edit");
+
+    if (modal?.type === "edit") {
+      if (!api.updateUser) {
+        setErrorMessage("当前接口暂不支持编辑用户。 ");
+        return;
+      }
+      await api.updateUser(modal.user.id, body);
     } else {
-      await api.createUser({
-        username: form.username,
-        display_name: form.display_name,
-        user_type: form.user_type,
-        password: form.password,
-        role_ids: form.role_id ? [Number(form.role_id)] : []
-      });
+      await api.createUser(body);
     }
 
     closeModal();
@@ -117,13 +164,19 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
     await loadAll();
   }
 
-  async function handleBatchDelete() {
-    const ids = [...selectedIDs];
+  async function handleBatchDelete(rowIds: FixedActionListRowId[]) {
+    const ids = rowIds.map((id) => Number(id)).filter((id) => Number.isFinite(id));
     if (ids.length === 0) {
       return;
     }
     await Promise.all(ids.map((id) => api.disableUser(id)));
     setSelectedIDs([]);
+    await loadAll();
+  }
+
+  async function handleDeleteOne(user: ManagedUser) {
+    await api.disableUser(user.id);
+    closeModal();
     await loadAll();
   }
 
@@ -133,10 +186,20 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
       [
         { key: "username", title: "用户名" },
         { key: "display_name", title: "姓名" },
-        { key: "user_type", title: "用户类型" },
-        { key: "status", title: "状态" }
+        { key: "user_type_label", title: "用户类型" },
+        { key: "status_label", title: "状态" },
+        { key: "phone", title: "手机号" },
+        { key: "email", title: "邮箱" },
+        { key: "role_names", title: "角色" }
       ],
-      users
+      users.map((user) => ({
+        ...user,
+        user_type_label: formatUserType(user.user_type),
+        status_label: formatStatusLabel(user.status),
+        phone: user.phone ?? "",
+        email: user.email ?? "",
+        role_names: formatRoleNames(user.role_ids, roleMap)
+      }))
     );
   }
 
@@ -150,6 +213,8 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
       username: user.username,
       display_name: user.display_name,
       user_type: user.user_type,
+      phone: user.phone ?? "",
+      email: user.email ?? "",
       password: "",
       role_id: user.role_ids?.[0] ? String(user.role_ids[0]) : ""
     });
@@ -162,188 +227,71 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   }
 
   return (
-    <section aria-label="用户管理面板" className="ui-admin-page">
-      <section className="ui-admin-page__hero">
-        <div className="ui-admin-page__header">
-          <div>
-            <span className="ui-admin-page__eyebrow">用户管理</span>
-            <h2>用户管理</h2>
-          </div>
-        </div>
-      </section>
-
-      {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
-      {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
-
-      {!loading ? (
-        <>
-          <form className="ui-admin-filters ui-admin-card" onSubmit={(event) => void handleQuery(event)}>
-            <div className="ui-admin-filters__grid">
-              <div className="ui-admin-form__field">
-                <label htmlFor="user_filter_keyword">关键字 keyword</label>
-                <input
-                  id="user_filter_keyword"
-                  placeholder="输入用户名或姓名"
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
-              <div className="ui-admin-form__field">
-                <label htmlFor="user_type_filter">用户类型 user_type</label>
-                <select
-                  id="user_type_filter"
-                  value={userTypeFilter}
-                  onChange={(event) => setUserTypeFilter(event.target.value)}
-                >
-                  <option value="">全部类型</option>
-                  <option value="teacher">教师</option>
-                  <option value="student">学生</option>
-                  <option value="staff">职员</option>
-                </select>
-              </div>
-              <div className="ui-admin-form__field">
-                <label htmlFor="user_page_size">分页 page_size</label>
-                <input id="user_page_size" value={pageSize} readOnly />
-              </div>
-            </div>
-            <div className="ui-admin-actions-bar__group">
-              <button type="submit" className="ui-button ui-button--primary">
-                查询列表
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button--ghost"
-                onClick={() => {
-                  setKeyword("");
-                  setUserTypeFilter("");
-                  setSelectedIDs([]);
-                  setPage(1);
-                  void loadAll(buildUserQuery("", ""));
-                }}
-              >
-                重置参数
-              </button>
-            </div>
-          </form>
-
-          <section className="ui-admin-actions-bar ui-admin-card">
-            <div className="ui-admin-actions-bar__group">
-              <button type="button" className="ui-button ui-button--primary" onClick={openCreateModal}>
-                新增用户
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button--ghost"
-                onClick={() => void handleBatchDelete()}
-                disabled={selectedIDs.length === 0}
-              >
-                批量删除
-              </button>
-              <button type="button" className="ui-button ui-button--ghost" onClick={handleExport}>
-                导出列表
-              </button>
-            </div>
-            <div className="ui-admin-pagination__info">{`已选 ${selectedIDs.length} 项`}</div>
-          </section>
-
-          <section className="ui-admin-table-card">
-            <div className="ui-admin-table-card__header">
-              <div>
-                <h3>用户列表</h3>
-              </div>
-            </div>
-            <table className="ui-admin-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      className="ui-admin-table__checkbox"
-                      aria-label="全选用户"
-                      checked={currentPageIDs.length > 0 && currentPageIDs.every((id) => selectedIDs.includes(id))}
-                      onChange={() => setSelectedIDs((current) => toggleSelectAll(current, currentPageIDs))}
-                    />
-                  </th>
-                  <th>用户名</th>
-                  <th>姓名</th>
-                  <th>用户类型</th>
-                  <th>状态</th>
-                  <th>角色</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagination.items.map((user) => (
-                  <tr key={user.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        className="ui-admin-table__checkbox"
-                        aria-label={`选择用户-${user.id}`}
-                        checked={selectedIDs.includes(user.id)}
-                        onChange={() => setSelectedIDs((current) => toggleSelection(current, user.id))}
-                      />
-                    </td>
-                    <td>{user.username}</td>
-                    <td>{user.display_name}</td>
-                    <td>{formatUserType(user.user_type)}</td>
-                    <td>
-                      <span className={user.status === "active" ? "ui-admin-status ui-admin-status--active" : "ui-admin-status ui-admin-status--disabled"}>
-                        {user.status === "active" ? "启用" : "禁用"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="ui-admin-chip-list">
-                        {(user.role_ids ?? []).map((roleID) => (
-                          <span key={roleID} className="ui-admin-chip">
-                            {roleMap.get(roleID) ?? `角色-${roleID}`}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="ui-admin-table__actions">
-                        <button type="button" className="ui-admin-link" onClick={() => setModal({ type: "detail", user })}>
-                          详情
-                        </button>
-                        <button type="button" className="ui-admin-link" onClick={() => openEditModal(user)}>
-                          编辑
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {pagination.items.length === 0 ? (
-                  <tr>
-                    <td colSpan={7}>暂无用户数据</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-            <div className="ui-admin-table__footer">
-              <div className="ui-admin-pagination__info">{`共 ${pagination.total} 条，当前第 ${pagination.page} / ${pagination.pageCount} 页`}</div>
-              <div className="ui-admin-pagination">
-                <button
-                  type="button"
-                  className="ui-button ui-button--ghost"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={pagination.page <= 1}
-                >
-                  上一页
-                </button>
-                <button
-                  type="button"
-                  className="ui-button ui-button--ghost"
-                  onClick={() => setPage((current) => Math.min(pagination.pageCount, current + 1))}
-                  disabled={pagination.page >= pagination.pageCount}
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
-          </section>
-        </>
+    <section aria-label="用户管理面板" className="ui-admin-page" style={pageStyle}>
+      {errorMessage ? (
+        <ToastNotice tone="danger" title="用户数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
+
+      <section className="ui-admin-card" aria-label="用户数据展示区" style={dataRegionStyle} aria-busy={loading}>
+        <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
+          <div className="ui-admin-form__field">
+            <label htmlFor="user_filter_keyword">关键字 keyword</label>
+            <input
+              id="user_filter_keyword"
+              placeholder="输入用户名或姓名"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="user_type_filter">用户类型 user_type</label>
+            <select
+              id="user_type_filter"
+              value={userTypeFilter}
+              onChange={(event) => setUserTypeFilter(event.target.value)}
+            >
+              <option value="">全部类型</option>
+              <option value="sys_admin">平台管理员</option>
+              <option value="school_admin">学校管理员</option>
+              <option value="teacher">教师</option>
+              <option value="student">学生</option>
+              <option value="staff">职员</option>
+            </select>
+          </div>
+          <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
+            <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
+              {loading ? "查询中" : "查询"}
+            </button>
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()} disabled={loading}>
+              重置
+            </button>
+          </div>
+        </form>
+
+        <FixedActionList
+          rows={users}
+          columns={columns}
+          getRowId={(user) => user.id}
+          selectedRowIds={selectedIDs}
+          onSelectionChange={setSelectedIDs}
+          onCreate={openCreateModal}
+          onDelete={(rowIds) => void handleBatchDelete(rowIds)}
+          onExport={handleExport}
+          onDetail={(user) => setModal({ type: "detail", user })}
+          onEdit={openEditModal}
+          currentPage={page}
+          pageCount={pageCount}
+          total={total}
+          onPageChange={(nextPage) => void handlePageChange(nextPage)}
+          minHeight="100%"
+          emptyText={loading ? "数据加载中..." : "暂无用户数据"}
+          ariaLabel="用户列表"
+          createLabel="新增"
+          deleteLabel="删除"
+          exportLabel="导出"
+          rowCheckboxLabel={(user) => `选择用户-${user.username}`}
+        />
+      </section>
 
       {modal ? (
         <div className="ui-admin-modal-backdrop">
@@ -374,23 +322,39 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                       <dd>{formatUserType(modal.user.user_type)}</dd>
                     </div>
                     <div>
+                      <dt>状态</dt>
+                      <dd>{formatStatusLabel(modal.user.status)}</dd>
+                    </div>
+                    <div>
+                      <dt>手机号</dt>
+                      <dd>{modal.user.phone || "-"}</dd>
+                    </div>
+                    <div>
+                      <dt>邮箱</dt>
+                      <dd>{modal.user.email || "-"}</dd>
+                    </div>
+                    <div>
                       <dt>角色</dt>
-                      <dd>{(modal.user.role_ids ?? []).map((id) => roleMap.get(id) ?? `角色-${id}`).join("、") || "-"}</dd>
+                      <dd>{formatRoleNames(modal.user.role_ids, roleMap)}</dd>
                     </div>
                   </dl>
                 </div>
                 <div className="ui-admin-modal__footer">
                   <div className="ui-admin-actions-bar__group">
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleAssignRoles(modal.user.id, String(modal.user.role_ids?.[0] ?? ""))}>
+                    <button
+                      type="button"
+                      className="ui-button ui-button--ghost"
+                      onClick={() => void handleAssignRoles(modal.user.id, String(modal.user.role_ids?.[0] ?? ""))}
+                    >
                       同步角色
                     </button>
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void api.disableUser(modal.user.id).then(() => loadAll()).then(closeModal)}>
+                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDeleteOne(modal.user)}>
                       删除用户
                     </button>
+                    <button type="button" className="ui-button ui-button--primary" onClick={() => openEditModal(modal.user)}>
+                      编辑
+                    </button>
                   </div>
-                  <button type="button" className="ui-button ui-button--primary" onClick={() => openEditModal(modal.user)}>
-                    编辑
-                  </button>
                 </div>
               </>
             ) : (
@@ -429,17 +393,37 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                           value={form.user_type}
                           onChange={(event) => setForm((current) => ({ ...current, user_type: event.target.value }))}
                         >
+                          <option value="sys_admin">平台管理员</option>
+                          <option value="school_admin">学校管理员</option>
                           <option value="teacher">教师</option>
                           <option value="student">学生</option>
                           <option value="staff">职员</option>
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
-                        <label htmlFor="managed_password">初始密码</label>
+                        <label htmlFor="managed_phone">手机号</label>
+                        <input
+                          id="managed_phone"
+                          value={form.phone}
+                          onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="managed_email">邮箱</label>
+                        <input
+                          id="managed_email"
+                          type="email"
+                          value={form.email}
+                          onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="managed_password">{modal.type === "create" ? "初始密码" : "新密码"}</label>
                         <input
                           id="managed_password"
                           type="password"
                           value={form.password}
+                          placeholder={modal.type === "edit" ? "不修改则留空" : "请输入初始密码"}
                           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                         />
                       </div>
@@ -478,17 +462,43 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   );
 }
 
-function buildUserQuery(keyword: string, userType: string): ManagedUserListQuery {
+function buildUserQuery(keyword: string, userType: string, page: number, pageSize: number): ManagedUserListQuery {
   return {
     keyword: keyword.trim() || undefined,
     user_type: userType || undefined,
-    page: 1,
-    page_size: 100
+    page,
+    page_size: pageSize
   };
+}
+
+function buildUserPayload(form: UserFormState, isEdit: boolean): ManagedUserInput {
+  return {
+    username: form.username,
+    display_name: form.display_name,
+    user_type: form.user_type,
+    phone: form.phone || undefined,
+    email: form.email || undefined,
+    password: isEdit ? form.password || undefined : form.password,
+    role_ids: form.role_id ? [Number(form.role_id)] : []
+  };
+}
+
+function normalizeErrorMessage(message: string): string {
+  if (/404|not found/i.test(message)) {
+    return "用户列表接口暂不可用，请检查后端 /api/v1/users 服务是否已启动。";
+  }
+  if (/请求参数错误|invalid/i.test(message)) {
+    return "用户请求参数错误，请检查用户名、用户类型、密码或角色。";
+  }
+  return message || "用户数据加载失败";
 }
 
 function formatUserType(userType: string): string {
   switch (userType) {
+    case "sys_admin":
+      return "平台管理员";
+    case "school_admin":
+      return "学校管理员";
     case "teacher":
       return "教师";
     case "student":
@@ -499,3 +509,63 @@ function formatUserType(userType: string): string {
       return userType;
   }
 }
+
+function formatStatusLabel(status: string): string {
+  switch (status) {
+    case "active":
+      return "启用";
+    case "disabled":
+      return "禁用";
+    default:
+      return status || "-";
+  }
+}
+
+function statusClassName(status: string): string {
+  if (status === "active") {
+    return "ui-admin-status ui-admin-status--active";
+  }
+  if (status === "disabled") {
+    return "ui-admin-status ui-admin-status--disabled";
+  }
+  return "ui-admin-status ui-admin-status--draft";
+}
+
+function formatContact(user: ManagedUser): string {
+  const contacts = [user.phone, user.email].filter(Boolean);
+  return contacts.length > 0 ? contacts.join(" / ") : "-";
+}
+
+function formatRoleNames(roleIDs: number[] | undefined, roleMap: Map<number, string>): string {
+  if (!roleIDs || roleIDs.length === 0) {
+    return "-";
+  }
+  return roleIDs.map((id) => roleMap.get(id) ?? `角色-${id}`).join("、");
+}
+
+const pageStyle: CSSProperties = {
+  minHeight: "100%",
+  gap: 0
+};
+
+const dataRegionStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+  gap: 14,
+  minHeight: "100%",
+  padding: 22
+};
+
+const filterFormStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(240px, 360px) minmax(220px, 300px) auto",
+  alignItems: "end",
+  gap: 14,
+  margin: 0
+};
+
+const queryActionsStyle: CSSProperties = {
+  alignItems: "center",
+  paddingBottom: 1,
+  whiteSpace: "nowrap"
+};
