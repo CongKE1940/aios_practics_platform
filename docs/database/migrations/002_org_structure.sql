@@ -1,14 +1,19 @@
 CREATE TABLE schools (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   tenant_id BIGINT NOT NULL,
+  object_type VARCHAR(32) NOT NULL DEFAULT 'school' COMMENT 'school/organization',
   code VARCHAR(64) NOT NULL,
   name VARCHAR(128) NOT NULL,
+  english_name VARCHAR(255) NULL,
+  address VARCHAR(500) NULL,
+  logo_url VARCHAR(1024) NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'active',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at DATETIME(3) NULL,
   UNIQUE KEY uk_schools_tenant_code (tenant_id, code),
   KEY idx_schools_tenant_status (tenant_id, status),
+  KEY idx_schools_tenant_type_status (tenant_id, object_type, status),
   CONSTRAINT fk_schools_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
