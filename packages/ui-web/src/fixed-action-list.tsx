@@ -283,10 +283,10 @@ function buildCompactPages(currentPage: number, pageCount: number): Array<number
 
 const listStyle: CSSProperties = {
   display: "grid",
-  gridTemplateRows: "auto minmax(0, 1fr) auto",
+  gridTemplateRows: "auto auto auto",
   gap: 12,
   minHeight: 0,
-  height: "100%"
+  alignSelf: "start"
 };
 
 const actionsStyle: CSSProperties = {
@@ -297,7 +297,8 @@ const actionsStyle: CSSProperties = {
 
 const tableWrapStyle: CSSProperties = {
   minHeight: 360,
-  overflow: "auto"
+  overflowX: "auto",
+  overflowY: "visible"
 };
 
 const tableStyle: CSSProperties = {
