@@ -287,8 +287,8 @@
   text-transform: uppercase !important;
 }
 
-.ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link),
-.ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link) {
+.ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option),
+.ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option) {
   min-height: 40px !important;
   padding: 0 16px !important;
   border: 1px solid rgba(24, 35, 50, 0.12) !important;
@@ -298,8 +298,8 @@
   box-shadow: 0 8px 18px rgba(24, 35, 50, 0.06) !important;
 }
 
-.ui-user-route section[aria-label] button[aria-pressed="true"]:not(.ui-button),
-.ui-admin-route section[aria-label] button[aria-pressed="true"]:not(.ui-button) {
+.ui-user-route section[aria-label] button[aria-pressed="true"]:not(.ui-button):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option),
+.ui-admin-route section[aria-label] button[aria-pressed="true"]:not(.ui-button):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option) {
   border-color: rgba(18, 60, 75, 0.62) !important;
   background: linear-gradient(135deg, var(--ui-color-primary-strong), var(--ui-color-primary)) !important;
   color: #fffaf0 !important;

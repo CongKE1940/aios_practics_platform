@@ -447,11 +447,11 @@ body[data-ui-theme="dark"] textarea:focus {
 }
 
 html[data-ui-theme="dark"] .ui-button,
-html[data-ui-theme="dark"] .ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link),
-html[data-ui-theme="dark"] .ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link),
+html[data-ui-theme="dark"] .ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option),
+html[data-ui-theme="dark"] .ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option),
 body[data-ui-theme="dark"] .ui-button,
-body[data-ui-theme="dark"] .ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link),
-body[data-ui-theme="dark"] .ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link) {
+body[data-ui-theme="dark"] .ui-user-route section[aria-label] button:not(.ui-button):not(.ui-admin-link):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option),
+body[data-ui-theme="dark"] .ui-admin-route section[aria-label] button:not(.ui-button):not(.ui-admin-link):not(.ui-filter-control__clear):not(.ui-filter-select__button):not(.ui-filter-select__option) {
   border-color: rgba(116, 146, 200, 0.3) !important;
   background: rgba(17, 30, 52, 0.82) !important;
   color: #e8eefc !important;
