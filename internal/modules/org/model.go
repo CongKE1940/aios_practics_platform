@@ -14,12 +14,14 @@ const (
 	CodeInvalidInput       = 40000
 	CodeForbidden          = 40300
 	CodeNotFound           = 40400
+	CodeDeleteRestricted   = 40900
 )
 
 var (
-	ErrInvalidInput = errors.New("invalid input")
-	ErrForbidden    = errors.New("forbidden")
-	ErrNotFound     = errors.New("resource not found")
+	ErrInvalidInput      = errors.New("invalid input")
+	ErrForbidden         = errors.New("forbidden")
+	ErrNotFound          = errors.New("resource not found")
+	ErrDeleteRestricted  = errors.New("school has related data")
 )
 
 type Scope struct {
@@ -88,6 +90,16 @@ type Course struct {
 	UpdatedAt   time.Time  `json:"updated_at,omitempty"`
 }
 
+type SchoolDeleteDependencies struct {
+	GradeCount   int `json:"grade_count"`
+	ClassCount   int `json:"class_count"`
+	StudentCount int `json:"student_count"`
+}
+
+func (dependencies SchoolDeleteDependencies) HasAny() bool {
+	return dependencies.GradeCount > 0 || dependencies.ClassCount > 0 || dependencies.StudentCount > 0
+}
+
 type SchoolInput struct {
 	ObjectType  string `json:"object_type"`
 	Code        string `json:"code"`
@@ -98,7 +110,8 @@ type SchoolInput struct {
 }
 
 type SchoolBatchDeleteInput struct {
-	IDs []int64 `json:"ids" binding:"required"`
+	IDs           []int64 `json:"ids" binding:"required"`
+	CascadeDelete bool    `json:"cascade_delete"`
 }
 
 type GradeInput struct {
