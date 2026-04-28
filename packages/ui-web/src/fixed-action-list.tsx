@@ -53,7 +53,7 @@ export function FixedActionList<TRow>({
   total,
   onPageChange,
   height,
-  minHeight = 360,
+  minHeight,
   emptyText = "暂无数据",
   ariaLabel = "固定操作列表",
   createLabel = "新增",
@@ -66,8 +66,8 @@ export function FixedActionList<TRow>({
   const selectedSet = new Set(selectedRowIds);
   const rowIds = rows.map(getRowId);
   const allCurrentRowsSelected = rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id));
-  const tableHeight = typeof height === "number" ? `${height}px` : height;
-  const tableMinHeight = typeof minHeight === "number" ? `${minHeight}px` : minHeight;
+  const listHeight = typeof height === "number" ? `${height}px` : height;
+  const listMinHeight = typeof minHeight === "number" ? `${minHeight}px` : minHeight;
   const normalizedPageCount = Math.max(1, pageCount ?? 1);
   const normalizedCurrentPage = Math.min(Math.max(1, currentPage ?? 1), normalizedPageCount);
   const showPagination = Boolean(onPageChange && currentPage && pageCount);
@@ -106,7 +106,7 @@ export function FixedActionList<TRow>({
   }
 
   return (
-    <div className="ui-fixed-action-list" aria-label={ariaLabel} style={listStyle}>
+    <div className="ui-fixed-action-list" aria-label={ariaLabel} style={{ ...listStyle, height: listHeight, minHeight: listMinHeight }}>
       <div className="ui-admin-actions-bar__group" style={actionsStyle}>
         <button type="button" className="ui-button ui-button--primary" onClick={onCreate} disabled={!onCreate}>
           {createLabel}
@@ -124,8 +124,8 @@ export function FixedActionList<TRow>({
         </button>
       </div>
 
-      <div style={{ ...tableWrapStyle, height: tableHeight, minHeight: tableMinHeight }}>
-        <table className="ui-admin-table" style={tableStyle}>
+      <div style={tableWrapStyle}>
+        <table className="ui-admin-table" style={{ ...tableStyle, height: rows.length === 0 ? "100%" : undefined }}>
           <thead>
             <tr>
               <th style={{ width: 54 }}>
@@ -283,10 +283,10 @@ function buildCompactPages(currentPage: number, pageCount: number): Array<number
 
 const listStyle: CSSProperties = {
   display: "grid",
-  gridTemplateRows: "auto auto auto",
+  gridTemplateRows: "auto minmax(0, 1fr) auto",
   gap: 12,
   minHeight: 0,
-  alignSelf: "start"
+  alignSelf: "stretch"
 };
 
 const actionsStyle: CSSProperties = {
@@ -296,7 +296,7 @@ const actionsStyle: CSSProperties = {
 };
 
 const tableWrapStyle: CSSProperties = {
-  minHeight: 360,
+  minHeight: 0,
   overflowX: "auto",
   overflowY: "visible"
 };
@@ -307,7 +307,6 @@ const tableStyle: CSSProperties = {
 };
 
 const emptyCellStyle: CSSProperties = {
-  height: 330,
   verticalAlign: "top",
   paddingTop: 18
 };
