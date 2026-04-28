@@ -129,7 +129,7 @@ export function FixedActionList<TRow>({
         <table className="ui-admin-table" style={tableStyle}>
           <thead>
             <tr>
-              <th style={{ width: 54 }}>
+              <th style={selectionCellStyle}>
                 <input
                   type="checkbox"
                   className="ui-admin-table__checkbox"
@@ -144,7 +144,7 @@ export function FixedActionList<TRow>({
                   {column.title}
                 </th>
               ))}
-              <th style={{ width: 132, textAlign: "center" }}>操作</th>
+              <th style={actionCellStyle}>操作</th>
             </tr>
           </thead>
           {!isEmpty ? (
@@ -153,7 +153,7 @@ export function FixedActionList<TRow>({
                 const rowId = getRowId(row);
                 return (
                   <tr key={String(rowId)}>
-                    <td>
+                    <td style={selectionCellStyle}>
                       <input
                         type="checkbox"
                         className="ui-admin-table__checkbox"
@@ -168,8 +168,8 @@ export function FixedActionList<TRow>({
                         {column.render(row, rowIndex)}
                       </td>
                     ))}
-                    <td>
-                      <div className="ui-admin-table__actions">
+                    <td style={actionCellStyle}>
+                      <div className="ui-admin-table__actions" style={actionButtonsStyle}>
                         <button type="button" className="ui-admin-link" onClick={() => onDetail?.(row)} disabled={!onDetail}>
                           {detailLabel}
                         </button>
@@ -249,7 +249,8 @@ export function FixedActionList<TRow>({
 function buildCellStyle<TRow>(column: FixedActionListColumn<TRow>): CSSProperties {
   return {
     width: column.width,
-    textAlign: column.align
+    textAlign: column.align ?? "center",
+    verticalAlign: "middle"
   };
 }
 
@@ -302,6 +303,22 @@ const tableWrapStyle: CSSProperties = {
 const tableStyle: CSSProperties = {
   width: "100%",
   minWidth: 760
+};
+
+const selectionCellStyle: CSSProperties = {
+  width: 54,
+  textAlign: "center",
+  verticalAlign: "middle"
+};
+
+const actionCellStyle: CSSProperties = {
+  width: 132,
+  textAlign: "center",
+  verticalAlign: "middle"
+};
+
+const actionButtonsStyle: CSSProperties = {
+  justifyContent: "center"
 };
 
 const emptyOverlayStyle: CSSProperties = {
