@@ -1,26 +1,34 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type {
+  Course,
+  CourseListQuery,
   PageResult,
   Question,
+  QuestionBank,
+  QuestionBankListQuery,
   QuestionContentInput,
   QuestionInput,
+  QuestionListQuery,
   QuestionUpdateInput,
   QuestionVersion,
   QuestionVersionInput
 } from "@aios/api-sdk";
+import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
-import { downloadCsv, paginateItems, toggleSelectAll, toggleSelection } from "./list-page-utils";
+import { downloadCsv } from "./list-page-utils";
 
 export interface QuestionPanelApi {
-  listQuestions(): Promise<PageResult<Question>>;
+  listQuestions(query?: QuestionListQuery): Promise<PageResult<Question>>;
   createQuestion(body: QuestionInput): Promise<Question>;
   updateQuestion(id: number, body: QuestionUpdateInput): Promise<Question>;
   listQuestionVersions(id: number): Promise<QuestionVersion[]>;
   createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
+  listQuestionBanks?(query?: QuestionBankListQuery): Promise<PageResult<QuestionBank>>;
+  listCourses?(query?: CourseListQuery): Promise<PageResult<Course>>;
 }
 
-const pageSize = 8;
+const defaultPageSize = 10;
 
 const defaultQuestionForm = {
   question_type: "single_choice",
@@ -32,6 +40,11 @@ const defaultQuestionForm = {
   correct_key: "B"
 };
 
+const defaultEditForm = {
+  difficulty: "",
+  status: ""
+};
+
 const defaultVersionForm = {
   stem: "",
   correct_key: "B",
@@ -41,61 +54,137 @@ const defaultVersionForm = {
 type ModalState =
   | { type: "create" }
   | { type: "detail"; item: Question }
+  | { type: "edit"; item: Question }
   | null;
 
 export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNavigate?: (path: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [items, setItems] = useState<Question[]>([]);
+  const [banks, setBanks] = useState<QuestionBank[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [versions, setVersions] = useState<QuestionVersion[]>([]);
-  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
+  const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [keyword, setKeyword] = useState("");
+  const [questionType, setQuestionType] = useState("");
+  const [courseID, setCourseID] = useState("");
+  const [bankID, setBankID] = useState("");
+  const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [total, setTotal] = useState(0);
   const [questionForm, setQuestionForm] = useState(defaultQuestionForm);
+  const [editForm, setEditForm] = useState(defaultEditForm);
   const [versionForm, setVersionForm] = useState(defaultVersionForm);
   const [modal, setModal] = useState<ModalState>(null);
+  const didLoadRef = useRef(false);
 
-  async function loadAll() {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const bankNameMap = useMemo(() => new Map(banks.map((bank) => [bank.id, bank.name])), [banks]);
+  const courseNameMap = useMemo(() => new Map(courses.map((course) => [course.id, course.name])), [courses]);
+  const columns = useMemo<Array<FixedActionListColumn<Question>>>(
+    () => [
+      {
+        key: "question_type",
+        title: "题型",
+        render: (item) => formatQuestionType(item.question_type)
+      },
+      {
+        key: "difficulty",
+        title: "难度",
+        width: 110,
+        render: (item) => formatDifficulty(item.difficulty)
+      },
+      {
+        key: "status",
+        title: "状态",
+        width: 110,
+        render: (item) => <span className={statusClassName(item.status)}>{formatStatusLabel(item.status)}</span>
+      },
+      {
+        key: "current_version_no",
+        title: "当前版本",
+        width: 110,
+        render: (item) => item.current_version_no ?? "-"
+      },
+      {
+        key: "bank_ids",
+        title: "所属题库",
+        render: (item) => formatBankNames(item.bank_ids, bankNameMap)
+      },
+      {
+        key: "source_type",
+        title: "来源",
+        width: 110,
+        render: (item) => formatSourceType(item.source_type)
+      },
+      {
+        key: "updated_at",
+        title: "更新时间",
+        width: 160,
+        render: (item) => formatDateTime(item.updated_at)
+      }
+    ],
+    [bankNameMap]
+  );
+
+  useEffect(() => {
+    if (didLoadRef.current) {
+      return;
+    }
+    didLoadRef.current = true;
+    void loadPage(buildQuestionQuery("", "", "", "", "", 1, defaultPageSize));
+  }, [api]);
+
+  async function loadPage(
+    query: QuestionListQuery = buildQuestionQuery(keyword, questionType, courseID, bankID, status, page, pageSize)
+  ) {
     setLoading(true);
     setErrorMessage("");
     try {
-      const result = await api.listQuestions();
-      setItems(result.items);
+      const [bankResult, courseResult, questionResult] = await Promise.all([
+        api.listQuestionBanks
+          ? api.listQuestionBanks({ page: 1, page_size: 100 })
+          : Promise.resolve<PageResult<QuestionBank>>({ items: [], page: 1, page_size: 100, total: 0 }),
+        api.listCourses ? api.listCourses({ page: 1, page_size: 100 }) : Promise.resolve<PageResult<Course>>({ items: [], page: 1, page_size: 100, total: 0 }),
+        api.listQuestions(query)
+      ]);
+      setBanks(bankResult.items);
+      setCourses(courseResult.items);
+      setItems(questionResult.items);
+      setTotal(questionResult.total);
+      setPage(questionResult.page || query.page || 1);
+      setPageSize(questionResult.page_size || query.page_size || defaultPageSize);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载题目失败");
+      setItems([]);
+      setTotal(0);
+      setPage(query.page || 1);
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "题目数据加载失败");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    void loadAll();
-  }, [api]);
-
-  useEffect(() => {
-    setPage(1);
+  async function handleQuery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSelectedIDs([]);
-  }, [keyword]);
+    await loadPage(buildQuestionQuery(keyword, questionType, courseID, bankID, status, 1, pageSize));
+  }
 
-  const filteredItems = useMemo(
-    () =>
-      items.filter((item) =>
-        [item.question_type, item.difficulty ?? "", String(item.bank_ids?.join(",") ?? "")]
-          .join(" ")
-          .toLowerCase()
-          .includes(keyword.trim().toLowerCase())
-      ),
-    [items, keyword]
-  );
+  async function handleReset() {
+    setKeyword("");
+    setQuestionType("");
+    setCourseID("");
+    setBankID("");
+    setStatus("");
+    setSelectedIDs([]);
+    await loadPage(buildQuestionQuery("", "", "", "", "", 1, defaultPageSize));
+  }
 
-  const pagination = useMemo(() => paginateItems(filteredItems, page, pageSize), [filteredItems, page]);
-  const currentPageIDs = useMemo(() => pagination.items.map((item) => item.id), [pagination.items]);
-
-  useEffect(() => {
-    if (page !== pagination.page) {
-      setPage(pagination.page);
-    }
-  }, [page, pagination.page]);
+  async function handlePageChange(nextPage: number) {
+    setSelectedIDs([]);
+    await loadPage(buildQuestionQuery(keyword, questionType, courseID, bankID, status, nextPage, pageSize));
+  }
 
   async function handleCreateQuestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,7 +200,21 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
       bank_ids: questionForm.bank_id ? [Number(questionForm.bank_id)] : []
     });
     closeModal();
-    await loadAll();
+    await loadPage();
+  }
+
+  async function handleUpdateQuestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (modal?.type !== "edit") {
+      return;
+    }
+
+    await api.updateQuestion(modal.item.id, {
+      difficulty: editForm.difficulty || undefined,
+      status: editForm.status || undefined
+    });
+    closeModal();
+    await loadPage();
   }
 
   async function handleCreateVersion(event: FormEvent<HTMLFormElement>) {
@@ -130,18 +233,33 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
     });
     setVersionForm(defaultVersionForm);
     setVersions(await api.listQuestionVersions(modal.item.id));
+    await loadPage();
   }
 
   async function openDetailModal(item: Question) {
     setModal({ type: "detail", item });
-    setVersions(await api.listQuestionVersions(item.id));
+    try {
+      setVersions(await api.listQuestionVersions(item.id));
+    } catch (error) {
+      setVersions([]);
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "题目版本加载失败");
+    }
   }
 
-  async function handleBatchDelete() {
-    const ids = [...selectedIDs];
+  function openEditModal(item: Question) {
+    setEditForm({
+      difficulty: item.difficulty ?? "",
+      status: item.status
+    });
+    setModal({ type: "edit", item });
+  }
+
+  async function handleBatchDelete(rowIds: FixedActionListRowId[]) {
+    const ids = rowIds.map((id) => Number(id)).filter((id) => Number.isFinite(id));
     if (ids.length === 0) {
       return;
     }
+
     await Promise.all(
       ids.map((id) =>
         api.updateQuestion(id, {
@@ -150,174 +268,133 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
       )
     );
     setSelectedIDs([]);
-    await loadAll();
+    await loadPage();
   }
 
   function handleExport() {
     downloadCsv(
       "questions.csv",
       [
-        { key: "question_type", title: "题型" },
-        { key: "difficulty", title: "难度" },
-        { key: "status", title: "状态" },
-        { key: "current_version_no", title: "当前版本" }
+        { key: "question_type_label", title: "题型" },
+        { key: "difficulty_label", title: "难度" },
+        { key: "status_label", title: "状态" },
+        { key: "current_version_no", title: "当前版本" },
+        { key: "bank_names", title: "所属题库" },
+        { key: "source_type_label", title: "来源" },
+        { key: "updated_at_label", title: "更新时间" }
       ],
-      filteredItems
+      items.map((item) => ({
+        ...item,
+        question_type_label: formatQuestionType(item.question_type),
+        difficulty_label: formatDifficulty(item.difficulty),
+        status_label: formatStatusLabel(item.status),
+        bank_names: formatBankNames(item.bank_ids, bankNameMap),
+        source_type_label: formatSourceType(item.source_type),
+        updated_at_label: formatDateTime(item.updated_at)
+      }))
     );
   }
 
   function closeModal() {
     setModal(null);
     setQuestionForm(defaultQuestionForm);
+    setEditForm(defaultEditForm);
     setVersionForm(defaultVersionForm);
     setVersions([]);
   }
 
   return (
-    <section aria-label="题目管理面板" className="ui-admin-page">
-      <section className="ui-admin-page__hero">
-        <div className="ui-admin-page__header">
-          <div>
-            <span className="ui-admin-page__eyebrow">题目管理</span>
-            <h2>题目管理</h2>
-          </div>
-        </div>
-      </section>
-
-      {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
-      {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
-
-      {!loading ? (
-        <>
-          <section className="ui-admin-filters ui-admin-card">
-            <div className="ui-admin-filters__grid">
-              <div className="ui-admin-form__field">
-                <label htmlFor="question_keyword">筛选题目</label>
-                <input
-                  id="question_keyword"
-                  placeholder="题型 / 难度 / 题库 ID"
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
-            </div>
-          </section>
-
-          <section className="ui-admin-actions-bar ui-admin-card">
-            <div className="ui-admin-actions-bar__group">
-              <button type="button" className="ui-button ui-button--primary" onClick={() => setModal({ type: "create" })}>
-                新增题目
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button--ghost"
-                onClick={() => void handleBatchDelete()}
-                disabled={selectedIDs.length === 0}
-              >
-                批量删除
-              </button>
-              <button type="button" className="ui-button ui-button--ghost" onClick={handleExport}>
-                导出列表
-              </button>
-            </div>
-            <div className="ui-admin-actions-bar__group">
-              {onNavigate ? (
-                <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate("/admin/questions/editor")}>
-                  进入题目编辑器
-                </button>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="ui-admin-table-card">
-            <div className="ui-admin-table-card__header">
-              <div>
-                <h3>题目列表</h3>
-              </div>
-            </div>
-            <table className="ui-admin-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      className="ui-admin-table__checkbox"
-                      aria-label="全选题目"
-                      checked={currentPageIDs.length > 0 && currentPageIDs.every((id) => selectedIDs.includes(id))}
-                      onChange={() => setSelectedIDs((current) => toggleSelectAll(current, currentPageIDs))}
-                    />
-                  </th>
-                  <th>题型</th>
-                  <th>难度</th>
-                  <th>状态</th>
-                  <th>当前版本</th>
-                  <th>所属题库</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagination.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        className="ui-admin-table__checkbox"
-                        aria-label={`选择题目-${item.id}`}
-                        checked={selectedIDs.includes(item.id)}
-                        onChange={() => setSelectedIDs((current) => toggleSelection(current, item.id))}
-                      />
-                    </td>
-                    <td>{item.question_type}</td>
-                    <td>{item.difficulty ?? "-"}</td>
-                    <td>
-                      <span className={item.status === "active" ? "ui-admin-status ui-admin-status--active" : "ui-admin-status ui-admin-status--disabled"}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td>{item.current_version_no ?? "-"}</td>
-                    <td>{item.bank_ids?.join(", ") ?? "-"}</td>
-                    <td>
-                      <div className="ui-admin-table__actions">
-                        <button type="button" className="ui-admin-link" onClick={() => void openDetailModal(item)}>
-                          详情
-                        </button>
-                        <button
-                          type="button"
-                          className="ui-admin-link"
-                          onClick={() => onNavigate?.("/admin/questions/editor")}
-                        >
-                          编辑
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="ui-admin-table__footer">
-              <div className="ui-admin-pagination__info">{`共 ${pagination.total} 条，当前第 ${pagination.page} / ${pagination.pageCount} 页`}</div>
-              <div className="ui-admin-pagination">
-                <button
-                  type="button"
-                  className="ui-button ui-button--ghost"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={pagination.page <= 1}
-                >
-                  上一页
-                </button>
-                <button
-                  type="button"
-                  className="ui-button ui-button--ghost"
-                  onClick={() => setPage((current) => Math.min(pagination.pageCount, current + 1))}
-                  disabled={pagination.page >= pagination.pageCount}
-                >
-                  下一页
-                </button>
-              </div>
-            </div>
-          </section>
-        </>
+    <section aria-label="题目管理面板" className="ui-admin-page" style={pageStyle}>
+      {errorMessage ? (
+        <ToastNotice tone="danger" title="题目数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
+
+      <section className="ui-admin-card" aria-label="题目数据展示区" style={dataRegionStyle} aria-busy={loading}>
+        <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
+          <div className="ui-admin-form__field">
+            <label htmlFor="question_keyword">关键字 keyword</label>
+            <input
+              id="question_keyword"
+              placeholder="输入题目关键字"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="question_type_filter">题型 question_type</label>
+            <select id="question_type_filter" value={questionType} onChange={(event) => setQuestionType(event.target.value)}>
+              <option value="">全部题型</option>
+              <option value="single_choice">单选题</option>
+              <option value="multiple_choice">多选题</option>
+              <option value="true_false">判断题</option>
+              <option value="fill_blank">填空题</option>
+              <option value="short_answer">简答题</option>
+            </select>
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="question_course_id">课程 course_id</label>
+            <select id="question_course_id" value={courseID} onChange={(event) => setCourseID(event.target.value)}>
+              <option value="">全部课程</option>
+              {courses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="question_bank_id_filter">题库 bank_id</label>
+            <select id="question_bank_id_filter" value={bankID} onChange={(event) => setBankID(event.target.value)}>
+              <option value="">全部题库</option>
+              {banks.map((bank) => (
+                <option key={bank.id} value={bank.id}>
+                  {bank.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="question_status_filter">状态 status</label>
+            <select id="question_status_filter" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">全部状态</option>
+              <option value="active">启用</option>
+              <option value="disabled">禁用</option>
+            </select>
+          </div>
+          <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
+            <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
+              {loading ? "查询中" : "查询"}
+            </button>
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()} disabled={loading}>
+              重置
+            </button>
+          </div>
+        </form>
+
+        <FixedActionList
+          rows={items}
+          columns={columns}
+          getRowId={(item) => item.id}
+          selectedRowIds={selectedIDs}
+          onSelectionChange={setSelectedIDs}
+          onCreate={() => setModal({ type: "create" })}
+          onDelete={(rowIds) => void handleBatchDelete(rowIds)}
+          onExport={handleExport}
+          onDetail={(item) => void openDetailModal(item)}
+          onEdit={openEditModal}
+          currentPage={page}
+          pageCount={pageCount}
+          total={total}
+          onPageChange={(nextPage) => void handlePageChange(nextPage)}
+          minHeight="100%"
+          emptyText={loading ? "数据加载中..." : "暂无题目数据"}
+          ariaLabel="题目列表"
+          createLabel="新增"
+          deleteLabel="删除"
+          exportLabel="导出"
+          rowCheckboxLabel={(item) => `选择题目-${item.id}`}
+        />
+      </section>
 
       {modal ? (
         <div className="ui-admin-modal-backdrop">
@@ -342,9 +419,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           value={questionForm.question_type}
                           onChange={(event) => setQuestionForm((current) => ({ ...current, question_type: event.target.value }))}
                         >
-                          <option value="single_choice">single_choice</option>
-                          <option value="multiple_choice">multiple_choice</option>
-                          <option value="true_false">true_false</option>
+                          <option value="single_choice">单选题</option>
+                          <option value="multiple_choice">多选题</option>
+                          <option value="true_false">判断题</option>
+                          <option value="fill_blank">填空题</option>
+                          <option value="short_answer">简答题</option>
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -354,19 +433,25 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           value={questionForm.difficulty}
                           onChange={(event) => setQuestionForm((current) => ({ ...current, difficulty: event.target.value }))}
                         >
-                          <option value="easy">easy</option>
-                          <option value="medium">medium</option>
-                          <option value="hard">hard</option>
+                          <option value="easy">简单</option>
+                          <option value="medium">中等</option>
+                          <option value="hard">困难</option>
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
-                        <label htmlFor="question_bank_id">题库ID</label>
-                        <input
+                        <label htmlFor="question_bank_id">所属题库</label>
+                        <select
                           id="question_bank_id"
-                          inputMode="numeric"
                           value={questionForm.bank_id}
                           onChange={(event) => setQuestionForm((current) => ({ ...current, bank_id: event.target.value }))}
-                        />
+                        >
+                          <option value="">不绑定题库</option>
+                          {banks.map((bank) => (
+                            <option key={bank.id} value={bank.id}>
+                              {bank.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                         <label htmlFor="question_stem">题干</label>
@@ -377,7 +462,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                         />
                       </div>
                       <div className="ui-admin-form__field">
-                        <label htmlFor="question_option_a">选项A</label>
+                        <label htmlFor="question_option_a">选项 A</label>
                         <input
                           id="question_option_a"
                           value={questionForm.option_a}
@@ -385,7 +470,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                         />
                       </div>
                       <div className="ui-admin-form__field">
-                        <label htmlFor="question_option_b">选项B</label>
+                        <label htmlFor="question_option_b">选项 B</label>
                         <input
                           id="question_option_b"
                           value={questionForm.option_b}
@@ -412,6 +497,62 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                   </div>
                 </form>
               </>
+            ) : modal.type === "edit" ? (
+              <>
+                <div className="ui-admin-modal__header">
+                  <div>
+                    <h3>编辑题目</h3>
+                    <p>{`题目 #${modal.item.id}`}</p>
+                  </div>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                    关闭
+                  </button>
+                </div>
+                <form onSubmit={(event) => void handleUpdateQuestion(event)}>
+                  <div className="ui-admin-modal__body">
+                    <div className="ui-admin-form__grid">
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="question_edit_difficulty">难度</label>
+                        <select
+                          id="question_edit_difficulty"
+                          value={editForm.difficulty}
+                          onChange={(event) => setEditForm((current) => ({ ...current, difficulty: event.target.value }))}
+                        >
+                          <option value="">不修改</option>
+                          <option value="easy">简单</option>
+                          <option value="medium">中等</option>
+                          <option value="hard">困难</option>
+                        </select>
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="question_edit_status">状态</label>
+                        <select
+                          id="question_edit_status"
+                          value={editForm.status}
+                          onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value }))}
+                        >
+                          <option value="">不修改</option>
+                          <option value="active">启用</option>
+                          <option value="disabled">禁用</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="ui-admin-modal__footer">
+                    <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                      取消
+                    </button>
+                    {onNavigate ? (
+                      <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate("/admin/questions/editor")}>
+                        进入题目编辑器
+                      </button>
+                    ) : null}
+                    <button type="submit" className="ui-button ui-button--primary">
+                      保存修改
+                    </button>
+                  </div>
+                </form>
+              </>
             ) : (
               <>
                 <div className="ui-admin-modal__header">
@@ -427,15 +568,23 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                   <dl className="ui-admin-meta-list">
                     <div>
                       <dt>题型</dt>
-                      <dd>{modal.item.question_type}</dd>
+                      <dd>{formatQuestionType(modal.item.question_type)}</dd>
                     </div>
                     <div>
                       <dt>难度</dt>
-                      <dd>{modal.item.difficulty ?? "-"}</dd>
+                      <dd>{formatDifficulty(modal.item.difficulty)}</dd>
+                    </div>
+                    <div>
+                      <dt>状态</dt>
+                      <dd>{formatStatusLabel(modal.item.status)}</dd>
+                    </div>
+                    <div>
+                      <dt>当前版本</dt>
+                      <dd>{modal.item.current_version_no ?? "-"}</dd>
                     </div>
                     <div>
                       <dt>所属题库</dt>
-                      <dd>{modal.item.bank_ids?.join(", ") ?? "-"}</dd>
+                      <dd>{formatBankNames(modal.item.bank_ids, bankNameMap)}</dd>
                     </div>
                   </dl>
 
@@ -489,6 +638,9 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                         <button type="submit" className="ui-button ui-button--primary">
                           新增版本
                         </button>
+                        <button type="button" className="ui-button ui-button--ghost" onClick={() => openEditModal(modal.item)}>
+                          编辑题目
+                        </button>
                       </div>
                     </div>
                   </form>
@@ -507,6 +659,26 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
   );
 }
 
+function buildQuestionQuery(
+  keyword: string,
+  questionType: string,
+  courseID: string,
+  bankID: string,
+  status: string,
+  page: number,
+  pageSize: number
+): QuestionListQuery {
+  return {
+    keyword: keyword.trim() || undefined,
+    question_type: questionType || undefined,
+    course_id: courseID ? Number(courseID) : undefined,
+    bank_id: bankID ? Number(bankID) : undefined,
+    status: status || undefined,
+    page,
+    page_size: pageSize
+  };
+}
+
 function buildChoiceContent(stem: string, optionA: string, optionB: string): QuestionContentInput {
   return {
     stem: {
@@ -522,3 +694,120 @@ function buildChoiceContent(stem: string, optionA: string, optionB: string): Que
     ext: {}
   };
 }
+
+function normalizeErrorMessage(message: string): string {
+  if (/404|not found/i.test(message)) {
+    return "题目列表接口暂不可用，请检查后端 /api/v1/questions 服务是否已启动。";
+  }
+  if (/请求参数错误|invalid/i.test(message)) {
+    return "题目请求参数错误，请检查课程、题库或题目内容。";
+  }
+  return message || "题目数据加载失败";
+}
+
+function formatQuestionType(questionType: string): string {
+  switch (questionType) {
+    case "single_choice":
+      return "单选题";
+    case "multiple_choice":
+      return "多选题";
+    case "true_false":
+      return "判断题";
+    case "fill_blank":
+      return "填空题";
+    case "short_answer":
+      return "简答题";
+    default:
+      return questionType || "-";
+  }
+}
+
+function formatDifficulty(difficulty?: string | null): string {
+  switch (difficulty) {
+    case "easy":
+      return "简单";
+    case "medium":
+      return "中等";
+    case "hard":
+      return "困难";
+    default:
+      return difficulty || "-";
+  }
+}
+
+function statusClassName(status: string): string {
+  if (["active", "published", "enabled"].includes(status)) {
+    return "ui-admin-status ui-admin-status--active";
+  }
+  if (["disabled", "inactive"].includes(status)) {
+    return "ui-admin-status ui-admin-status--disabled";
+  }
+  return "ui-admin-status ui-admin-status--draft";
+}
+
+function formatStatusLabel(status: string): string {
+  switch (status) {
+    case "active":
+      return "启用";
+    case "disabled":
+      return "禁用";
+    default:
+      return status || "-";
+  }
+}
+
+function formatSourceType(sourceType: string): string {
+  switch (sourceType) {
+    case "manual":
+      return "手动创建";
+    case "import":
+      return "导入";
+    default:
+      return sourceType || "-";
+  }
+}
+
+function formatBankNames(bankIDs: number[] | undefined, bankNameMap: Map<number, string>): string {
+  if (!bankIDs || bankIDs.length === 0) {
+    return "-";
+  }
+  return bankIDs.map((id) => bankNameMap.get(id) ?? `题库-${id}`).join("、");
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+const pageStyle: CSSProperties = {
+  minHeight: "100%",
+  gap: 0
+};
+
+const dataRegionStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+  gap: 14,
+  minHeight: "100%",
+  padding: 22
+};
+
+const filterFormStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(180px, 260px) minmax(160px, 220px) minmax(180px, 240px) minmax(180px, 240px) minmax(140px, 190px) auto",
+  alignItems: "end",
+  gap: 14,
+  margin: 0
+};
+
+const queryActionsStyle: CSSProperties = {
+  alignItems: "center",
+  paddingBottom: 1,
+  whiteSpace: "nowrap"
+};
