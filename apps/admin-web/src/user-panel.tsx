@@ -313,6 +313,11 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                     </td>
                   </tr>
                 ))}
+                {pagination.items.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>暂无用户数据</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
             <div className="ui-admin-table__footer">
@@ -379,7 +384,7 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                     <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleAssignRoles(modal.user.id, String(modal.user.role_ids?.[0] ?? ""))}>
                       同步角色
                     </button>
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void api.disableUser(modal.user.id).then(loadAll).then(closeModal)}>
+                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void api.disableUser(modal.user.id).then(() => loadAll()).then(closeModal)}>
                       删除用户
                     </button>
                   </div>
