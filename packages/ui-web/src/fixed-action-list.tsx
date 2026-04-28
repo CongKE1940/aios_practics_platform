@@ -11,7 +11,6 @@ export interface FixedActionListColumn<TRow> {
 }
 
 export interface FixedActionListProps<TRow> {
-  title?: ReactNode;
   rows: TRow[];
   columns: Array<FixedActionListColumn<TRow>>;
   getRowId(row: TRow): FixedActionListRowId;
@@ -22,8 +21,13 @@ export interface FixedActionListProps<TRow> {
   onExport?(): void;
   onDetail?(row: TRow): void;
   onEdit?(row: TRow): void;
+  currentPage?: number;
+  pageCount?: number;
+  onPageChange?(page: number): void;
   height?: number | string;
+  minHeight?: number | string;
   emptyText?: ReactNode;
+  ariaLabel?: string;
   createLabel?: string;
   deleteLabel?: string;
   exportLabel?: string;
@@ -33,7 +37,6 @@ export interface FixedActionListProps<TRow> {
 }
 
 export function FixedActionList<TRow>({
-  title = "数据列表",
   rows,
   columns,
   getRowId,
@@ -44,8 +47,13 @@ export function FixedActionList<TRow>({
   onExport,
   onDetail,
   onEdit,
+  currentPage,
+  pageCount,
+  onPageChange,
   height = 420,
+  minHeight = 360,
   emptyText = "暂无数据",
+  ariaLabel = "固定操作列表",
   createLabel = "新增",
   deleteLabel = "删除",
   exportLabel = "导出",
@@ -57,6 +65,10 @@ export function FixedActionList<TRow>({
   const rowIds = rows.map(getRowId);
   const allCurrentRowsSelected = rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id));
   const tableHeight = typeof height === "number" ? `${height}px` : height;
+  const tableMinHeight = typeof minHeight === "number" ? `${minHeight}px` : minHeight;
+  const normalizedPageCount = Math.max(1, pageCount ?? 1);
+  const normalizedCurrentPage = Math.min(Math.max(1, currentPage ?? 1), normalizedPageCount);
+  const showPagination = Boolean(onPageChange && currentPage && pageCount);
 
   function handleToggleAll() {
     if (!onSelectionChange) {
@@ -84,14 +96,15 @@ export function FixedActionList<TRow>({
     onSelectionChange([...selectedRowIds, rowId]);
   }
 
-  return (
-    <section className="ui-admin-table-card" aria-label={typeof title === "string" ? title : "固定操作列表"}>
-      <div className="ui-admin-table-card__header">
-        <div>
-          <h3>{title}</h3>
-        </div>
-      </div>
+  function goToPage(page: number) {
+    if (!onPageChange) {
+      return;
+    }
+    onPageChange(Math.min(Math.max(1, page), normalizedPageCount));
+  }
 
+  return (
+    <div className="ui-fixed-action-list" aria-label={ariaLabel}>
       <div className="ui-admin-actions-bar__group" style={{ marginBottom: 12 }}>
         <button type="button" className="ui-button ui-button--primary" onClick={onCreate} disabled={!onCreate}>
           {createLabel}
@@ -109,7 +122,7 @@ export function FixedActionList<TRow>({
         </button>
       </div>
 
-      <div style={{ height: tableHeight, minHeight: 0, overflow: "auto" }}>
+      <div style={{ height: tableHeight, minHeight: tableMinHeight, overflow: "auto" }}>
         <table className="ui-admin-table" style={{ width: "100%" }}>
           <thead>
             <tr>
@@ -172,7 +185,43 @@ export function FixedActionList<TRow>({
           </tbody>
         </table>
       </div>
-    </section>
+
+      {showPagination ? (
+        <div className="ui-admin-table__footer">
+          <div className="ui-admin-pagination__info">{`第 ${normalizedCurrentPage} / ${normalizedPageCount} 页`}</div>
+          <div className="ui-admin-pagination">
+            <button
+              type="button"
+              className="ui-button ui-button--ghost"
+              onClick={() => goToPage(normalizedCurrentPage - 1)}
+              disabled={normalizedCurrentPage <= 1}
+            >
+              上一页
+            </button>
+            <select
+              aria-label="选择页数"
+              value={normalizedCurrentPage}
+              onChange={(event) => goToPage(Number(event.target.value))}
+              disabled={normalizedPageCount <= 1}
+            >
+              {Array.from({ length: normalizedPageCount }, (_, index) => index + 1).map((page) => (
+                <option key={page} value={page}>
+                  第 {page} 页
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="ui-button ui-button--ghost"
+              onClick={() => goToPage(normalizedCurrentPage + 1)}
+              disabled={normalizedCurrentPage >= normalizedPageCount}
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
