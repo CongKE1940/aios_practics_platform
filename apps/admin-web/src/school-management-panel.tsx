@@ -345,10 +345,10 @@ const pageStyle: CSSProperties = {
 
 const dataRegionStyle: CSSProperties = {
   display: "grid",
-  gridTemplateRows: "auto minmax(0, 1fr)",
+  gridTemplateRows: "auto auto",
+  alignContent: "start",
   gap: 14,
   minHeight: "100%",
-  height: "100%",
   padding: 22
 };
 
