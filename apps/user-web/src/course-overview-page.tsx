@@ -549,7 +549,7 @@ function downloadCsv<TRecord extends Record<string, unknown>>(
 
 function escapeCsvValue(value: string): string {
   if ([",", "\"", "\n"].some((token) => value.includes(token))) {
-    return `"${value.replace(/"/g, """")}"`;
+    return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
 }
