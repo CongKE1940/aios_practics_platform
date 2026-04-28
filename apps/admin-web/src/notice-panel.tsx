@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { Notice, NoticeInput, NoticeListQuery, NotificationItem, NotificationListQuery, PageResult } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -227,23 +233,15 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
 
       <section className="ui-admin-card" aria-label="公告通知数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="notice_type_filter">公告类型 notice_type</label>
-            <select id="notice_type_filter" value={noticeType} onChange={(event) => setNoticeType(event.target.value)}>
-              <option value="">全部类型</option>
+          <ClearableFilterSelect id="notice_type_filter" label="公告类型" placeholder="请选择公告类型" value={noticeType} onChange={setNoticeType}>
               <option value="system">系统公告</option>
               <option value="activity">活动公告</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="notice_status_filter">状态 status</label>
-            <select id="notice_status_filter" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="notice_status_filter" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="draft">草稿</option>
               <option value="published">已发布</option>
               <option value="recalled">已撤回</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}

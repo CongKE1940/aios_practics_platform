@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { Grade, GradeInput, GradeListQuery, PageResult, School, SchoolListQuery } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -215,26 +221,18 @@ export function GradeManagementPanel({ api }: { api: GradeManagementApi }) {
 
       <section className="ui-admin-card" aria-label="年级数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="grade_filter_school_id">所属学校 school_id</label>
-            <select id="grade_filter_school_id" value={schoolID} onChange={(event) => setSchoolID(event.target.value)}>
-              <option value="">全部学校</option>
+          <ClearableFilterSelect id="grade_filter_school_id" label="所属学校" placeholder="请选择所属学校" value={schoolID} onChange={setSchoolID}>
               {schools.map((school) => (
                 <option key={school.id} value={school.id}>
                   {school.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="grade_filter_status">状态 status</label>
-            <select id="grade_filter_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="grade_filter_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="active">启用</option>
               <option value="disabled">禁用</option>
               <option value="inactive">停用</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}

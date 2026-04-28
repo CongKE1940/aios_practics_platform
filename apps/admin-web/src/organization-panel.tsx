@@ -11,6 +11,7 @@ import type {
   School,
   SchoolInput
 } from "@aios/api-sdk";
+import { ClearableFilterInput } from "@aios/ui-web";
 
 import { downloadCsv, paginateItems, toggleSelectAll, toggleSelection } from "./list-page-utils";
 
@@ -303,15 +304,13 @@ export function OrganizationPanel({ api, view }: { api: OrganizationApi; view?: 
         <>
           <section className="ui-admin-filters ui-admin-card">
             <div className="ui-admin-filters__grid">
-              <div className="ui-admin-form__field">
-                <label htmlFor="organization_keyword">{filterLabelMap[activeView]}</label>
-                <input
-                  id="organization_keyword"
-                  placeholder={filterPlaceholderMap[activeView]}
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
+              <ClearableFilterInput
+                id="organization_keyword"
+                label={filterLabelMap[activeView]}
+                placeholder={filterPlaceholderMap[activeView]}
+                value={keyword}
+                onChange={setKeyword}
+              />
             </div>
           </section>
 

@@ -12,7 +12,14 @@ import type {
   ExamTarget,
   PageResult
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterInput,
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -265,43 +272,18 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
 
       <section className="ui-admin-card" aria-label="考试数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="admin_exam_keyword">关键字 keyword</label>
-            <input
-              id="admin_exam_keyword"
-              placeholder="输入考试名称或组卷方式"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="admin_exam_status">状态 status</label>
-            <select id="admin_exam_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          <ClearableFilterInput id="admin_exam_keyword" label="关键字" placeholder="输入考试名称或组卷方式" value={keyword} onChange={setKeyword} />
+          <ClearableFilterSelect id="admin_exam_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="draft">草稿</option>
               <option value="published">已发布</option>
               <option value="closed">已结束</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="admin_exam_target_type">发布对象 target_type</label>
-            <select id="admin_exam_target_type" value={targetType} onChange={(event) => setTargetType(event.target.value)}>
-              <option value="">全部对象</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="admin_exam_target_type" label="发布对象" placeholder="请选择发布对象" value={targetType} onChange={setTargetType}>
               <option value="class">班级</option>
               <option value="course">课程</option>
               <option value="user">用户</option>
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="admin_exam_target_id">对象 ID target_id</label>
-            <input
-              id="admin_exam_target_id"
-              inputMode="numeric"
-              placeholder="输入对象 ID"
-              value={targetID}
-              onChange={(event) => setTargetID(event.target.value)}
-            />
-          </div>
+          </ClearableFilterSelect>
+          <ClearableFilterInput id="admin_exam_target_id" label="对象编号" inputMode="numeric" placeholder="输入对象编号" value={targetID} onChange={setTargetID} />
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}
@@ -405,7 +387,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                         </article>
                         <article className="ui-admin-mini-item">
                           <strong>抽题规则</strong>
-                          <p>{formatPaperRules(detail.paper_rules)}</p>
+                          <p>{formatPaperRules(detail.paper_rules ?? [])}</p>
                         </article>
                       </div>
                     </>
@@ -644,7 +626,7 @@ function parseTargets(value: string): ExamInput["targets"] {
     .filter((item) => item.target_type && Number.isFinite(item.target_id) && item.target_id > 0);
 }
 
-function parseFixedQuestions(value: string): ExamInput["fixed_questions"] {
+function parseFixedQuestions(value: string): ExamFixedQuestion[] {
   return value
     .split(/\n|,/)
     .map((line) => line.trim())
@@ -671,7 +653,7 @@ function parseFixedQuestions(value: string): ExamInput["fixed_questions"] {
     );
 }
 
-function parsePaperRules(value: string): ExamInput["paper_rules"] {
+function parsePaperRules(value: string): ExamPaperRule[] {
   return value
     .split(/\n/)
     .map((line) => line.trim())
@@ -733,7 +715,7 @@ function emptySummary(exam: ExamDetail): ExamOverviewSummary {
     status: exam.status,
     start_time: exam.start_time,
     end_time: exam.end_time,
-    duration_minutes: exam.duration_minutes,
+    duration_minutes: exam.duration_minutes ?? 0,
     total_score: 0,
     student_count: 0,
     participated_student_count: 0,

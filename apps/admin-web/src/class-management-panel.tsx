@@ -10,7 +10,13 @@ import type {
   School,
   SchoolListQuery
 } from "@aios/api-sdk";
-import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import {
+  ClearableFilterSelect,
+  FixedActionList,
+  ToastNotice,
+  type FixedActionListColumn,
+  type FixedActionListRowId
+} from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -247,37 +253,25 @@ export function ClassManagementPanel({ api }: { api: ClassManagementApi }) {
 
       <section className="ui-admin-card" aria-label="班级数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <div className="ui-admin-form__field">
-            <label htmlFor="class_filter_school_id">所属学校 school_id</label>
-            <select id="class_filter_school_id" value={schoolID} onChange={(event) => handleSchoolFilterChange(event.target.value)}>
-              <option value="">全部学校</option>
+          <ClearableFilterSelect id="class_filter_school_id" label="所属学校" placeholder="请选择所属学校" value={schoolID} onChange={handleSchoolFilterChange}>
               {schools.map((school) => (
                 <option key={school.id} value={school.id}>
                   {school.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="class_filter_grade_id">所属年级 grade_id</label>
-            <select id="class_filter_grade_id" value={gradeID} onChange={(event) => setGradeID(event.target.value)}>
-              <option value="">全部年级</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="class_filter_grade_id" label="所属年级" placeholder="请选择所属年级" value={gradeID} onChange={setGradeID}>
               {filterGrades.map((grade) => (
                 <option key={grade.id} value={grade.id}>
                   {grade.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="ui-admin-form__field">
-            <label htmlFor="class_filter_status">状态 status</label>
-            <select id="class_filter_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="">全部状态</option>
+          </ClearableFilterSelect>
+          <ClearableFilterSelect id="class_filter_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="active">启用</option>
               <option value="disabled">禁用</option>
               <option value="inactive">停用</option>
-            </select>
-          </div>
+          </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
               {loading ? "查询中" : "查询"}
