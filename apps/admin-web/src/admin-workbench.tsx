@@ -1,4 +1,6 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+
+import { createApiClient } from "@aios/api-sdk";
 
 import type { AnalyticsPanelApi } from "./analytics-panel";
 import type { ExamPanelApi } from "./exam-panel";
@@ -16,7 +18,10 @@ interface AdminWorkbenchProps {
   questionApi?: QuestionPanelApi;
   questionBankApi?: QuestionBankPanelApi;
   userApi?: UserPanelApi;
-  userType: string;
+  userType?: string;
+  userDisplayName?: string;
+  menus?: unknown;
+  onSelect?: (path: string) => void;
 }
 
 interface WorkbenchStats {
@@ -66,8 +71,18 @@ export function AdminWorkbench({
   questionApi,
   questionBankApi,
   userApi,
-  userType
+  userType,
+  userDisplayName
 }: AdminWorkbenchProps) {
+  const fallbackApi = useMemo(() => createWorkbenchApi(), []);
+  const resolvedUserType = useMemo(() => resolveWorkbenchUserType(userType, userDisplayName), [userType, userDisplayName]);
+  const resolvedAnalyticsApi = analyticsApi ?? fallbackApi;
+  const resolvedExamApi = examApi ?? fallbackApi;
+  const resolvedNoticeApi = noticeApi ?? fallbackApi;
+  const resolvedOrganizationApi = organizationApi ?? fallbackApi;
+  const resolvedQuestionApi = questionApi ?? fallbackApi;
+  const resolvedQuestionBankApi = questionBankApi ?? fallbackApi;
+  const resolvedUserApi = userApi ?? fallbackApi;
   const [stats, setStats] = useState<WorkbenchStats>(emptyStats);
   const [loading, setLoading] = useState(true);
 
@@ -75,7 +90,15 @@ export function AdminWorkbench({
     let active = true;
     setLoading(true);
 
-    loadWorkbenchStats({ analyticsApi, examApi, noticeApi, organizationApi, questionApi, questionBankApi, userApi })
+    loadWorkbenchStats({
+      analyticsApi: resolvedAnalyticsApi,
+      examApi: resolvedExamApi,
+      noticeApi: resolvedNoticeApi,
+      organizationApi: resolvedOrganizationApi,
+      questionApi: resolvedQuestionApi,
+      questionBankApi: resolvedQuestionBankApi,
+      userApi: resolvedUserApi
+    })
       .then((result) => {
         if (active) {
           setStats(result);
@@ -90,9 +113,17 @@ export function AdminWorkbench({
     return () => {
       active = false;
     };
-  }, [analyticsApi, examApi, noticeApi, organizationApi, questionApi, questionBankApi, userApi]);
+  }, [
+    resolvedAnalyticsApi,
+    resolvedExamApi,
+    resolvedNoticeApi,
+    resolvedOrganizationApi,
+    resolvedQuestionApi,
+    resolvedQuestionBankApi,
+    resolvedUserApi
+  ]);
 
-  const cards = buildDashboardCards(stats, userType === "sys_admin");
+  const cards = buildDashboardCards(stats, resolvedUserType === "sys_admin");
 
   return (
     <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin" style={workbenchStyle} aria-busy={loading}>
@@ -292,6 +323,50 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
       accent: "告"
     }
   ];
+}
+
+function createWorkbenchApi() {
+  const session = readStoredAdminSession();
+  if (!session?.accessToken) {
+    return undefined;
+  }
+
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+  return createApiClient({ baseUrl, accessToken: session.accessToken });
+}
+
+function resolveWorkbenchUserType(userType?: string, userDisplayName?: string): string {
+  if (userType) {
+    return userType;
+  }
+
+  const storedUserType = readStoredAdminSession()?.user?.user_type;
+  if (storedUserType) {
+    return storedUserType;
+  }
+
+  if (userDisplayName?.includes("系统管理员") || userDisplayName?.includes("平台管理员")) {
+    return "sys_admin";
+  }
+
+  return "school_admin";
+}
+
+function readStoredAdminSession(): { accessToken?: string; user?: { user_type?: string } } | null {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem("aios.admin.session");
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as { accessToken?: string; user?: { user_type?: string } };
+  } catch {
+    return null;
+  }
 }
 
 function formatNumber(value: number): string {
