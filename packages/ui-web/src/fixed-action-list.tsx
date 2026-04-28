@@ -52,7 +52,7 @@ export function FixedActionList<TRow>({
   pageCount,
   total,
   onPageChange,
-  height = 420,
+  height,
   minHeight = 360,
   emptyText = "暂无数据",
   ariaLabel = "固定操作列表",
@@ -283,8 +283,10 @@ function buildCompactPages(currentPage: number, pageCount: number): Array<number
 
 const listStyle: CSSProperties = {
   display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr) auto",
   gap: 12,
-  minHeight: 0
+  minHeight: 0,
+  height: "100%"
 };
 
 const actionsStyle: CSSProperties = {
