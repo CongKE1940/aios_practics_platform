@@ -33,6 +33,8 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/schools/:id", handler.getSchool)
 	router.PUT("/schools/:id", handler.updateSchool)
 	router.POST("/schools/:id/disable", handler.disableSchool)
+	router.POST("/schools/:id/enable", handler.enableSchool)
+	router.DELETE("/schools/:id", handler.deleteSchool)
 	router.GET("/grades", handler.listGrades)
 	router.POST("/grades", handler.createGrade)
 	router.GET("/grades/:id", handler.getGrade)
@@ -57,10 +59,11 @@ func (handler *Handler) listSchools(ctx *gin.Context) {
 	}
 
 	result, err := handler.service.ListSchools(ctx.Request.Context(), scope, SchoolListFilter{
-		Status:   ctx.Query("status"),
-		Keyword:  ctx.Query("keyword"),
-		Page:     parseIntQuery(ctx, "page"),
-		PageSize: parseIntQuery(ctx, "page_size"),
+		ObjectType: ctx.Query("object_type"),
+		Status:     ctx.Query("status"),
+		Keyword:    ctx.Query("keyword"),
+		Page:       parseIntQuery(ctx, "page"),
+		PageSize:   parseIntQuery(ctx, "page_size"),
 	})
 	if err != nil {
 		handler.writeError(ctx, err)
@@ -75,19 +78,16 @@ func (handler *Handler) createSchool(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input SchoolInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.CreateSchool(ctx.Request.Context(), scope, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -96,13 +96,11 @@ func (handler *Handler) getSchool(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	result, err := handler.service.GetSchool(ctx.Request.Context(), scope, id)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -111,19 +109,16 @@ func (handler *Handler) updateSchool(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input SchoolInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.UpdateSchool(ctx.Request.Context(), scope, id, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -132,12 +127,34 @@ func (handler *Handler) disableSchool(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	if err := handler.service.DisableSchool(ctx.Request.Context(), scope, id); err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
+	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
+}
 
+func (handler *Handler) enableSchool(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	if err := handler.service.EnableSchool(ctx.Request.Context(), scope, id); err != nil {
+		handler.writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
+}
+
+func (handler *Handler) deleteSchool(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	if err := handler.service.DeleteSchool(ctx.Request.Context(), scope, id); err != nil {
+		handler.writeError(ctx, err)
+		return
+	}
 	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
 }
 
@@ -146,18 +163,11 @@ func (handler *Handler) listGrades(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
-	result, err := handler.service.ListGrades(ctx.Request.Context(), scope, GradeListFilter{
-		SchoolID: parseInt64Query(ctx, "school_id"),
-		Status:   ctx.Query("status"),
-		Page:     parseIntQuery(ctx, "page"),
-		PageSize: parseIntQuery(ctx, "page_size"),
-	})
+	result, err := handler.service.ListGrades(ctx.Request.Context(), scope, GradeListFilter{SchoolID: parseInt64Query(ctx, "school_id"), Status: ctx.Query("status"), Page: parseIntQuery(ctx, "page"), PageSize: parseIntQuery(ctx, "page_size")})
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -166,19 +176,16 @@ func (handler *Handler) createGrade(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input GradeInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.CreateGrade(ctx.Request.Context(), scope, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -187,13 +194,11 @@ func (handler *Handler) getGrade(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	result, err := handler.service.GetGrade(ctx.Request.Context(), scope, id)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -202,19 +207,16 @@ func (handler *Handler) updateGrade(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input GradeInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.UpdateGrade(ctx.Request.Context(), scope, id, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -223,12 +225,10 @@ func (handler *Handler) disableGrade(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	if err := handler.service.DisableGrade(ctx.Request.Context(), scope, id); err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
 }
 
@@ -237,19 +237,11 @@ func (handler *Handler) listClasses(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
-	result, err := handler.service.ListClasses(ctx.Request.Context(), scope, ClassListFilter{
-		SchoolID: parseInt64Query(ctx, "school_id"),
-		GradeID:  parseInt64Query(ctx, "grade_id"),
-		Status:   ctx.Query("status"),
-		Page:     parseIntQuery(ctx, "page"),
-		PageSize: parseIntQuery(ctx, "page_size"),
-	})
+	result, err := handler.service.ListClasses(ctx.Request.Context(), scope, ClassListFilter{SchoolID: parseInt64Query(ctx, "school_id"), GradeID: parseInt64Query(ctx, "grade_id"), Status: ctx.Query("status"), Page: parseIntQuery(ctx, "page"), PageSize: parseIntQuery(ctx, "page_size")})
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -258,19 +250,16 @@ func (handler *Handler) createClass(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input ClassInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.CreateClass(ctx.Request.Context(), scope, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -279,13 +268,11 @@ func (handler *Handler) getClass(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	result, err := handler.service.GetClass(ctx.Request.Context(), scope, id)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -294,19 +281,16 @@ func (handler *Handler) updateClass(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input ClassInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.UpdateClass(ctx.Request.Context(), scope, id, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -315,12 +299,10 @@ func (handler *Handler) disableClass(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	if err := handler.service.DisableClass(ctx.Request.Context(), scope, id); err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
 }
 
@@ -329,13 +311,7 @@ func (handler *Handler) listCourses(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
-	filter := CourseListFilter{
-		Status:   ctx.Query("status"),
-		Keyword:  ctx.Query("keyword"),
-		Page:     parseIntQuery(ctx, "page"),
-		PageSize: parseIntQuery(ctx, "page_size"),
-	}
+	filter := CourseListFilter{Status: ctx.Query("status"), Keyword: ctx.Query("keyword"), Page: parseIntQuery(ctx, "page"), PageSize: parseIntQuery(ctx, "page_size")}
 	if activeAt := strings.TrimSpace(ctx.Query("active_at")); activeAt != "" {
 		parsed, err := time.Parse(time.RFC3339, activeAt)
 		if err != nil {
@@ -344,13 +320,11 @@ func (handler *Handler) listCourses(ctx *gin.Context) {
 		}
 		filter.ActiveAt = &parsed
 	}
-
 	result, err := handler.service.ListCourses(ctx.Request.Context(), scope, filter)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -359,19 +333,16 @@ func (handler *Handler) createCourse(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input CourseInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.CreateCourse(ctx.Request.Context(), scope, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -380,13 +351,11 @@ func (handler *Handler) getCourse(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	result, err := handler.service.GetCourse(ctx.Request.Context(), scope, id)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -395,19 +364,16 @@ func (handler *Handler) updateCourse(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	var input CourseInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return
 	}
-
 	result, err := handler.service.UpdateCourse(ctx.Request.Context(), scope, id, input)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
@@ -416,12 +382,10 @@ func (handler *Handler) disableCourse(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-
 	if err := handler.service.DisableCourse(ctx.Request.Context(), scope, id); err != nil {
 		handler.writeError(ctx, err)
 		return
 	}
-
 	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
 }
 
@@ -431,7 +395,6 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
 		return Scope{}, false
 	}
-
 	claims, err := handler.parser.ParseToken(ctx.Request.Context(), token, auth.TokenTypeAccess)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
@@ -441,12 +404,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}
-
-	return Scope{
-		TenantID:    claims.TenantID,
-		UserType:    claims.UserType,
-		Permissions: claims.Permissions,
-	}, true
+	return Scope{TenantID: claims.TenantID, UserType: claims.UserType, Permissions: claims.Permissions}, true
 }
 
 func (handler *Handler) authorizeWithID(ctx *gin.Context) (Scope, int64, bool) {
@@ -454,13 +412,11 @@ func (handler *Handler) authorizeWithID(ctx *gin.Context) (Scope, int64, bool) {
 	if !ok {
 		return Scope{}, 0, false
 	}
-
 	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
 		return Scope{}, 0, false
 	}
-
 	return scope, id, true
 }
 
@@ -468,6 +424,8 @@ func (handler *Handler) writeError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidInput):
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+	case errors.Is(err, ErrForbidden):
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, response.Failure(CodeNotFound, "资源不存在", requestID(ctx)))
 	default:
@@ -480,7 +438,6 @@ func parseInt64Query(ctx *gin.Context, key string) int64 {
 	if value == "" {
 		return 0
 	}
-
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed < 0 {
 		return 0
@@ -493,7 +450,6 @@ func parseIntQuery(ctx *gin.Context, key string) int {
 	if value == "" {
 		return 0
 	}
-
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 0 {
 		return 0
@@ -501,9 +457,7 @@ func parseIntQuery(ctx *gin.Context, key string) int {
 	return parsed
 }
 
-func requestID(ctx *gin.Context) string {
-	return ctx.GetHeader("X-Request-Id")
-}
+func requestID(ctx *gin.Context) string { return ctx.GetHeader("X-Request-Id") }
 
 func bearerToken(header string) string {
 	if !strings.HasPrefix(header, "Bearer ") {
