@@ -12,7 +12,7 @@ export interface SchoolManagementApi {
   updateSchool?(id: number, body: SchoolInput): Promise<School>;
 }
 
-const pageSize = 100;
+const defaultPageSize = 10;
 
 const defaultSchoolForm: SchoolInput = {
   code: "",
@@ -48,24 +48,33 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [schools, setSchools] = useState<School[]>([]);
+  const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
   const [form, setForm] = useState<SchoolInput>(defaultSchoolForm);
 
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
   useEffect(() => {
-    void loadSchools(buildSchoolQuery("", ""));
+    void loadSchools(buildSchoolQuery("", "", 1, defaultPageSize));
   }, [api]);
 
-  async function loadSchools(query: SchoolListQuery = buildSchoolQuery(keyword, status)) {
+  async function loadSchools(query: SchoolListQuery = buildSchoolQuery(keyword, status, page, pageSize)) {
     setLoading(true);
     setErrorMessage("");
     try {
       const result = await api.listSchools(query);
       setSchools(result.items);
+      setTotal(result.total);
+      setPage(result.page);
+      setPageSize(result.page_size);
     } catch (error) {
       setSchools([]);
+      setTotal(0);
       setErrorMessage(error instanceof Error ? error.message : "学校数据加载失败");
     } finally {
       setLoading(false);
@@ -75,14 +84,25 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   async function handleQuery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSelectedIDs([]);
-    await loadSchools(buildSchoolQuery(keyword, status));
+    await loadSchools(buildSchoolQuery(keyword, status, 1, pageSize));
   }
 
   async function handleReset() {
     setKeyword("");
     setStatus("");
     setSelectedIDs([]);
-    await loadSchools(buildSchoolQuery("", ""));
+    await loadSchools(buildSchoolQuery("", "", 1, defaultPageSize));
+  }
+
+  async function handlePageChange(nextPage: number) {
+    setSelectedIDs([]);
+    await loadSchools(buildSchoolQuery(keyword, status, nextPage, pageSize));
+  }
+
+  async function handlePageSizeChange(nextPageSize: number) {
+    setPageSize(nextPageSize);
+    setSelectedIDs([]);
+    await loadSchools(buildSchoolQuery(keyword, status, 1, nextPageSize));
   }
 
   function openCreateModal() {
@@ -138,72 +158,76 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
 
   return (
     <section aria-label="学校管理面板" className="ui-admin-page">
-      <section className="ui-admin-page__hero">
-        <div className="ui-admin-page__header">
-          <div>
-            <span className="ui-admin-page__eyebrow">组织管理</span>
-            <h2>学校管理</h2>
-          </div>
-        </div>
-      </section>
-
       {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
       {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
 
-      {!loading ? (
-        <>
-          <form className="ui-admin-filters ui-admin-card" onSubmit={(event) => void handleQuery(event)}>
-            <div className="ui-admin-filters__grid">
-              <div className="ui-admin-form__field">
-                <label htmlFor="school_filter_keyword">关键字 keyword</label>
-                <input
-                  id="school_filter_keyword"
-                  placeholder="输入学校名称或编码"
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
-              <div className="ui-admin-form__field">
-                <label htmlFor="school_filter_status">状态 status</label>
-                <select id="school_filter_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-                  <option value="">全部状态</option>
-                  <option value="active">启用</option>
-                  <option value="disabled">禁用</option>
-                  <option value="inactive">停用</option>
-                </select>
-              </div>
-              <div className="ui-admin-form__field">
-                <label htmlFor="school_page_size">分页 page_size</label>
-                <input id="school_page_size" value={pageSize} readOnly />
-              </div>
+      <section className="ui-admin-card" aria-label="学校数据展示区">
+        <form className="ui-admin-filters" onSubmit={(event) => void handleQuery(event)}>
+          <div className="ui-admin-filters__grid">
+            <div className="ui-admin-form__field">
+              <label htmlFor="school_filter_keyword">关键字 keyword</label>
+              <input
+                id="school_filter_keyword"
+                placeholder="输入学校名称或编码"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+              />
             </div>
-            <div className="ui-admin-actions-bar__group">
-              <button type="submit" className="ui-button ui-button--primary">
-                查询
-              </button>
-              <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()}>
-                重置
-              </button>
+            <div className="ui-admin-form__field">
+              <label htmlFor="school_filter_status">状态 status</label>
+              <select id="school_filter_status" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="">全部状态</option>
+                <option value="active">启用</option>
+                <option value="disabled">禁用</option>
+                <option value="inactive">停用</option>
+              </select>
             </div>
-          </form>
+            <div className="ui-admin-form__field">
+              <label htmlFor="school_page_size">每页条数 page_size</label>
+              <select
+                id="school_page_size"
+                value={pageSize}
+                onChange={(event) => void handlePageSizeChange(Number(event.target.value))}
+              >
+                {[10, 20, 50, 100].map((size) => (
+                  <option key={size} value={size}>
+                    {size} 条/页
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="ui-admin-actions-bar__group" style={{ marginTop: 12 }}>
+            <button type="submit" className="ui-button ui-button--primary">
+              查询
+            </button>
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()}>
+              重置
+            </button>
+          </div>
+        </form>
 
-          <FixedActionList
-            title="学校列表"
-            rows={schools}
-            columns={columns}
-            getRowId={(school) => school.id}
-            selectedRowIds={selectedIDs}
-            onSelectionChange={setSelectedIDs}
-            onCreate={openCreateModal}
-            onDelete={(rowIds) => void handleDelete(rowIds)}
-            onExport={handleExport}
-            onDetail={(school) => setModal({ type: "detail", school })}
-            onEdit={openEditModal}
-            emptyText="暂无学校数据"
-            rowCheckboxLabel={(school) => `选择学校-${school.name}`}
-          />
-        </>
-      ) : null}
+        <FixedActionList
+          rows={schools}
+          columns={columns}
+          getRowId={(school) => school.id}
+          selectedRowIds={selectedIDs}
+          onSelectionChange={setSelectedIDs}
+          onCreate={openCreateModal}
+          onDelete={(rowIds) => void handleDelete(rowIds)}
+          onExport={handleExport}
+          onDetail={(school) => setModal({ type: "detail", school })}
+          onEdit={openEditModal}
+          currentPage={page}
+          pageCount={pageCount}
+          onPageChange={(nextPage) => void handlePageChange(nextPage)}
+          height="clamp(380px, 48vh, 620px)"
+          minHeight={380}
+          emptyText="暂无学校数据"
+          ariaLabel="学校列表"
+          rowCheckboxLabel={(school) => `选择学校-${school.name}`}
+        />
+      </section>
 
       {modal ? (
         <div className="ui-admin-modal-backdrop">
@@ -290,11 +314,11 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   );
 }
 
-function buildSchoolQuery(keyword: string, status: string): SchoolListQuery {
+function buildSchoolQuery(keyword: string, status: string, page: number, pageSize: number): SchoolListQuery {
   return {
     keyword: keyword.trim() || undefined,
     status: status || undefined,
-    page: 1,
+    page,
     page_size: pageSize
   };
 }
