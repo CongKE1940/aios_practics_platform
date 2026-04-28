@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { PageResult, School, SchoolInput, SchoolListQuery } from "@aios/api-sdk";
-import { FixedActionList, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -158,10 +158,11 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
 
   return (
     <section aria-label="学校管理面板" className="ui-admin-page" style={pageStyle}>
-      <section className="ui-admin-card" aria-label="学校数据展示区" style={dataRegionStyle}>
-        {errorMessage ? <div className="ui-status ui-status--danger" style={statusStyle}>{errorMessage}</div> : null}
-        {loading ? <div className="ui-status ui-status--info" style={statusStyle}>加载中...</div> : null}
+      {errorMessage ? (
+        <ToastNotice tone="danger" title="学校数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
+      ) : null}
 
+      <section className="ui-admin-card" aria-label="学校数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
           <div className="ui-admin-form__field">
             <label htmlFor="school_filter_keyword">关键字 keyword</label>
@@ -182,10 +183,10 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
             </select>
           </div>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
-            <button type="submit" className="ui-button ui-button--primary">
-              查询
+            <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
+              {loading ? "查询中" : "查询"}
             </button>
-            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()}>
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()} disabled={loading}>
               重置
             </button>
           </div>
@@ -206,9 +207,8 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           pageCount={pageCount}
           total={total}
           onPageChange={(nextPage) => void handlePageChange(nextPage)}
-          height="clamp(460px, 55vh, 640px)"
-          minHeight={460}
-          emptyText="暂无学校数据"
+          minHeight={420}
+          emptyText={loading ? "数据加载中..." : "暂无学校数据"}
           ariaLabel="学校列表"
           rowCheckboxLabel={(school) => `选择学校-${school.name}`}
         />
@@ -345,15 +345,11 @@ const pageStyle: CSSProperties = {
 
 const dataRegionStyle: CSSProperties = {
   display: "grid",
-  gridTemplateRows: "auto auto minmax(0, 1fr)",
+  gridTemplateRows: "auto minmax(0, 1fr)",
   gap: 14,
   minHeight: "100%",
+  height: "100%",
   padding: 22
-};
-
-const statusStyle: CSSProperties = {
-  margin: 0,
-  padding: "12px 16px"
 };
 
 const filterFormStyle: CSSProperties = {
