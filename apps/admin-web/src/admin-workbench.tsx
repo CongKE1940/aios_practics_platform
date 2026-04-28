@@ -1,288 +1,328 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
-import type { AdminOverviewResult, MenuItem, Notice } from "@aios/api-sdk";
+import type { AdminOverviewResult } from "@aios/api-sdk";
 
 import type { AnalyticsPanelApi } from "./analytics-panel";
+import type { ExamPanelApi } from "./exam-panel";
 import type { NoticeApi } from "./notice-panel";
+import type { OrganizationApi } from "./organization-panel";
+import type { QuestionBankPanelApi } from "./question-bank-panel";
+import type { QuestionPanelApi } from "./question-panel";
+import type { UserPanelApi } from "./user-panel";
 
 interface AdminWorkbenchProps {
   analyticsApi?: AnalyticsPanelApi;
+  examApi?: ExamPanelApi;
   noticeApi?: NoticeApi;
-  menus: MenuItem[];
-  userDisplayName: string;
-  onSelect(path: string): void;
+  organizationApi?: OrganizationApi;
+  questionApi?: QuestionPanelApi;
+  questionBankApi?: QuestionBankPanelApi;
+  userApi?: UserPanelApi;
+  userType: string;
 }
 
-interface SummaryCard {
-  label: string;
-  value: number;
-  delta: string;
-  icon: string;
+interface WorkbenchStats {
+  organizationCount: number;
+  gradeCount: number;
+  classCount: number;
+  memberCount: number;
+  teacherCount: number;
+  studentCount: number;
+  questionBankCount: number;
+  questionCount: number;
+  examCount: number;
+  passRate: number;
+  noticeCount: number;
+  noticeReadCount: number;
+  noticeUnreadCount: number;
 }
 
-interface ActionItem {
-  label: string;
+interface DashboardCard {
+  title: string;
   value: string;
+  helper: string;
+  accent: string;
 }
 
-export function AdminWorkbench({ analyticsApi, noticeApi, menus, userDisplayName, onSelect }: AdminWorkbenchProps) {
-  const [overview, setOverview] = useState<AdminOverviewResult | null>(null);
-  const [notices, setNotices] = useState<Notice[]>([]);
+const emptyStats: WorkbenchStats = {
+  organizationCount: 0,
+  gradeCount: 0,
+  classCount: 0,
+  memberCount: 0,
+  teacherCount: 0,
+  studentCount: 0,
+  questionBankCount: 0,
+  questionCount: 0,
+  examCount: 0,
+  passRate: 0,
+  noticeCount: 0,
+  noticeReadCount: 0,
+  noticeUnreadCount: 0
+};
+
+export function AdminWorkbench({
+  analyticsApi,
+  examApi,
+  noticeApi,
+  organizationApi,
+  questionApi,
+  questionBankApi,
+  userApi,
+  userType
+}: AdminWorkbenchProps) {
+  const [stats, setStats] = useState<WorkbenchStats>(emptyStats);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
 
-    if (analyticsApi) {
-      void analyticsApi.getAdminOverview().then((result) => {
+    loadWorkbenchStats({ analyticsApi, examApi, noticeApi, organizationApi, questionApi, questionBankApi, userApi })
+      .then((result) => {
         if (active) {
-          setOverview(result);
+          setStats(result);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
         }
       });
-    }
-
-    if (noticeApi) {
-      void noticeApi.listNotices().then((result) => {
-        if (active) {
-          setNotices(result.items);
-        }
-      });
-    }
 
     return () => {
       active = false;
     };
-  }, [analyticsApi, noticeApi]);
+  }, [analyticsApi, examApi, noticeApi, organizationApi, questionApi, questionBankApi, userApi]);
 
-  const cards = useMemo<SummaryCard[]>(() => {
-    const summary = overview?.summary;
-    return [
-      {
-        label: "组织总数",
-        value: summary?.school_count ?? 0,
-        delta: `近 30 天学籍变更 ${summary?.recent_transition_count_30d ?? 0}`,
-        icon: "校"
-      },
-      {
-        label: "活跃用户",
-        value: (summary?.active_student_count ?? 0) + (summary?.active_teacher_count ?? 0),
-        delta: `教师 ${summary?.active_teacher_count ?? 0} / 学生 ${summary?.active_student_count ?? 0}`,
-        icon: "人"
-      },
-      {
-        label: "发布考试",
-        value: summary?.published_exam_count ?? 0,
-        delta: `待批阅 ${summary?.pending_review_count ?? 0}`,
-        icon: "考"
-      },
-      {
-        label: "学习会话",
-        value: summary?.practice_session_count_7d ?? 0,
-        delta: `已提交考试 ${summary?.submitted_exam_attempt_count ?? 0}`,
-        icon: "练"
-      }
-    ];
-  }, [overview]);
-
-  const pendingItems = useMemo<ActionItem[]>(
-    () => [
-      { label: "主观题批阅队列", value: String(overview?.summary.pending_review_count ?? 0) },
-      { label: "近 30 天学籍变更", value: String(overview?.summary.recent_transition_count_30d ?? 0) },
-      { label: "近 7 天练题会话", value: String(overview?.summary.practice_session_count_7d ?? 0) },
-      { label: "已发布考试", value: String(overview?.summary.published_exam_count ?? 0) }
-    ],
-    [overview]
-  );
-
-  const recentActivities = useMemo<ActionItem[]>(
-    () =>
-      overview?.recent_audit_logs.slice(0, 5).map((item) => ({
-        label: `${item.module_name} / ${item.action_name}`,
-        value: item.created_at
-      })) ?? [],
-    [overview]
-  );
-
-  const quickEntries = useMemo(
-    () =>
-      flattenMenuItems(menus)
-        .filter((item) => item.path)
-        .slice(0, 6),
-    [menus]
-  );
-
-  const primaryEntry = quickEntries[0];
-  const primaryPath = primaryEntry?.path ?? "";
+  const cards = buildDashboardCards(stats, userType === "sys_admin");
 
   return (
-    <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin">
-      <div className="ui-hero-panel">
-        <div className="ui-hero-panel__content">
-          <span className="ui-hero-panel__eyebrow">Operations cockpit</span>
-          <h2>{userDisplayName}，今天先看风险，再推进教学运营。</h2>
-          <p>
-            将组织、课程、题库、考试、公告和审计动作放在同一条运营主线上；先处理红黄状态，再进入具体模块。
-          </p>
-          <div className="ui-hero-panel__actions">
-            {primaryPath ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={() => onSelect(primaryPath)}>
-                进入 {primaryEntry.name}
-              </button>
-            ) : null}
-            <button type="button" className="ui-button ui-button--ghost" onClick={() => onSelect("/admin/analytics")}>
-              查看数据看板
-            </button>
-          </div>
-          <div className="ui-hero-panel__meta" aria-label="今日运营重点">
-            <span>权限驱动导航</span>
-            <span>多租户边界</span>
-            <span>题库到考试闭环</span>
-          </div>
-        </div>
-        <aside className="ui-hero-panel__aside" aria-label="运营摘要">
-          <div className="ui-hero-metric">
-            <span>待批阅</span>
-            <strong>{overview?.summary.pending_review_count ?? 0}</strong>
-          </div>
-          <div className="ui-hero-metric">
-            <span>近 7 天练题</span>
-            <strong>{overview?.summary.practice_session_count_7d ?? 0}</strong>
-          </div>
-          <div className="ui-hero-metric">
-            <span>公告数量</span>
-            <strong>{notices.length}</strong>
-          </div>
-        </aside>
-      </div>
-
-      <div className="ui-stat-grid">
+    <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin" style={workbenchStyle} aria-busy={loading}>
+      <div className="ui-stat-grid" style={statGridStyle}>
         {cards.map((card) => (
-          <article key={card.label} className="ui-stat-card">
-            <div className="ui-stat-card__icon" aria-hidden="true">
-              {card.icon}
+          <article key={card.title} className="ui-stat-card" style={statCardStyle}>
+            <div className="ui-stat-card__icon" style={statIconStyle} aria-hidden="true">
+              {card.accent}
             </div>
-            <div className="ui-stat-card__content">
-              <span>{card.label}</span>
-              <strong>{card.value}</strong>
-              <small>{card.delta}</small>
+            <div className="ui-stat-card__content" style={statContentStyle}>
+              <span>{card.title}</span>
+              <strong>{loading ? "--" : card.value}</strong>
+              <small>{loading ? "数据加载中" : card.helper}</small>
             </div>
           </article>
         ))}
-      </div>
-
-      <div className="ui-dashboard-panel-grid">
-        <section className="ui-panel-card">
-          <header className="ui-panel-card__header">
-            <div>
-              <span className="ui-kicker">Next actions</span>
-              <h3>待处理事项</h3>
-              <p>从需要人工判断的环节开始，避免运营风险堆积。</p>
-            </div>
-          </header>
-          <ol className="ui-ops-list">
-            {pendingItems.map((item) => (
-              <li key={item.label}>
-                <strong>{item.label}</strong>
-                <small>{item.value}</small>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <section className="ui-panel-card">
-          <header className="ui-panel-card__header">
-            <div>
-              <span className="ui-kicker">Recent</span>
-              <h3>近期动态</h3>
-              <p>直接来自后端审计与公告数据，保持管理判断可追溯。</p>
-            </div>
-          </header>
-          <ul className="ui-panel-list">
-            {recentActivities.length > 0 ? (
-              recentActivities.map((item) => (
-                <li key={`${item.label}-${item.value}`}>
-                  <span>{item.label}</span>
-                  <small>{item.value}</small>
-                </li>
-              ))
-            ) : (
-              <li>
-                <span>暂无近期审计动态</span>
-                <small>等待后端返回</small>
-              </li>
-            )}
-          </ul>
-        </section>
-      </div>
-
-      <div className="ui-workbench-grid">
-        <section className="ui-panel-card">
-          <header className="ui-panel-card__header">
-            <div>
-              <span className="ui-kicker">Launchpad</span>
-              <h3>快捷入口</h3>
-              <p>仅展示当前账号菜单树中可进入的功能。</p>
-            </div>
-          </header>
-          <div className="ui-quick-grid">
-            {quickEntries.map((entry) => (
-              <button
-                key={`${entry.id}-${entry.path}`}
-                type="button"
-                className="ui-quick-button"
-                aria-label={`快捷进入${entry.name}`}
-                onClick={() => {
-                  if (entry.path) {
-                    onSelect(entry.path);
-                  }
-                }}
-              >
-                <span className="ui-quick-button__icon" aria-hidden="true">
-                  {entry.name.slice(0, 1)}
-                </span>
-                <strong>{entry.name}</strong>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="ui-panel-card">
-          <header className="ui-panel-card__header">
-            <div>
-              <span className="ui-kicker">Bulletin</span>
-              <h3>系统公告</h3>
-              <p>发布节奏、考试通知和课程运营信息统一沉淀。</p>
-            </div>
-          </header>
-          <ul className="ui-panel-list">
-            {notices.length > 0 ? (
-              notices.slice(0, 4).map((notice) => (
-                <li key={notice.id}>
-                  <span>{notice.title}</span>
-                  <small>{notice.publish_at ?? "未发布"}</small>
-                </li>
-              ))
-            ) : (
-              <li>
-                <span>暂无公告</span>
-                <small>可从公告通知中心创建</small>
-              </li>
-            )}
-          </ul>
-        </section>
       </div>
     </section>
   );
 }
 
-function flattenMenuItems(menus: MenuItem[]): MenuItem[] {
-  const items: MenuItem[] = [];
+async function loadWorkbenchStats(apis: {
+  analyticsApi?: AnalyticsPanelApi;
+  examApi?: ExamPanelApi;
+  noticeApi?: NoticeApi;
+  organizationApi?: OrganizationApi;
+  questionApi?: QuestionPanelApi;
+  questionBankApi?: QuestionBankPanelApi;
+  userApi?: UserPanelApi;
+}): Promise<WorkbenchStats> {
+  const [overview, organizationStats, memberStats, questionBankCount, questionCount, examStats, noticeStats] = await Promise.all([
+    settleValue(() => apis.analyticsApi?.getAdminOverview()),
+    loadOrganizationStats(apis.organizationApi),
+    loadMemberStats(apis.userApi),
+    settleValue(() => apis.questionBankApi?.listQuestionBanks({ page: 1, page_size: 1 }).then((result) => result.total)),
+    settleValue(() => apis.questionApi?.listQuestions({ page: 1, page_size: 1 }).then((result) => result.total)),
+    loadExamStats(apis.examApi),
+    loadNoticeStats(apis.noticeApi)
+  ]);
 
-  for (const menu of menus) {
-    items.push(menu);
-    if (menu.children.length > 0) {
-      items.push(...flattenMenuItems(menu.children));
-    }
+  const overviewSummary = overview?.summary;
+  const teacherCount = memberStats.teacherCount || overviewSummary?.active_teacher_count || 0;
+  const studentCount = memberStats.studentCount || overviewSummary?.active_student_count || 0;
+
+  return {
+    organizationCount: organizationStats.organizationCount || overviewSummary?.school_count || 0,
+    gradeCount: organizationStats.gradeCount,
+    classCount: organizationStats.classCount || overviewSummary?.class_count || 0,
+    memberCount: teacherCount + studentCount,
+    teacherCount,
+    studentCount,
+    questionBankCount: questionBankCount ?? 0,
+    questionCount: questionCount ?? 0,
+    examCount: examStats.examCount || overviewSummary?.published_exam_count || 0,
+    passRate: examStats.passRate,
+    noticeCount: noticeStats.noticeCount,
+    noticeReadCount: noticeStats.noticeReadCount,
+    noticeUnreadCount: noticeStats.noticeUnreadCount
+  };
+}
+
+async function loadOrganizationStats(api?: OrganizationApi) {
+  if (!api) {
+    return { organizationCount: 0, gradeCount: 0, classCount: 0 };
   }
 
-  return items;
+  const [schools, grades, classes] = await Promise.all([
+    settleValue(() => api.listSchools()),
+    settleValue(() => api.listGrades()),
+    settleValue(() => api.listClasses())
+  ]);
+
+  return {
+    organizationCount: schools?.total ?? schools?.items.length ?? 0,
+    gradeCount: grades?.total ?? grades?.items.length ?? 0,
+    classCount: classes?.total ?? classes?.items.length ?? 0
+  };
 }
+
+async function loadMemberStats(api?: UserPanelApi) {
+  if (!api) {
+    return { teacherCount: 0, studentCount: 0 };
+  }
+
+  const [teachers, students] = await Promise.all([
+    settleValue(() => api.listUsers({ user_type: "teacher", page: 1, page_size: 1 })),
+    settleValue(() => api.listUsers({ user_type: "student", page: 1, page_size: 1 }))
+  ]);
+
+  return {
+    teacherCount: teachers?.total ?? 0,
+    studentCount: students?.total ?? 0
+  };
+}
+
+async function loadExamStats(api?: ExamPanelApi) {
+  if (!api) {
+    return { examCount: 0, passRate: 0 };
+  }
+
+  const exams = await settleValue(() => api.listExams({ page: 1, page_size: 10 }));
+  if (!exams) {
+    return { examCount: 0, passRate: 0 };
+  }
+
+  const overviewResults = await Promise.all(
+    exams.items.map((exam) => settleValue(() => api.getExamOverview({ exam_id: exam.id, page: 1, page_size: 100 })))
+  );
+  const passSummary = overviewResults.reduce(
+    (summary, overview) => {
+      if (!overview) {
+        return summary;
+      }
+      const totalScore = overview.summary.total_score || 100;
+      const passLine = totalScore * 0.6;
+      const reviewedStudents = overview.students.items.filter((student) => typeof student.final_score === "number");
+      return {
+        passed: summary.passed + reviewedStudents.filter((student) => (student.final_score ?? 0) >= passLine).length,
+        total: summary.total + reviewedStudents.length
+      };
+    },
+    { passed: 0, total: 0 }
+  );
+
+  return {
+    examCount: exams.total,
+    passRate: passSummary.total > 0 ? Math.round((passSummary.passed / passSummary.total) * 100) : 0
+  };
+}
+
+async function loadNoticeStats(api?: NoticeApi) {
+  if (!api) {
+    return { noticeCount: 0, noticeReadCount: 0, noticeUnreadCount: 0 };
+  }
+
+  const [notices, readNotifications, unreadNotifications] = await Promise.all([
+    settleValue(() => api.listNotices({ page: 1, page_size: 1 })),
+    settleValue(() => api.listNotifications?.({ status: "read", page: 1, page_size: 1 })),
+    settleValue(() => api.listNotifications?.({ status: "unread", page: 1, page_size: 1 }))
+  ]);
+
+  return {
+    noticeCount: notices?.total ?? 0,
+    noticeReadCount: readNotifications?.total ?? 0,
+    noticeUnreadCount: unreadNotifications?.total ?? 0
+  };
+}
+
+async function settleValue<T>(loader: () => Promise<T> | T | undefined): Promise<T | undefined> {
+  try {
+    return await loader();
+  } catch {
+    return undefined;
+  }
+}
+
+function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): DashboardCard[] {
+  const sharedCards: DashboardCard[] = [
+    {
+      title: "成员数",
+      value: formatNumber(stats.memberCount),
+      helper: `教师数 ${formatNumber(stats.teacherCount)} / 学生数 ${formatNumber(stats.studentCount)}`,
+      accent: "员"
+    },
+    {
+      title: "题库数",
+      value: formatNumber(stats.questionBankCount),
+      helper: `题目数 ${formatNumber(stats.questionCount)}`,
+      accent: "题"
+    },
+    {
+      title: "考试数",
+      value: formatNumber(stats.examCount),
+      helper: `通过率 ${formatPercent(stats.passRate)}`,
+      accent: "考"
+    }
+  ];
+
+  if (isSystemAdmin) {
+    return [
+      {
+        title: "组织数",
+        value: formatNumber(stats.organizationCount),
+        helper: `年级数 ${formatNumber(stats.gradeCount)} / 班级数 ${formatNumber(stats.classCount)}`,
+        accent: "组"
+      },
+      ...sharedCards
+    ];
+  }
+
+  return [
+    ...sharedCards,
+    {
+      title: "公告数",
+      value: formatNumber(stats.noticeCount),
+      helper: `已读人数 ${formatNumber(stats.noticeReadCount)} / 未读人数 ${formatNumber(stats.noticeUnreadCount)}`,
+      accent: "告"
+    }
+  ];
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatPercent(value: number): string {
+  return `${value}%`;
+}
+
+const workbenchStyle: CSSProperties = {
+  minHeight: "100%",
+  padding: 22,
+  display: "block"
+};
+
+const statGridStyle: CSSProperties = {
+  alignItems: "stretch",
+  margin: 0
+};
+
+const statCardStyle: CSSProperties = {
+  minHeight: 146
+};
+
+const statIconStyle: CSSProperties = {
+  flex: "0 0 auto"
+};
+
+const statContentStyle: CSSProperties = {
+  minWidth: 0
+};
