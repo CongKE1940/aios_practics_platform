@@ -25,6 +25,11 @@ export interface SchoolOrganizationListQuery {
   page_size?: number;
 }
 
+export interface SchoolOrganizationBatchDeleteInput {
+  ids: number[];
+  cascade_delete?: boolean;
+}
+
 export interface SchoolOrganizationApi {
   listSchools(query?: SchoolOrganizationListQuery): Promise<PageResult<SchoolOrganization>>;
   createSchool(body: SchoolOrganizationInput): Promise<SchoolOrganization>;
@@ -33,6 +38,7 @@ export interface SchoolOrganizationApi {
   disableSchool(id: number): Promise<boolean>;
   enableSchool?(id: number): Promise<boolean>;
   deleteSchool?(id: number): Promise<boolean>;
+  batchDeleteSchools?(body: SchoolOrganizationBatchDeleteInput): Promise<boolean>;
   uploadFile?(body: FormData): Promise<FileAsset>;
   post?<TData, TBody = unknown>(path: string, body?: TBody): Promise<TData>;
 }
@@ -47,12 +53,36 @@ export async function enableSchoolOrganization(api: SchoolOrganizationActionApi,
   return post ? post<boolean>(`/schools/${id}/enable`) : false;
 }
 
-export async function deleteSchoolOrganization(api: SchoolOrganizationActionApi, id: number): Promise<boolean> {
-  if ("deleteSchool" in api && api.deleteSchool) {
+export async function deleteSchoolOrganization(
+  api: SchoolOrganizationActionApi,
+  id: number,
+  options: { cascade_delete?: boolean } = {}
+): Promise<boolean> {
+  if ("deleteSchool" in api && api.deleteSchool && !options.cascade_delete) {
     return api.deleteSchool(id);
   }
   const post = getPostMethod(api);
-  return post ? post<boolean>(`/schools/${id}/delete`) : false;
+  return post ? post<boolean>(`/schools/${id}/delete`, { ids: [id], cascade_delete: Boolean(options.cascade_delete) }) : false;
+}
+
+export async function batchDeleteSchoolOrganizations(
+  api: SchoolOrganizationActionApi,
+  body: SchoolOrganizationBatchDeleteInput
+): Promise<boolean> {
+  if (body.ids.length === 0) {
+    return true;
+  }
+  if ("batchDeleteSchools" in api && api.batchDeleteSchools) {
+    return api.batchDeleteSchools(body);
+  }
+  const post = getPostMethod(api);
+  if (post) {
+    return post<boolean>("/schools/batch-delete", body);
+  }
+  for (const id of body.ids) {
+    await deleteSchoolOrganization(api, id, { cascade_delete: body.cascade_delete });
+  }
+  return true;
 }
 
 function getPostMethod(api: SchoolOrganizationActionApi): ApiClient["post"] | undefined {
