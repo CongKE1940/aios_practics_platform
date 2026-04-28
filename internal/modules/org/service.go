@@ -2,6 +2,9 @@ package org
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 )
 
 type Service struct {
@@ -21,11 +24,24 @@ func (service *Service) GetSchool(ctx context.Context, scope Scope, id int64) (S
 }
 
 func (service *Service) CreateSchool(ctx context.Context, scope Scope, input SchoolInput) (School, error) {
+	if !isSystemAdmin(scope) {
+		return School{}, ErrForbidden
+	}
+
+	objectType := normalizeObjectType(input.ObjectType)
+	if objectType == "" || strings.TrimSpace(input.Name) == "" {
+		return School{}, ErrInvalidInput
+	}
+
 	return service.repo.CreateSchool(ctx, School{
-		TenantID: scope.TenantID,
-		Code:     input.Code,
-		Name:     input.Name,
-		Status:   StatusActive,
+		TenantID:    scope.TenantID,
+		ObjectType:  objectType,
+		Code:        generateSchoolCode(objectType),
+		Name:        strings.TrimSpace(input.Name),
+		EnglishName: strings.TrimSpace(input.EnglishName),
+		Address:     strings.TrimSpace(input.Address),
+		LogoURL:     strings.TrimSpace(input.LogoURL),
+		Status:      StatusActive,
 	})
 }
 
@@ -34,14 +50,44 @@ func (service *Service) UpdateSchool(ctx context.Context, scope Scope, id int64,
 	if err != nil {
 		return School{}, err
 	}
+	if !isSystemAdmin(scope) && current.TenantID != scope.TenantID {
+		return School{}, ErrForbidden
+	}
 
-	current.Code = input.Code
-	current.Name = input.Name
+	objectType := normalizeObjectType(input.ObjectType)
+	if objectType != "" && isSystemAdmin(scope) {
+		current.ObjectType = objectType
+	}
+	if strings.TrimSpace(input.Name) == "" {
+		return School{}, ErrInvalidInput
+	}
+
+	current.Name = strings.TrimSpace(input.Name)
+	current.EnglishName = strings.TrimSpace(input.EnglishName)
+	current.Address = strings.TrimSpace(input.Address)
+	current.LogoURL = strings.TrimSpace(input.LogoURL)
 	return service.repo.UpdateSchool(ctx, current)
 }
 
 func (service *Service) DisableSchool(ctx context.Context, scope Scope, id int64) error {
+	if !isSystemAdmin(scope) {
+		return ErrForbidden
+	}
 	return service.repo.DisableSchool(ctx, scope.TenantID, id)
+}
+
+func (service *Service) EnableSchool(ctx context.Context, scope Scope, id int64) error {
+	if !isSystemAdmin(scope) {
+		return ErrForbidden
+	}
+	return service.repo.EnableSchool(ctx, scope.TenantID, id)
+}
+
+func (service *Service) DeleteSchool(ctx context.Context, scope Scope, id int64) error {
+	if !isSystemAdmin(scope) {
+		return ErrForbidden
+	}
+	return service.repo.DeleteSchool(ctx, scope.TenantID, id)
 }
 
 func (service *Service) ListGrades(ctx context.Context, scope Scope, filter GradeListFilter) (PageResult[Grade], error) {
@@ -167,6 +213,7 @@ func (service *Service) DisableCourse(ctx context.Context, scope Scope, id int64
 }
 
 func normalizeSchoolListFilter(filter SchoolListFilter) SchoolListFilter {
+	filter.ObjectType = normalizeObjectType(filter.ObjectType)
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
@@ -188,6 +235,37 @@ func normalizeCourseListFilter(filter CourseListFilter) CourseListFilter {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
+}
+
+func normalizeObjectType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "", ObjectTypeSchool:
+		return ObjectTypeSchool
+	case ObjectTypeOrganization:
+		return ObjectTypeOrganization
+	default:
+		return ""
+	}
+}
+
+func generateSchoolCode(objectType string) string {
+	prefix := "SCH"
+	if objectType == ObjectTypeOrganization {
+		prefix = "ORG"
+	}
+	return fmt.Sprintf("%s%d", prefix, time.Now().UnixNano())
+}
+
+func isSystemAdmin(scope Scope) bool {
+	if scope.UserType == "sys_admin" {
+		return true
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizePage(page int) int {
