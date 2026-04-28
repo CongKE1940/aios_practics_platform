@@ -1,17 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type {
   Exam,
   ExamDetail,
+  ExamFixedQuestion,
+  ExamInput,
   ExamListQuery,
   ExamOverviewResult,
   ExamOverviewSummary,
+  ExamPaperRule,
+  ExamTarget,
   PageResult
 } from "@aios/api-sdk";
+import { FixedActionList, ToastNotice, type FixedActionListColumn, type FixedActionListRowId } from "@aios/ui-web";
+
+import { downloadCsv } from "./list-page-utils";
 
 export interface ExamPanelApi {
   listExams(query?: ExamListQuery): Promise<PageResult<Exam>>;
+  createExam(body: ExamInput): Promise<ExamDetail>;
   getExam(id: number): Promise<ExamDetail>;
+  updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
   getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
 }
@@ -21,50 +30,158 @@ interface ExamPanelProps {
   onNavigate(path: string): void;
 }
 
+const defaultPageSize = 10;
+
+const defaultExamForm = {
+  name: "",
+  exam_mode: "fixed",
+  start_time: "",
+  end_time: "",
+  duration_minutes: "60",
+  targets_text: "",
+  fixed_questions_text: "",
+  paper_rules_text: ""
+};
+
+type ExamFormState = typeof defaultExamForm;
+
+type ModalState =
+  | { type: "create" }
+  | { type: "detail"; exam: Exam }
+  | { type: "edit"; exam: Exam }
+  | null;
+
+const columns: Array<FixedActionListColumn<Exam>> = [
+  {
+    key: "name",
+    title: "考试名称",
+    render: (exam) => exam.name
+  },
+  {
+    key: "exam_mode",
+    title: "组卷方式",
+    width: 130,
+    render: (exam) => formatExamMode(exam.exam_mode)
+  },
+  {
+    key: "status",
+    title: "状态",
+    width: 120,
+    render: (exam) => <span className={statusClassName(exam.status)}>{formatExamStatus(exam.status)}</span>
+  },
+  {
+    key: "start_time",
+    title: "开始时间",
+    width: 170,
+    render: (exam) => formatDateTime(exam.start_time)
+  },
+  {
+    key: "end_time",
+    title: "结束时间",
+    width: 170,
+    render: (exam) => formatDateTime(exam.end_time)
+  },
+  {
+    key: "duration_minutes",
+    title: "时长",
+    width: 100,
+    render: (exam) => `${exam.duration_minutes ?? 0} 分钟`
+  }
+];
+
 export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("");
+  const [targetType, setTargetType] = useState("");
+  const [targetID, setTargetID] = useState("");
   const [exams, setExams] = useState<Exam[]>([]);
-  const [selectedExamID, setSelectedExamID] = useState<number | null>(null);
+  const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [detail, setDetail] = useState<ExamDetail | null>(null);
   const [overview, setOverview] = useState<ExamOverviewResult | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [modal, setModal] = useState<ModalState>(null);
+  const [form, setForm] = useState<ExamFormState>(defaultExamForm);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [total, setTotal] = useState(0);
+  const didLoadRef = useRef(false);
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentDetailSummary = useMemo(
+    () => overview?.summary ?? (detail ? emptySummary(detail) : null),
+    [detail, overview]
+  );
 
   useEffect(() => {
-    void loadExams();
-  }, [api]);
-
-  useEffect(() => {
-    if (!selectedExamID && exams.length > 0) {
-      setSelectedExamID(exams[0].id);
-    }
-  }, [exams, selectedExamID]);
-
-  useEffect(() => {
-    if (!selectedExamID) {
-      setDetail(null);
-      setOverview(null);
+    if (didLoadRef.current) {
       return;
     }
-    void loadExamDetail(selectedExamID);
-  }, [api, selectedExamID]);
+    didLoadRef.current = true;
+    void loadExams(buildExamQuery("", "", "", "", 1, defaultPageSize));
+  }, [api]);
 
-  async function loadExams() {
+  async function loadExams(query: ExamListQuery = buildExamQuery(keyword, status, targetType, targetID, page, pageSize)) {
     setLoading(true);
     setErrorMessage("");
     try {
-      const result = await api.listExams();
+      const result = await api.listExams(query);
       setExams(result.items);
+      setTotal(result.total);
+      setPage(result.page || query.page || 1);
+      setPageSize(result.page_size || query.page_size || defaultPageSize);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载考试数据失败");
+      setExams([]);
+      setTotal(0);
+      setPage(query.page || 1);
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "考试数据加载失败");
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadExamDetail(examID: number) {
+  async function handleQuery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSelectedIDs([]);
+    await loadExams(buildExamQuery(keyword, status, targetType, targetID, 1, pageSize));
+  }
+
+  async function handleReset() {
+    setKeyword("");
+    setStatus("");
+    setTargetType("");
+    setTargetID("");
+    setSelectedIDs([]);
+    await loadExams(buildExamQuery("", "", "", "", 1, defaultPageSize));
+  }
+
+  async function handlePageChange(nextPage: number) {
+    setSelectedIDs([]);
+    await loadExams(buildExamQuery(keyword, status, targetType, targetID, nextPage, pageSize));
+  }
+
+  function openCreateModal() {
+    setDetail(null);
+    setOverview(null);
+    setForm(defaultExamForm);
+    setModal({ type: "create" });
+  }
+
+  async function openDetailModal(exam: Exam) {
+    setModal({ type: "detail", exam });
+    await loadExamDetail(exam.id);
+  }
+
+  async function openEditModal(exam: Exam) {
+    setModal({ type: "edit", exam });
+    const examDetail = await loadExamDetail(exam.id);
+    if (examDetail) {
+      setForm(buildFormFromDetail(examDetail));
+    }
+  }
+
+  async function loadExamDetail(examID: number): Promise<ExamDetail | null> {
     setDetailLoading(true);
     setErrorMessage("");
     try {
@@ -74,294 +191,549 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
       ]);
       setDetail(detailResult);
       setOverview(overviewResult);
+      return detailResult;
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "加载考试详情失败");
+      setDetail(null);
+      setOverview(null);
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "考试详情加载失败");
+      return null;
     } finally {
       setDetailLoading(false);
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const payload = buildExamPayload(form);
+    if (typeof payload === "string") {
+      setErrorMessage(payload);
+      return;
+    }
+
+    if (modal?.type === "edit") {
+      await api.updateExam(modal.exam.id, payload);
+    } else {
+      await api.createExam(payload);
+    }
+
+    closeModal();
+    await loadExams();
+  }
+
   async function handlePublish(examID: number) {
     await api.publishExam(examID);
     await loadExams();
-    await loadExamDetail(examID);
+    if (detail?.id === examID) {
+      await loadExamDetail(examID);
+    }
   }
 
-  const filteredExams = useMemo(
-    () =>
-      exams.filter((exam) => {
-        const keywordMatched =
-          keyword.trim() === "" ||
-          [exam.name, exam.exam_mode, exam.status].some((value) =>
-            value.toLowerCase().includes(keyword.trim().toLowerCase())
-          );
-        const statusMatched = status === "" || exam.status === status;
-        return keywordMatched && statusMatched;
-      }),
-    [exams, keyword, status]
-  );
+  function handleExport() {
+    downloadCsv(
+      "exams.csv",
+      [
+        { key: "name", title: "考试名称" },
+        { key: "exam_mode_label", title: "组卷方式" },
+        { key: "status_label", title: "状态" },
+        { key: "start_time_label", title: "开始时间" },
+        { key: "end_time_label", title: "结束时间" },
+        { key: "duration_minutes", title: "时长" }
+      ],
+      exams.map((exam) => ({
+        ...exam,
+        exam_mode_label: formatExamMode(exam.exam_mode),
+        status_label: formatExamStatus(exam.status),
+        start_time_label: formatDateTime(exam.start_time),
+        end_time_label: formatDateTime(exam.end_time)
+      }))
+    );
+  }
 
-  const currentExam = useMemo(
-    () => exams.find((item) => item.id === selectedExamID) ?? filteredExams[0] ?? null,
-    [exams, filteredExams, selectedExamID]
-  );
-
-  const summary = overview?.summary ?? emptySummary(currentExam?.id ?? 0, currentExam?.name ?? "未选择考试");
-  const students = overview?.students.items ?? [];
+  function closeModal() {
+    setModal(null);
+    setDetail(null);
+    setOverview(null);
+    setForm(defaultExamForm);
+  }
 
   return (
-    <section aria-label="考试管理面板" className="ui-admin-page">
-      <section className="ui-admin-page__hero">
-        <div className="ui-admin-page__header">
-          <div>
-            <span className="ui-admin-page__eyebrow">考试管理</span>
-            <h2>考试管理</h2>
+    <section aria-label="考试管理面板" className="ui-admin-page" style={pageStyle}>
+      {errorMessage ? (
+        <ToastNotice tone="danger" title="考试数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
+      ) : null}
+
+      <section className="ui-admin-card" aria-label="考试数据展示区" style={dataRegionStyle} aria-busy={loading}>
+        <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
+          <div className="ui-admin-form__field">
+            <label htmlFor="admin_exam_keyword">关键字 keyword</label>
+            <input
+              id="admin_exam_keyword"
+              placeholder="输入考试名称或组卷方式"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
           </div>
-          <div className="ui-admin-toolbar">
-            <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate("/admin/exams/assembly")}>
-              进入随机组卷
+          <div className="ui-admin-form__field">
+            <label htmlFor="admin_exam_status">状态 status</label>
+            <select id="admin_exam_status" value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">全部状态</option>
+              <option value="draft">草稿</option>
+              <option value="published">已发布</option>
+              <option value="closed">已结束</option>
+            </select>
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="admin_exam_target_type">发布对象 target_type</label>
+            <select id="admin_exam_target_type" value={targetType} onChange={(event) => setTargetType(event.target.value)}>
+              <option value="">全部对象</option>
+              <option value="class">班级</option>
+              <option value="course">课程</option>
+              <option value="user">用户</option>
+            </select>
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="admin_exam_target_id">对象 ID target_id</label>
+            <input
+              id="admin_exam_target_id"
+              inputMode="numeric"
+              placeholder="输入对象 ID"
+              value={targetID}
+              onChange={(event) => setTargetID(event.target.value)}
+            />
+          </div>
+          <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
+            <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
+              {loading ? "查询中" : "查询"}
             </button>
-            <button type="button" className="ui-button ui-button--primary" onClick={() => void loadExams()}>
-              刷新列表
+            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()} disabled={loading}>
+              重置
             </button>
           </div>
-        </div>
+        </form>
+
+        <FixedActionList
+          rows={exams}
+          columns={columns}
+          getRowId={(exam) => exam.id}
+          selectedRowIds={selectedIDs}
+          onSelectionChange={setSelectedIDs}
+          onCreate={openCreateModal}
+          onExport={handleExport}
+          onDetail={(exam) => void openDetailModal(exam)}
+          onEdit={(exam) => void openEditModal(exam)}
+          currentPage={page}
+          pageCount={pageCount}
+          total={total}
+          onPageChange={(nextPage) => void handlePageChange(nextPage)}
+          minHeight="100%"
+          emptyText={loading ? "数据加载中..." : "暂无考试数据"}
+          ariaLabel="考试列表"
+          createLabel="新增"
+          deleteLabel="删除"
+          exportLabel="导出"
+          rowCheckboxLabel={(exam) => `选择考试-${exam.name}`}
+        />
       </section>
 
-      {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
-      {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
-
-      {!loading ? (
-        <>
-          <section className="ui-admin-filters ui-admin-card">
-            <div className="ui-admin-filters__grid">
-              <div className="ui-admin-form__field">
-                <label htmlFor="admin_exam_keyword">搜索考试</label>
-                <input
-                  id="admin_exam_keyword"
-                  placeholder="输入考试名称、状态或组卷方式"
-                  value={keyword}
-                  onChange={(event) => setKeyword(event.target.value)}
-                />
-              </div>
-              <div className="ui-admin-form__field">
-                <label htmlFor="admin_exam_status">发布状态</label>
-                <select id="admin_exam_status" value={status} onChange={(event) => setStatus(event.target.value)}>
-                  <option value="">全部状态</option>
-                  <option value="draft">草稿</option>
-                  <option value="published">已发布</option>
-                  <option value="closed">已结束</option>
-                </select>
-              </div>
-            </div>
-          </section>
-
-          <section className="ui-admin-kpis">
-            <article className="ui-admin-kpi ui-admin-metrics-card">
-              <span>应参与人数</span>
-              <strong>{summary.student_count}</strong>
-            </article>
-            <article className="ui-admin-kpi ui-admin-metrics-card">
-              <span>已交卷</span>
-              <strong>{summary.submitted_count}</strong>
-            </article>
-            <article className="ui-admin-kpi ui-admin-metrics-card">
-              <span>平均分</span>
-              <strong>{summary.average_score}</strong>
-            </article>
-          </section>
-
-          <div className="ui-admin-layout">
-            <div className="ui-admin-main">
-              <section className="ui-admin-table-card">
-                <div className="ui-admin-table-card__header">
-                  <div>
-                    <h3>考试列表</h3>
-                  </div>
-                </div>
-                <table className="ui-admin-table">
-                  <thead>
-                    <tr>
-                      <th>考试名称</th>
-                      <th>组卷方式</th>
-                      <th>状态</th>
-                      <th>开始时间</th>
-                      <th>结束时间</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredExams.map((exam) => (
-                      <tr key={exam.id}>
-                        <td>{exam.name}</td>
-                        <td>{formatExamMode(exam.exam_mode)}</td>
-                        <td>
-                          <span className={statusClassName(exam.status)}>{formatExamStatus(exam.status)}</span>
-                        </td>
-                        <td>{formatDateTime(exam.start_time)}</td>
-                        <td>{formatDateTime(exam.end_time)}</td>
-                        <td>
-                          <div className="ui-admin-table__actions">
-                            <button type="button" className="ui-admin-link" onClick={() => setSelectedExamID(exam.id)}>
-                              查看
-                            </button>
-                            {exam.status === "draft" ? (
-                              <button type="button" className="ui-admin-link" onClick={() => void handlePublish(exam.id)}>
-                                发布
-                              </button>
-                            ) : null}
-                            {exam.exam_mode === "random_assembly" ? (
-                              <button
-                                type="button"
-                                className="ui-admin-link"
-                                onClick={() => onNavigate("/admin/exams/assembly")}
-                              >
-                                查看组卷规则
-                              </button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-
-              <section className="ui-admin-table-card">
-                <div className="ui-admin-table-card__header">
-                  <div>
-                    <h3>成绩概览</h3>
-                  </div>
-                </div>
-                <table className="ui-admin-table">
-                  <thead>
-                    <tr>
-                      <th>学生</th>
-                      <th>学号</th>
-                      <th>作答状态</th>
-                      <th>批阅状态</th>
-                      <th>总分</th>
-                      <th>提交时间</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {students.length > 0 ? (
-                      students.map((student) => (
-                        <tr key={`${student.student_user_id}-${student.attempt_id ?? 0}`}>
-                          <td>{student.student_name}</td>
-                          <td>{student.student_no ?? "-"}</td>
-                          <td>
-                            <span className={statusClassName(student.attempt_status)}>{formatAttemptStatus(student.attempt_status)}</span>
-                          </td>
-                          <td>
-                            <span className={statusClassName(student.review_status)}>{formatReviewStatus(student.review_status)}</span>
-                          </td>
-                          <td>{student.final_score ?? 0}</td>
-                          <td>{formatDateTime(student.submit_at)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6}>
-                          <div className="ui-admin-empty-inline">当前考试暂无成绩数据</div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </section>
-            </div>
-
-            <aside className="ui-admin-side-card">
-              <section className="ui-admin-card">
-                <div className="ui-admin-card__header">
+      {modal ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="考试管理弹层">
+            {modal.type === "detail" ? (
+              <>
+                <div className="ui-admin-modal__header">
                   <div>
                     <h3>考试详情</h3>
+                    <p>{detail?.name ?? modal.exam.name}</p>
                   </div>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                    关闭
+                  </button>
                 </div>
-                {detailLoading ? <div className="ui-status ui-status--info">加载详情中...</div> : null}
-                {!detailLoading && detail ? (
-                  <>
-                    <dl className="ui-admin-meta-list">
-                      <div>
-                        <dt>考试名称</dt>
-                        <dd>{detail.name}</dd>
-                      </div>
-                      <div>
-                        <dt>组卷方式</dt>
-                        <dd>{formatExamMode(detail.exam_mode)}</dd>
-                      </div>
-                      <div>
-                        <dt>状态</dt>
-                        <dd>
-                          <span className={statusClassName(detail.status)}>{formatExamStatus(detail.status)}</span>
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>考试时间</dt>
-                        <dd>{`${formatDateTime(detail.start_time)} - ${formatDateTime(detail.end_time)}`}</dd>
-                      </div>
-                      <div>
-                        <dt>时长</dt>
-                        <dd>{detail.duration_minutes ?? 0} 分钟</dd>
-                      </div>
-                      <div>
-                        <dt>发布范围</dt>
-                        <dd>{detail.targets.map((item) => `${item.target_type}:${item.target_id}`).join("、") || "未设置"}</dd>
-                      </div>
-                    </dl>
-                    <div className="ui-admin-side-card__actions">
-                      {detail.status === "draft" ? (
-                        <button type="button" className="ui-button ui-button--primary" onClick={() => void handlePublish(detail.id)}>
-                          发布考试
-                        </button>
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
-                {!detailLoading && !detail ? <div className="ui-admin-empty-inline">请选择左侧考试查看详情</div> : null}
-              </section>
+                <div className="ui-admin-modal__body">
+                  {detailLoading ? <div className="ui-admin-empty-inline">考试详情加载中...</div> : null}
+                  {!detailLoading && detail ? (
+                    <>
+                      <dl className="ui-admin-meta-list">
+                        <div>
+                          <dt>考试名称</dt>
+                          <dd>{detail.name}</dd>
+                        </div>
+                        <div>
+                          <dt>组卷方式</dt>
+                          <dd>{formatExamMode(detail.exam_mode)}</dd>
+                        </div>
+                        <div>
+                          <dt>状态</dt>
+                          <dd>{formatExamStatus(detail.status)}</dd>
+                        </div>
+                        <div>
+                          <dt>考试时间</dt>
+                          <dd>{`${formatDateTime(detail.start_time)} - ${formatDateTime(detail.end_time)}`}</dd>
+                        </div>
+                        <div>
+                          <dt>时长</dt>
+                          <dd>{detail.duration_minutes} 分钟</dd>
+                        </div>
+                        <div>
+                          <dt>发布范围</dt>
+                          <dd>{formatTargets(detail.targets)}</dd>
+                        </div>
+                      </dl>
 
-              <section className="ui-admin-card">
-                <div className="ui-admin-card__header">
-                  <div>
-                    <h3>试卷摘要</h3>
+                      {currentDetailSummary ? (
+                        <div className="ui-admin-kpis">
+                          <article className="ui-admin-kpi ui-admin-metrics-card">
+                            <span>应参与人数</span>
+                            <strong>{currentDetailSummary.student_count}</strong>
+                          </article>
+                          <article className="ui-admin-kpi ui-admin-metrics-card">
+                            <span>已交卷</span>
+                            <strong>{currentDetailSummary.submitted_count}</strong>
+                          </article>
+                          <article className="ui-admin-kpi ui-admin-metrics-card">
+                            <span>平均分</span>
+                            <strong>{formatScore(currentDetailSummary.average_score)}</strong>
+                          </article>
+                        </div>
+                      ) : null}
+
+                      <div className="ui-admin-mini-list">
+                        <article className="ui-admin-mini-item">
+                          <strong>固定题目</strong>
+                          <p>{formatFixedQuestions(detail.fixed_questions)}</p>
+                        </article>
+                        <article className="ui-admin-mini-item">
+                          <strong>抽题规则</strong>
+                          <p>{formatPaperRules(detail.paper_rules)}</p>
+                        </article>
+                      </div>
+                    </>
+                  ) : null}
+                  {!detailLoading && !detail ? <div className="ui-admin-empty-inline">考试详情暂无数据</div> : null}
+                </div>
+                <div className="ui-admin-modal__footer">
+                  <div className="ui-admin-actions-bar__group">
+                    <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate("/admin/exams/assembly")}>
+                      进入随机组卷
+                    </button>
+                    {detail?.status === "draft" ? (
+                      <button type="button" className="ui-button ui-button--ghost" onClick={() => void handlePublish(detail.id)}>
+                        发布考试
+                      </button>
+                    ) : null}
+                    {detail ? (
+                      <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(detail)}>
+                        编辑
+                      </button>
+                    ) : null}
                   </div>
                 </div>
-                {detail ? (
-                  <div className="ui-admin-mini-list">
-                    <article className="ui-admin-mini-item">
-                      <strong>固定题数</strong>
-                      <p>{detail.fixed_questions.length} 题</p>
-                    </article>
-                    <article className="ui-admin-mini-item">
-                      <strong>组卷规则</strong>
-                      <p>{detail.paper_rules?.length ?? 0} 条</p>
-                    </article>
-                    <article className="ui-admin-mini-item">
-                      <strong>最高分 / 最低分</strong>
-                      <p>{`${summary.highest_score} / ${summary.lowest_score}`}</p>
-                    </article>
+              </>
+            ) : (
+              <>
+                <div className="ui-admin-modal__header">
+                  <div>
+                    <h3>{modal.type === "create" ? "新增考试" : "编辑考试"}</h3>
                   </div>
-                ) : (
-                  <div className="ui-admin-empty-inline">暂无试卷摘要</div>
-                )}
-              </section>
-            </aside>
-          </div>
-        </>
+                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                    关闭
+                  </button>
+                </div>
+                <form onSubmit={(event) => void handleSubmit(event)}>
+                  <div className="ui-admin-modal__body">
+                    {detailLoading ? <div className="ui-admin-empty-inline">考试草稿加载中...</div> : null}
+                    <div className="ui-admin-form__grid ui-admin-form__grid--wide">
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="exam_name">考试名称</label>
+                        <input
+                          id="exam_name"
+                          value={form.name}
+                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="exam_mode">组卷方式</label>
+                        <select
+                          id="exam_mode"
+                          value={form.exam_mode}
+                          onChange={(event) => setForm((current) => ({ ...current, exam_mode: event.target.value }))}
+                        >
+                          <option value="fixed">固定试卷</option>
+                          <option value="random_assembly">随机组卷</option>
+                        </select>
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="exam_duration">考试时长</label>
+                        <input
+                          id="exam_duration"
+                          inputMode="numeric"
+                          value={form.duration_minutes}
+                          onChange={(event) => setForm((current) => ({ ...current, duration_minutes: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="exam_start_time">开始时间</label>
+                        <input
+                          id="exam_start_time"
+                          type="datetime-local"
+                          value={form.start_time}
+                          onChange={(event) => setForm((current) => ({ ...current, start_time: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="exam_end_time">结束时间</label>
+                        <input
+                          id="exam_end_time"
+                          type="datetime-local"
+                          value={form.end_time}
+                          onChange={(event) => setForm((current) => ({ ...current, end_time: event.target.value }))}
+                        />
+                      </div>
+                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                        <label htmlFor="exam_targets">发布范围</label>
+                        <textarea
+                          id="exam_targets"
+                          placeholder="每行一个，例如：class:301、course:10、user:1001"
+                          value={form.targets_text}
+                          onChange={(event) => setForm((current) => ({ ...current, targets_text: event.target.value }))}
+                        />
+                      </div>
+                      {form.exam_mode === "fixed" ? (
+                        <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                          <label htmlFor="exam_fixed_questions">固定题目</label>
+                          <textarea
+                            id="exam_fixed_questions"
+                            placeholder="每行一个：question_id:question_version_id:score:display_order"
+                            value={form.fixed_questions_text}
+                            onChange={(event) => setForm((current) => ({ ...current, fixed_questions_text: event.target.value }))}
+                          />
+                        </div>
+                      ) : (
+                        <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                          <label htmlFor="exam_paper_rules">抽题规则</label>
+                          <textarea
+                            id="exam_paper_rules"
+                            placeholder="每行一个：question_type:score_per_question:question_count:bank_id|bank_id"
+                            value={form.paper_rules_text}
+                            onChange={(event) => setForm((current) => ({ ...current, paper_rules_text: event.target.value }))}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="ui-admin-modal__footer">
+                    <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>
+                      取消
+                    </button>
+                    <button type="submit" className="ui-button ui-button--primary" disabled={detailLoading}>
+                      {modal.type === "create" ? "新增考试" : "保存修改"}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+          </section>
+        </div>
       ) : null}
     </section>
   );
 }
 
-function emptySummary(examID: number, examName: string): ExamOverviewSummary {
+function buildExamQuery(
+  keyword: string,
+  status: string,
+  targetType: string,
+  targetID: string,
+  page: number,
+  pageSize: number
+): ExamListQuery {
   return {
-    exam_id: examID,
-    exam_name: examName,
-    exam_mode: "fixed",
-    status: "draft",
-    duration_minutes: 0,
+    keyword: keyword.trim() || undefined,
+    status: status || undefined,
+    target_type: targetType || undefined,
+    target_id: targetID ? Number(targetID) : undefined,
+    page,
+    page_size: pageSize
+  };
+}
+
+function buildExamPayload(form: ExamFormState): ExamInput | string {
+  const name = form.name.trim();
+  const durationMinutes = parsePositiveInteger(form.duration_minutes);
+  const targets = parseTargets(form.targets_text);
+
+  if (!name) {
+    return "请填写考试名称。";
+  }
+  if (!form.start_time || !form.end_time) {
+    return "请填写考试开始和结束时间。";
+  }
+  if (!durationMinutes) {
+    return "请填写有效的考试时长。";
+  }
+  if (targets.length === 0) {
+    return "请填写发布范围。";
+  }
+
+  const base = {
+    name,
+    exam_mode: form.exam_mode,
+    start_time: toApiDateTime(form.start_time),
+    end_time: toApiDateTime(form.end_time),
+    duration_minutes: durationMinutes,
+    targets
+  };
+
+  if (form.exam_mode === "fixed") {
+    const fixedQuestions = parseFixedQuestions(form.fixed_questions_text);
+    if (fixedQuestions.length === 0) {
+      return "请填写固定题目。";
+    }
+    return {
+      ...base,
+      fixed_questions: fixedQuestions,
+      paper_rules: []
+    };
+  }
+
+  const paperRules = parsePaperRules(form.paper_rules_text);
+  if (paperRules.length === 0) {
+    return "请填写抽题规则。";
+  }
+  return {
+    ...base,
+    fixed_questions: [],
+    paper_rules: paperRules
+  };
+}
+
+function buildFormFromDetail(detail: ExamDetail): ExamFormState {
+  return {
+    name: detail.name,
+    exam_mode: detail.exam_mode,
+    start_time: toDateTimeLocalValue(detail.start_time),
+    end_time: toDateTimeLocalValue(detail.end_time),
+    duration_minutes: String(detail.duration_minutes ?? 60),
+    targets_text: detail.targets.map((item) => `${item.target_type}:${item.target_id}`).join("\n"),
+    fixed_questions_text: (detail.fixed_questions ?? [])
+      .slice()
+      .sort((left, right) => left.display_order - right.display_order)
+      .map((item) => `${item.question_id}:${item.question_version_id}:${formatScore(item.score)}:${item.display_order}`)
+      .join("\n"),
+    paper_rules_text: (detail.paper_rules ?? [])
+      .map((item) =>
+        [item.question_type, formatScore(item.score_per_question), item.question_count, item.bank_ids?.join("|") ?? ""].join(":")
+      )
+      .join("\n")
+  };
+}
+
+function parseTargets(value: string): ExamInput["targets"] {
+  return value
+    .split(/\n|,/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [targetType, targetID] = line.split(":").map((part) => part.trim());
+      return {
+        target_type: targetType,
+        target_id: Number(targetID)
+      };
+    })
+    .filter((item) => item.target_type && Number.isFinite(item.target_id) && item.target_id > 0);
+}
+
+function parseFixedQuestions(value: string): ExamInput["fixed_questions"] {
+  return value
+    .split(/\n|,/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [questionID, questionVersionID, score, displayOrder] = line.split(":").map((part) => part.trim());
+      return {
+        question_id: Number(questionID),
+        question_version_id: Number(questionVersionID),
+        score: Number(score),
+        display_order: Number(displayOrder)
+      };
+    })
+    .filter(
+      (item) =>
+        Number.isFinite(item.question_id) &&
+        Number.isFinite(item.question_version_id) &&
+        Number.isFinite(item.score) &&
+        Number.isFinite(item.display_order) &&
+        item.question_id > 0 &&
+        item.question_version_id > 0 &&
+        item.score > 0 &&
+        item.display_order > 0
+    );
+}
+
+function parsePaperRules(value: string): ExamInput["paper_rules"] {
+  return value
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [questionType, scorePerQuestion, questionCount, bankIDText] = line.split(":").map((part) => part.trim());
+      const bankIDs = bankIDText
+        ? bankIDText
+            .split("|")
+            .map((item) => Number(item.trim()))
+            .filter((item) => Number.isFinite(item) && item > 0)
+        : [];
+      return {
+        question_type: questionType,
+        score_per_question: Number(scorePerQuestion),
+        question_count: Number(questionCount),
+        bank_ids: bankIDs
+      };
+    })
+    .filter(
+      (item) =>
+        item.question_type &&
+        Number.isFinite(item.score_per_question) &&
+        Number.isFinite(item.question_count) &&
+        item.score_per_question > 0 &&
+        item.question_count > 0
+    );
+}
+
+function parsePositiveInteger(value: string): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return Math.floor(parsed);
+}
+
+function toApiDateTime(value: string): string {
+  return new Date(value).toISOString();
+}
+
+function toDateTimeLocalValue(value?: string | null): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function emptySummary(exam: ExamDetail): ExamOverviewSummary {
+  return {
+    exam_id: exam.id,
+    exam_name: exam.name,
+    exam_mode: exam.exam_mode,
+    status: exam.status,
+    start_time: exam.start_time,
+    end_time: exam.end_time,
+    duration_minutes: exam.duration_minutes,
     total_score: 0,
     student_count: 0,
     participated_student_count: 0,
@@ -374,8 +746,25 @@ function emptySummary(examID: number, examName: string): ExamOverviewSummary {
   };
 }
 
+function normalizeErrorMessage(message: string): string {
+  if (/404|not found/i.test(message)) {
+    return "考试列表接口暂不可用，请检查后端 /api/v1/exams 服务是否已启动。";
+  }
+  if (/请求参数错误|invalid/i.test(message)) {
+    return "考试请求参数错误，请检查时间、发布范围或组卷规则。";
+  }
+  return message || "考试数据加载失败";
+}
+
 function formatDateTime(value?: string | null): string {
-  return value || "-";
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("zh-CN", { hour12: false });
 }
 
 function formatExamMode(value: string): string {
@@ -398,28 +787,48 @@ function formatExamStatus(value: string): string {
   }
 }
 
-function formatAttemptStatus(value?: string | null): string {
-  switch (value) {
-    case "submitted":
-      return "已交卷";
-    case "in_progress":
-      return "作答中";
-    case "not_started":
-      return "未开始";
+function formatTargets(targets: ExamTarget[]): string {
+  return targets.map((item) => `${formatTargetType(item.target_type)}:${item.target_id}`).join("、") || "未设置";
+}
+
+function formatTargetType(targetType: string): string {
+  switch (targetType) {
+    case "class":
+      return "班级";
+    case "course":
+      return "课程";
+    case "user":
+      return "用户";
     default:
-      return value || "-";
+      return targetType;
   }
 }
 
-function formatReviewStatus(value?: string | null): string {
-  switch (value) {
-    case "reviewed":
-      return "已批阅";
-    case "pending":
-      return "待批阅";
-    default:
-      return value || "-";
+function formatFixedQuestions(items: ExamFixedQuestion[]): string {
+  if (!items || items.length === 0) {
+    return "暂无固定题目";
   }
+  return items
+    .slice()
+    .sort((left, right) => left.display_order - right.display_order)
+    .map((item) => `第 ${item.display_order} 题：题目 ${item.question_id} / ${formatScore(item.score)} 分`)
+    .join("；");
+}
+
+function formatPaperRules(items: ExamPaperRule[]): string {
+  if (!items || items.length === 0) {
+    return "暂无抽题规则";
+  }
+  return items
+    .map((item, index) => `规则 ${index + 1}：${item.question_type} × ${item.question_count}，每题 ${formatScore(item.score_per_question)} 分`)
+    .join("；");
+}
+
+function formatScore(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "0";
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
 }
 
 function statusClassName(value?: string | null): string {
@@ -442,3 +851,30 @@ function statusClassName(value?: string | null): string {
       return "ui-admin-status ui-admin-status--draft";
   }
 }
+
+const pageStyle: CSSProperties = {
+  minHeight: "100%",
+  gap: 0
+};
+
+const dataRegionStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateRows: "auto minmax(0, 1fr)",
+  gap: 14,
+  minHeight: "100%",
+  padding: 22
+};
+
+const filterFormStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(200px, 300px) minmax(160px, 220px) minmax(180px, 240px) minmax(160px, 220px) auto",
+  alignItems: "end",
+  gap: 14,
+  margin: 0
+};
+
+const queryActionsStyle: CSSProperties = {
+  alignItems: "center",
+  paddingBottom: 1,
+  whiteSpace: "nowrap"
+};
