@@ -21,12 +21,13 @@ import { AdminWorkbench } from "./admin-workbench";
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
 import { ChallengePanel } from "./challenge-panel";
 import { ClassManagementPanel } from "./class-management-panel";
+import { CourseManagementPanel } from "./course-management-panel";
 import { ExamPanel, type ExamPanelApi } from "./exam-panel";
 import { GradeManagementPanel } from "./grade-management-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
 import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
-import { OrganizationPanel, type OrganizationApi } from "./organization-panel";
+import { type OrganizationApi } from "./organization-panel";
 import { PaperAssemblyPanel } from "./paper-assembly-panel";
 import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
 import { QuestionEditorPanel } from "./question-editor-panel";
@@ -500,9 +501,7 @@ function renderAdminView({
       {selectedPath === "/admin/org/schools" && organizationApi ? <SchoolManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/org/grades" && organizationApi ? <GradeManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/org/classes" && organizationApi ? <ClassManagementPanel api={organizationApi} /> : null}
-      {selectedPath === "/admin/courses" && organizationApi ? (
-        <OrganizationPanel api={organizationApi} view="courses" />
-      ) : null}
+      {selectedPath === "/admin/courses" && organizationApi ? <CourseManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
       {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
       {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
