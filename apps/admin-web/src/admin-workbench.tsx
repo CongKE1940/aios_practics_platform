@@ -40,11 +40,13 @@ interface WorkbenchStats {
   noticeUnreadCount: number;
 }
 
+type WorkbenchIconName = "organization" | "members" | "questionBank" | "exam" | "notice";
+
 interface DashboardCard {
   title: string;
   value: string;
   helper: string;
-  accent: string;
+  icon: WorkbenchIconName;
 }
 
 const emptyStats: WorkbenchStats = {
@@ -131,7 +133,7 @@ export function AdminWorkbench({
         {cards.map((card) => (
           <article key={card.title} className="ui-stat-card" style={statCardStyle}>
             <div className="ui-stat-card__icon" style={statIconStyle} aria-hidden="true">
-              {card.accent}
+              {renderWorkbenchIcon(card.icon)}
             </div>
             <div className="ui-stat-card__content" style={statContentStyle}>
               <span>{card.title}</span>
@@ -141,6 +143,7 @@ export function AdminWorkbench({
           </article>
         ))}
       </div>
+      <div role="separator" aria-label="工作台内容分割线" style={contentDividerStyle} />
     </section>
   );
 }
@@ -286,19 +289,19 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
       title: "成员数",
       value: formatNumber(stats.memberCount),
       helper: `教师数 ${formatNumber(stats.teacherCount)} / 学生数 ${formatNumber(stats.studentCount)}`,
-      accent: "员"
+      icon: "members"
     },
     {
       title: "题库数",
       value: formatNumber(stats.questionBankCount),
       helper: `题目数 ${formatNumber(stats.questionCount)}`,
-      accent: "题"
+      icon: "questionBank"
     },
     {
       title: "考试数",
       value: formatNumber(stats.examCount),
       helper: `通过率 ${formatPercent(stats.passRate)}`,
-      accent: "考"
+      icon: "exam"
     }
   ];
 
@@ -308,7 +311,7 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
         title: "组织数",
         value: formatNumber(stats.organizationCount),
         helper: `年级数 ${formatNumber(stats.gradeCount)} / 班级数 ${formatNumber(stats.classCount)}`,
-        accent: "组"
+        icon: "organization"
       },
       ...sharedCards
     ];
@@ -320,9 +323,72 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
       title: "公告数",
       value: formatNumber(stats.noticeCount),
       helper: `已读人数 ${formatNumber(stats.noticeReadCount)} / 未读人数 ${formatNumber(stats.noticeUnreadCount)}`,
-      accent: "告"
+      icon: "notice"
     }
   ];
+}
+
+function renderWorkbenchIcon(icon: WorkbenchIconName) {
+  const commonProps = {
+    width: 28,
+    height: 28,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    focusable: "false" as const
+  };
+
+  switch (icon) {
+    case "organization":
+      return (
+        <svg {...commonProps}>
+          <path d="M4 21V7.8L12 4l8 3.8V21" />
+          <path d="M8 21v-7h8v7" />
+          <path d="M8 10h.01" />
+          <path d="M12 10h.01" />
+          <path d="M16 10h.01" />
+        </svg>
+      );
+    case "members":
+      return (
+        <svg {...commonProps}>
+          <path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20" />
+          <path d="M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+          <path d="M20 20v-1a3 3 0 0 0-2.2-2.9" />
+          <path d="M16.5 4.4a3 3 0 0 1 0 5.2" />
+        </svg>
+      );
+    case "questionBank":
+      return (
+        <svg {...commonProps}>
+          <path d="M5 4h10.5A3.5 3.5 0 0 1 19 7.5V20H8.5A3.5 3.5 0 0 1 5 16.5V4Z" />
+          <path d="M8 4v12.5A3.5 3.5 0 0 0 11.5 20" />
+          <path d="M11 8h4" />
+          <path d="M11 12h3" />
+        </svg>
+      );
+    case "exam":
+      return (
+        <svg {...commonProps}>
+          <path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+          <path d="M14 3v5h5" />
+          <path d="m8.5 13 2 2 4-5" />
+          <path d="M8.5 18h6" />
+        </svg>
+      );
+    case "notice":
+      return (
+        <svg {...commonProps}>
+          <path d="M6 10v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-7" />
+          <path d="M4 10h16" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+          <path d="M10 14h4" />
+        </svg>
+      );
+  }
 }
 
 function createWorkbenchApi() {
@@ -385,17 +451,35 @@ const workbenchStyle: CSSProperties = {
 
 const statGridStyle: CSSProperties = {
   alignItems: "stretch",
-  margin: 0
+  margin: 0,
+  gridAutoRows: 132
 };
 
 const statCardStyle: CSSProperties = {
-  minHeight: 146
+  height: 132,
+  maxHeight: 132,
+  minHeight: 0,
+  overflow: "hidden",
+  boxSizing: "border-box"
 };
 
 const statIconStyle: CSSProperties = {
-  flex: "0 0 auto"
+  flex: "0 0 48px",
+  width: 48,
+  height: 48,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center"
 };
 
 const statContentStyle: CSSProperties = {
-  minWidth: 0
+  minWidth: 0,
+  overflow: "hidden"
+};
+
+const contentDividerStyle: CSSProperties = {
+  height: 1,
+  width: "100%",
+  marginTop: 22,
+  background: "rgba(15, 23, 42, 0.12)"
 };
