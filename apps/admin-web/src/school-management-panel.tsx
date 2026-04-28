@@ -83,25 +83,22 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const columns = useMemo<Array<FixedActionListColumn<SchoolOrganization>>>(
     () => [
       {
-        key: "logo_url",
-        title: "头像",
-        width: 82,
-        render: (school) => (
-          <img
-            src={school.logo_url || defaultLogoDataUrl}
-            alt=""
-            style={logoStyle}
-            onError={(event) => {
-              event.currentTarget.src = defaultLogoDataUrl;
-            }}
-          />
-        )
+        key: "name",
+        title: "名称",
+        width: 360,
+        render: (school) => <SchoolIdentityCell school={school} />
       },
-      { key: "object_type", title: "类型", width: 110, render: (school) => formatObjectType(school.object_type) },
-      { key: "name", title: "名称", render: (school) => school.name },
-      { key: "english_name", title: "英文名", render: (school) => school.english_name || "-" },
-      { key: "code", title: "系统编码", width: 180, render: (school) => school.code },
-      { key: "address", title: "地址", render: (school) => school.address || "-" },
+      {
+        key: "object_type",
+        title: "类型",
+        width: 140,
+        render: (school) => <span style={typePillStyle}>{formatObjectType(school.object_type)}</span>
+      },
+      {
+        key: "address",
+        title: "地址",
+        render: (school) => <span style={addressTextStyle}>{school.address || "未维护地址"}</span>
+      },
       {
         key: "status",
         title: "状态",
@@ -417,7 +414,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
 
       {modal ? (
         <div className="ui-admin-modal-backdrop">
-          <section className="ui-admin-modal" aria-label="学校与组织管理弹层">
+          <section className="ui-admin-modal" aria-label="学校与组织管理弹层" style={modalShellStyle}>
             {modal.type === "detail" ? (
               <>
                 <div className="ui-admin-modal__header">
@@ -447,37 +444,101 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                 </div>
               </>
             ) : (
-              <>
-                <div className="ui-admin-modal__header">
-                  <div><h3>{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3><p>{modal.type === "create" ? "编码由系统自动生成" : `系统编码：${modal.school.code}`}</p></div>
+              <form onSubmit={(event) => void handleSubmit(event)} style={editorCardStyle}>
+                <div style={editorHeroStyle}>
+                  <div>
+                    <span style={editorEyebrowStyle}>{modal.type === "create" ? "CREATE" : "EDIT"}</span>
+                    <h3 style={editorTitleStyle}>{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3>
+                    <p style={editorDescriptionStyle}>
+                      {modal.type === "create" ? "维护基础信息后，系统将自动生成唯一编码。" : `系统编码：${modal.school.code}`}
+                    </p>
+                  </div>
                   <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>关闭</button>
                 </div>
-                <form onSubmit={(event) => void handleSubmit(event)}>
-                  <div className="ui-admin-modal__body">
-                    <div style={logoUploadRowStyle}>
-                      <img src={form.logo_url || defaultLogoDataUrl} alt="" style={profileLogoStyle} />
-                      <div className="ui-admin-form__field" style={{ flex: 1 }}>
-                        <label htmlFor="school_logo_file">校徽/头像</label>
-                        <input id="school_logo_file" type="file" accept="image/*" onChange={(event) => void handleLogoFile(event.target.files?.[0] ?? null)} />
-                        <small className="ui-admin-subtle">可为空；为空时系统展示默认图像。</small>
+
+                <div style={editorBodyStyle}>
+                  <aside style={logoCardStyle}>
+                    <span style={logoCardLabelStyle}>头像预览</span>
+                    <img src={form.logo_url || defaultLogoDataUrl} alt="" style={editorLogoStyle} />
+                    <strong style={previewNameStyle}>{form.name.trim() || "未命名对象"}</strong>
+                    <span style={previewTypeStyle}>{formatObjectType(form.object_type)}</span>
+                    <div className="ui-admin-form__field" style={logoUploadFieldStyle}>
+                      <label htmlFor="school_logo_file">上传校徽/头像</label>
+                      <input id="school_logo_file" type="file" accept="image/*" onChange={(event) => void handleLogoFile(event.target.files?.[0] ?? null)} />
+                      <small className="ui-admin-subtle">可为空，为空时展示默认图像。</small>
+                    </div>
+                  </aside>
+
+                  <section style={formCardStyle}>
+                    <div style={formSectionHeaderStyle}>
+                      <span style={formSectionKickerStyle}>基础资料</span>
+                      <strong>学校与组织统一管理信息</strong>
+                    </div>
+                    <div style={editorGridStyle}>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="school_object_type">类型</label>
+                        <select
+                          id="school_object_type"
+                          value={form.object_type}
+                          disabled={!isSystemAdmin || modal.type === "edit"}
+                          onChange={(event) => setForm((current) => ({ ...current, object_type: normalizeSchoolObjectType(event.target.value) }))}
+                        >
+                          <option value="school">学校</option>
+                          <option value="organization">组织</option>
+                        </select>
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="school_name">名称</label>
+                        <input id="school_name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="school_english_name">英文名</label>
+                        <input id="school_english_name" value={form.english_name} onChange={(event) => setForm((current) => ({ ...current, english_name: event.target.value }))} />
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="school_logo_url">校徽地址 logo_url</label>
+                        <input id="school_logo_url" value={form.logo_url} placeholder="可粘贴图片 URL，也可上传文件" onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} />
+                      </div>
+                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                        <label htmlFor="school_address">地址</label>
+                        <input id="school_address" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} />
                       </div>
                     </div>
-                    <div className="ui-admin-form__grid">
-                      <div className="ui-admin-form__field"><label htmlFor="school_object_type">类型</label><select id="school_object_type" value={form.object_type} disabled={!isSystemAdmin || modal.type === "edit"} onChange={(event) => setForm((current) => ({ ...current, object_type: normalizeSchoolObjectType(event.target.value) }))}><option value="school">学校</option><option value="organization">组织</option></select></div>
-                      <div className="ui-admin-form__field"><label htmlFor="school_name">名称</label><input id="school_name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></div>
-                      <div className="ui-admin-form__field"><label htmlFor="school_english_name">英文名</label><input id="school_english_name" value={form.english_name} onChange={(event) => setForm((current) => ({ ...current, english_name: event.target.value }))} /></div>
-                      <div className="ui-admin-form__field"><label htmlFor="school_logo_url">校徽地址 logo_url</label><input id="school_logo_url" value={form.logo_url} placeholder="可粘贴图片 URL，也可上传文件" onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} /></div>
-                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}><label htmlFor="school_address">地址</label><input id="school_address" value={form.address} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} /></div>
-                    </div>
+                  </section>
+                </div>
+
+                <div style={editorFooterStyle}>
+                  <span style={editorFooterHintStyle}>新增时编码自动生成，编辑时编码不可修改。</span>
+                  <div className="ui-admin-actions-bar__group">
+                    <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>取消</button>
+                    <button type="submit" className="ui-button ui-button--primary">{modal.type === "create" ? "新增" : "保存修改"}</button>
                   </div>
-                  <div className="ui-admin-modal__footer"><button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>取消</button><button type="submit" className="ui-button ui-button--primary">{modal.type === "create" ? "新增" : "保存修改"}</button></div>
-                </form>
-              </>
+                </div>
+              </form>
             )}
           </section>
         </div>
       ) : null}
     </section>
+  );
+}
+
+function SchoolIdentityCell({ school }: { school: SchoolOrganization }) {
+  return (
+    <div style={identityCellStyle}>
+      <img
+        src={school.logo_url || defaultLogoDataUrl}
+        alt=""
+        style={logoStyle}
+        onError={(event) => {
+          event.currentTarget.src = defaultLogoDataUrl;
+        }}
+      />
+      <div style={identityTextStyle}>
+        <strong style={identityNameStyle}>{school.name}</strong>
+        <span style={identityMetaStyle}>{school.english_name || school.code || "暂无英文名"}</span>
+      </div>
+    </div>
   );
 }
 
@@ -501,10 +562,34 @@ const pageStyle: CSSProperties = { minHeight: "100%", gap: 0 };
 const dataRegionStyle: CSSProperties = { display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: 14, minHeight: "100%", padding: 22 };
 const filterFormStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(240px, 360px) minmax(160px, 220px) minmax(180px, 240px) auto", alignItems: "end", gap: 14, margin: 0 };
 const queryActionsStyle: CSSProperties = { alignItems: "center", paddingBottom: 1, whiteSpace: "nowrap" };
-const logoStyle: CSSProperties = { width: 42, height: 42, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc" };
+const identityCellStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 12, minWidth: 0 };
+const identityTextStyle: CSSProperties = { display: "grid", gap: 3, minWidth: 0 };
+const identityNameStyle: CSSProperties = { color: "#0f172a", fontSize: 14, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const identityMetaStyle: CSSProperties = { color: "#64748b", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const addressTextStyle: CSSProperties = { color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: 420 };
+const typePillStyle: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 54, padding: "4px 10px", borderRadius: 999, background: "#eef2ff", color: "#3730a3", fontWeight: 700, fontSize: 12 };
+const logoStyle: CSSProperties = { width: 42, height: 42, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc", flex: "0 0 auto" };
 const profileLogoStyle: CSSProperties = { width: 96, height: 96, borderRadius: 24, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc" };
 const profileHeaderStyle: CSSProperties = { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 18, alignItems: "start" };
 const profileMetaStyle: CSSProperties = { margin: 0, wordBreak: "break-word" };
-const logoUploadRowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 16, marginBottom: 18 };
 const cascadeOptionStyle: CSSProperties = { display: "flex", alignItems: "flex-start", gap: 10, marginTop: 16, fontWeight: 700 };
 const dangerHintStyle: CSSProperties = { marginTop: 12, color: "#b91c1c", fontWeight: 700 };
+const modalShellStyle: CSSProperties = { width: "min(940px, calc(100vw - 48px))", maxHeight: "calc(100vh - 64px)", overflow: "auto" };
+const editorCardStyle: CSSProperties = { display: "grid", gap: 0, borderRadius: 28, overflow: "hidden", background: "#ffffff", boxShadow: "0 24px 80px rgba(15, 23, 42, 0.22)", border: "1px solid rgba(148, 163, 184, 0.24)" };
+const editorHeroStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 24, alignItems: "flex-start", padding: "26px 28px", background: "linear-gradient(135deg, #0f172a 0%, #1e293b 52%, #334155 100%)", color: "#fff" };
+const editorEyebrowStyle: CSSProperties = { display: "inline-flex", marginBottom: 8, color: "#bfdbfe", fontSize: 11, fontWeight: 800, letterSpacing: "0.14em" };
+const editorTitleStyle: CSSProperties = { margin: 0, fontSize: 24, lineHeight: 1.2, fontWeight: 800 };
+const editorDescriptionStyle: CSSProperties = { margin: "8px 0 0", color: "rgba(226, 232, 240, 0.86)", fontSize: 13 };
+const editorBodyStyle: CSSProperties = { display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 18, padding: 22, background: "linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)" };
+const logoCardStyle: CSSProperties = { display: "grid", justifyItems: "center", alignContent: "start", gap: 12, padding: 20, borderRadius: 22, background: "#fff", border: "1px solid rgba(148, 163, 184, 0.22)", boxShadow: "0 14px 34px rgba(15, 23, 42, 0.08)" };
+const logoCardLabelStyle: CSSProperties = { justifySelf: "start", color: "#64748b", fontSize: 12, fontWeight: 800 };
+const editorLogoStyle: CSSProperties = { width: 108, height: 108, borderRadius: 28, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc" };
+const previewNameStyle: CSSProperties = { maxWidth: "100%", color: "#0f172a", fontSize: 16, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const previewTypeStyle: CSSProperties = { padding: "4px 10px", borderRadius: 999, background: "#f1f5f9", color: "#475569", fontSize: 12, fontWeight: 700 };
+const logoUploadFieldStyle: CSSProperties = { width: "100%", marginTop: 10 };
+const formCardStyle: CSSProperties = { display: "grid", gap: 18, padding: 22, borderRadius: 22, background: "#fff", border: "1px solid rgba(148, 163, 184, 0.22)", boxShadow: "0 14px 34px rgba(15, 23, 42, 0.08)" };
+const formSectionHeaderStyle: CSSProperties = { display: "grid", gap: 4, paddingBottom: 14, borderBottom: "1px solid rgba(226, 232, 240, 0.9)", color: "#0f172a" };
+const formSectionKickerStyle: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 800 };
+const editorGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 };
+const editorFooterStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "18px 22px", background: "#fff", borderTop: "1px solid rgba(226, 232, 240, 0.9)" };
+const editorFooterHintStyle: CSSProperties = { color: "#64748b", fontSize: 12 };
