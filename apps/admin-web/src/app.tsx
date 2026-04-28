@@ -21,6 +21,7 @@ import { AdminWorkbench } from "./admin-workbench";
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
 import { ChallengePanel } from "./challenge-panel";
 import { ExamPanel, type ExamPanelApi } from "./exam-panel";
+import { GradeManagementPanel } from "./grade-management-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
 import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
@@ -496,9 +497,7 @@ function renderAdminView({
     <>
       {selectedPath === "/admin/org" && organizationApi ? <SchoolManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/org/schools" && organizationApi ? <SchoolManagementPanel api={organizationApi} /> : null}
-      {selectedPath === "/admin/org/grades" && organizationApi ? (
-        <OrganizationPanel api={organizationApi} view="grades" />
-      ) : null}
+      {selectedPath === "/admin/org/grades" && organizationApi ? <GradeManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/org/classes" && organizationApi ? (
         <OrganizationPanel api={organizationApi} view="classes" />
       ) : null}
