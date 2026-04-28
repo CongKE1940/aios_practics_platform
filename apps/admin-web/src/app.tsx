@@ -22,7 +22,7 @@ import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
 import { ChallengePanel } from "./challenge-panel";
 import { ClassManagementPanel } from "./class-management-panel";
 import { CourseManagementPanel } from "./course-management-panel";
-import { DictionaryPanel, type DictionaryPanelApi } from "./dictionary-panel";
+import { DictionaryItemPanel, DictionaryPanel, type DictionaryPanelApi } from "./dictionary-panel";
 import { ExamPanel, type ExamPanelApi } from "./exam-panel";
 import { GradeManagementPanel } from "./grade-management-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
@@ -522,7 +522,12 @@ function renderAdminView({
       {selectedPath === "/admin/courses" && organizationApi ? <CourseManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
       {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
-      {selectedPath === "/admin/dictionaries" && currentDictionaryApi ? <DictionaryPanel api={currentDictionaryApi} /> : null}
+      {selectedPath === "/admin/dictionaries" && currentDictionaryApi ? (
+        <DictionaryPanel api={currentDictionaryApi} onNavigate={onNavigate} />
+      ) : null}
+      {selectedPath.startsWith("/admin/dictionaries/") && currentDictionaryApi ? (
+        <DictionaryItemPanel api={currentDictionaryApi} dictionaryId={parseDictionaryID(selectedPath)} onNavigate={onNavigate} />
+      ) : null}
       {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
       {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
         <QuestionBankPanel api={currentQuestionBankApi} />
@@ -561,7 +566,13 @@ function isKnownAdminPath(selectedPath: string): boolean {
     "/admin/challenges",
     "/admin/analytics",
     "/admin/history"
-  ].includes(selectedPath);
+  ].includes(selectedPath) || selectedPath.startsWith("/admin/dictionaries/");
+}
+
+function parseDictionaryID(path: string): number {
+  const [, , , rawID] = path.split("/");
+  const parsed = Number(rawID);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function getUserTypeLabel(userType: LoginResponse["user"]["user_type"]): string {

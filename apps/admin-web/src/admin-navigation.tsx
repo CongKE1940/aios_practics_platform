@@ -229,6 +229,10 @@ export function resolveAdminNavigationBreadcrumb(selectedPath: string, menus: Me
 }
 
 export function resolveAdminPageTitle(selectedPath: string): string {
+  if (selectedPath.startsWith("/admin/dictionaries/")) {
+    return "字典项管理";
+  }
+
   switch (selectedPath) {
     case "/admin/org":
     case "/admin/org/schools":
@@ -300,6 +304,9 @@ function flattenMenuItems(menus: MenuItem[]): MenuItem[] {
 
 function menuContainsPath(menu: MenuItem, targetPath: string): boolean {
   if (menu.path === targetPath) {
+    return true;
+  }
+  if (menu.path === "/admin/dictionaries" && targetPath.startsWith("/admin/dictionaries/")) {
     return true;
   }
 
