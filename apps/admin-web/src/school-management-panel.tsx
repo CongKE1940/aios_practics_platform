@@ -207,7 +207,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
           pageCount={pageCount}
           total={total}
           onPageChange={(nextPage) => void handlePageChange(nextPage)}
-          minHeight={420}
+          minHeight="100%"
           emptyText={loading ? "数据加载中..." : "暂无学校数据"}
           ariaLabel="学校列表"
           rowCheckboxLabel={(school) => `选择学校-${school.name}`}
@@ -345,8 +345,7 @@ const pageStyle: CSSProperties = {
 
 const dataRegionStyle: CSSProperties = {
   display: "grid",
-  gridTemplateRows: "auto auto",
-  alignContent: "start",
+  gridTemplateRows: "auto minmax(0, 1fr)",
   gap: 14,
   minHeight: "100%",
   padding: 22
