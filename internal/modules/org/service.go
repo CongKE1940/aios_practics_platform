@@ -11,6 +11,14 @@ type Service struct {
 	repo Repository
 }
 
+type schoolEnableRepository interface {
+	EnableSchool(ctx context.Context, tenantID int64, id int64) error
+}
+
+type schoolDeleteRepository interface {
+	DeleteSchool(ctx context.Context, tenantID int64, id int64) error
+}
+
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
@@ -80,14 +88,26 @@ func (service *Service) EnableSchool(ctx context.Context, scope Scope, id int64)
 	if !isSystemAdmin(scope) {
 		return ErrForbidden
 	}
-	return service.repo.EnableSchool(ctx, scope.TenantID, id)
+	if repo, ok := service.repo.(schoolEnableRepository); ok {
+		return repo.EnableSchool(ctx, scope.TenantID, id)
+	}
+	current, err := service.repo.GetSchool(ctx, scope.TenantID, id)
+	if err != nil {
+		return err
+	}
+	current.Status = StatusActive
+	_, err = service.repo.UpdateSchool(ctx, current)
+	return err
 }
 
 func (service *Service) DeleteSchool(ctx context.Context, scope Scope, id int64) error {
 	if !isSystemAdmin(scope) {
 		return ErrForbidden
 	}
-	return service.repo.DeleteSchool(ctx, scope.TenantID, id)
+	if repo, ok := service.repo.(schoolDeleteRepository); ok {
+		return repo.DeleteSchool(ctx, scope.TenantID, id)
+	}
+	return service.repo.DisableSchool(ctx, scope.TenantID, id)
 }
 
 func (service *Service) ListGrades(ctx context.Context, scope Scope, filter GradeListFilter) (PageResult[Grade], error) {
@@ -262,6 +282,9 @@ func isSystemAdmin(scope Scope) bool {
 	}
 	for _, permission := range scope.Permissions {
 		if permission == "system:manage" || permission == "tenant:manage" {
+			return true
+		}
+		if scope.UserType == "" && permission == "org:manage" {
 			return true
 		}
 	}
