@@ -35,6 +35,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/schools/:id/disable", handler.disableSchool)
 	router.POST("/schools/:id/enable", handler.enableSchool)
 	router.DELETE("/schools/:id", handler.deleteSchool)
+	router.POST("/schools/:id/delete", handler.deleteSchool)
 	router.GET("/grades", handler.listGrades)
 	router.POST("/grades", handler.createGrade)
 	router.GET("/grades/:id", handler.getGrade)
