@@ -10,17 +10,16 @@
   background: linear-gradient(180deg, rgba(255, 253, 247, 0.96), rgba(248, 242, 232, 0.9));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), 0 8px 18px rgba(24, 35, 50, 0.045);
   color: var(--ui-color-text);
-  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 
 .ui-form-control:hover:not(.is-disabled) {
   border-color: rgba(31, 93, 107, 0.32);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 12px 24px rgba(24, 35, 50, 0.07);
 }
 
 .ui-form-control:focus-within {
   border-color: rgba(31, 93, 107, 0.56);
-  box-shadow: 0 0 0 4px rgba(31, 93, 107, 0.12), 0 12px 24px rgba(24, 35, 50, 0.07);
+  box-shadow: 0 0 0 3px rgba(31, 93, 107, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.88);
 }
 
 .ui-form-control--compact {
@@ -38,7 +37,7 @@
   width: 100%;
   min-width: 0;
   min-height: 42px;
-  padding: 0 44px 0 14px;
+  padding: 0 38px 0 14px;
   border: 0 !important;
   border-radius: inherit !important;
   background: transparent !important;
@@ -84,7 +83,7 @@
   width: 100%;
   min-width: 0;
   min-height: 42px;
-  padding: 0 68px 0 14px;
+  padding: 0 46px 0 14px;
   border: 0;
   border-radius: inherit;
   background: transparent;
@@ -113,33 +112,37 @@
 }
 
 .ui-form-control__clear {
-  right: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  min-height: 22px;
-  padding: 0;
-  border: 1px solid rgba(24, 35, 50, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 252, 246, 0.9);
-  color: rgba(24, 35, 50, 0.54);
-  box-shadow: none;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
+  right: 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 18px !important;
+  min-width: 18px !important;
+  max-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(24, 35, 50, 0.12) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 252, 246, 0.82) !important;
+  color: rgba(24, 35, 50, 0.46) !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 16px !important;
+  white-space: nowrap !important;
 }
 
 .ui-form-control__clear:hover {
-  border-color: rgba(31, 93, 107, 0.32);
-  background: rgba(31, 93, 107, 0.09);
-  color: var(--ui-color-primary-strong);
-  transform: translateY(-50%);
+  border-color: rgba(31, 93, 107, 0.28) !important;
+  background: rgba(31, 93, 107, 0.08) !important;
+  color: var(--ui-color-primary-strong) !important;
+  transform: translateY(-50%) !important;
 }
 
 .ui-form-control__clear[hidden] {
-  display: none;
+  display: none !important;
 }
 
 .ui-form-control__chevron,
@@ -147,37 +150,37 @@
   right: 14px;
   pointer-events: none;
   color: var(--ui-color-primary-strong);
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .ui-form-control__calendar-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  background: rgba(31, 93, 107, 0.1);
-  font-size: 12px;
+  border-radius: 7px;
+  background: rgba(31, 93, 107, 0.08);
+  font-size: 11px;
 }
 
 .ui-form-control--select .ui-form-control__clear,
 .ui-form-control--date .ui-form-control__clear {
-  right: 40px;
+  right: 34px !important;
 }
 
 .ui-form-popover {
   position: absolute;
   left: 0;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   z-index: 60;
   width: 100%;
-  min-width: 220px;
-  border: 1px solid rgba(31, 93, 107, 0.18);
-  border-radius: 0 0 16px 16px;
-  background: rgba(255, 252, 246, 0.98);
-  box-shadow: 0 18px 44px rgba(24, 35, 50, 0.16);
+  min-width: 0;
+  border: 1px solid rgba(24, 35, 50, 0.16);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 253, 247, 0.98), rgba(248, 242, 232, 0.96));
+  box-shadow: 0 12px 26px rgba(24, 35, 50, 0.12);
   overflow: hidden;
 }
 
@@ -187,7 +190,7 @@
 
 .ui-form-select-list {
   display: grid;
-  padding: 6px;
+  padding: 4px;
 }
 
 .ui-form-select-list__option {
@@ -195,19 +198,23 @@
   align-items: center;
   width: 100%;
   min-height: 36px;
-  padding: 0 16px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   color: var(--ui-color-text);
   font: inherit;
   text-align: left;
 }
 
+.ui-form-select-list__option:empty {
+  display: none;
+}
+
 .ui-form-select-list__option:hover,
 .ui-form-select-list__option:focus-visible,
 .ui-form-select-list__option.is-selected {
-  background: rgba(31, 93, 107, 0.12);
+  background: rgba(31, 93, 107, 0.08);
   color: var(--ui-color-primary-strong);
   outline: none;
 }
@@ -220,7 +227,7 @@
 
 .ui-form-calendar__header {
   display: grid;
-  grid-template-columns: 36px 1fr 36px;
+  grid-template-columns: 32px 1fr 32px;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
@@ -232,15 +239,16 @@
 }
 
 .ui-form-calendar__header button {
-  width: 36px;
-  height: 32px;
-  min-height: 32px;
-  padding: 0;
-  border: 1px solid rgba(31, 93, 107, 0.16);
-  border-radius: 999px;
-  background: rgba(31, 93, 107, 0.06);
-  color: var(--ui-color-primary-strong);
-  font-weight: 900;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border: 1px solid rgba(31, 93, 107, 0.14) !important;
+  border-radius: 999px !important;
+  background: rgba(31, 93, 107, 0.06) !important;
+  color: var(--ui-color-primary-strong) !important;
+  font-weight: 900 !important;
 }
 
 .ui-form-calendar__weekdays,
@@ -259,31 +267,32 @@
 }
 
 .ui-form-calendar__day {
-  height: 34px;
-  min-height: 34px;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--ui-color-text);
-  font-size: 13px;
+  height: 34px !important;
+  min-height: 34px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: var(--ui-color-text) !important;
+  font-size: 13px !important;
 }
 
 .ui-form-calendar__day:hover,
 .ui-form-calendar__day:focus-visible {
-  background: rgba(31, 93, 107, 0.1);
-  color: var(--ui-color-primary-strong);
+  background: rgba(31, 93, 107, 0.1) !important;
+  color: var(--ui-color-primary-strong) !important;
   outline: none;
 }
 
 .ui-form-calendar__day.is-muted {
-  color: rgba(105, 115, 130, 0.45);
+  color: rgba(105, 115, 130, 0.45) !important;
 }
 
 .ui-form-calendar__day.is-selected {
-  background: var(--ui-color-primary, #2563eb);
-  color: #fff;
-  font-weight: 800;
+  background: var(--ui-color-primary, #2563eb) !important;
+  color: #fff !important;
+  font-weight: 800 !important;
 }
 
 .ui-admin-form__field .ui-form-control,
@@ -325,7 +334,7 @@ body[data-ui-theme="dark"] .ui-form-control {
 html[data-ui-theme="dark"] .ui-form-control:focus-within,
 body[data-ui-theme="dark"] .ui-form-control:focus-within {
   border-color: rgba(120, 166, 255, 0.7);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
 }
 
 html[data-ui-theme="dark"] .ui-form-popover,
@@ -346,7 +355,7 @@ body[data-ui-theme="dark"] .ui-form-calendar__header strong {
 
 html[data-ui-theme="dark"] .ui-form-control__clear,
 body[data-ui-theme="dark"] .ui-form-control__clear {
-  border-color: rgba(116, 146, 200, 0.26);
-  background: rgba(17, 30, 52, 0.9);
-  color: #aab8d4;
+  border-color: rgba(116, 146, 200, 0.26) !important;
+  background: rgba(17, 30, 52, 0.9) !important;
+  color: #aab8d4 !important;
 }
