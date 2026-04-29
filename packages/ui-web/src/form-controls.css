@@ -33,7 +33,8 @@
   cursor: not-allowed;
 }
 
-.ui-form-control__native {
+.ui-form-control__native,
+.ui-enhanced-native {
   width: 100%;
   min-width: 0;
   min-height: 42px;
@@ -53,49 +54,61 @@
   padding-inline-start: 12px;
 }
 
-.ui-form-control__native::placeholder {
-  color: rgba(105, 115, 130, 0.62);
+.ui-form-control__native::placeholder,
+.ui-enhanced-native::placeholder {
+  color: transparent !important;
 }
 
-.ui-form-control__native:disabled {
+.ui-form-control__native:disabled,
+.ui-enhanced-native:disabled {
   cursor: not-allowed;
 }
 
-.ui-form-control--select .ui-form-control__native {
-  appearance: none;
-  cursor: pointer;
-  padding-right: 68px;
+.ui-form-control__native-select,
+.ui-enhanced-native-select,
+.ui-form-control__native-date,
+.ui-enhanced-native-date {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  appearance: none !important;
 }
 
-.ui-form-control--select.is-clearable .ui-form-control__native {
-  padding-right: 82px;
+.ui-form-control__trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 68px 0 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  outline: none;
+  box-shadow: none;
 }
 
-.ui-form-control__native[type="date"],
-.ui-form-control__native[type="datetime-local"],
-.ui-form-control__native[type="month"],
-.ui-form-control__native[type="time"] {
-  color-scheme: light;
+.ui-form-control__trigger:disabled {
+  cursor: not-allowed;
 }
 
-.ui-form-control__native[type="date"]::-webkit-calendar-picker-indicator,
-.ui-form-control__native[type="datetime-local"]::-webkit-calendar-picker-indicator,
-.ui-form-control__native[type="month"]::-webkit-calendar-picker-indicator,
-.ui-form-control__native[type="time"]::-webkit-calendar-picker-indicator {
-  width: 18px;
-  height: 18px;
-  margin-right: 18px;
-  border-radius: 8px;
-  cursor: pointer;
-  opacity: 0.72;
-  filter: sepia(0.18) saturate(0.9) hue-rotate(136deg);
+.ui-form-control__trigger:empty::before {
+  content: "";
 }
 
 .ui-form-control__clear,
-.ui-form-control__chevron {
+.ui-form-control__chevron,
+.ui-form-control__calendar-icon {
   position: absolute;
   top: 50%;
-  z-index: 1;
+  z-index: 3;
   transform: translateY(-50%);
 }
 
@@ -125,7 +138,12 @@
   transform: translateY(-50%);
 }
 
-.ui-form-control__chevron {
+.ui-form-control__clear[hidden] {
+  display: none;
+}
+
+.ui-form-control__chevron,
+.ui-form-control__calendar-icon {
   right: 14px;
   pointer-events: none;
   color: var(--ui-color-primary-strong);
@@ -133,8 +151,139 @@
   font-weight: 900;
 }
 
-.ui-form-control--select .ui-form-control__clear {
-  right: 38px;
+.ui-form-control__calendar-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(31, 93, 107, 0.1);
+  font-size: 12px;
+}
+
+.ui-form-control--select .ui-form-control__clear,
+.ui-form-control--date .ui-form-control__clear {
+  right: 40px;
+}
+
+.ui-form-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  width: 100%;
+  min-width: 220px;
+  border: 1px solid rgba(31, 93, 107, 0.18);
+  border-radius: 0 0 16px 16px;
+  background: rgba(255, 252, 246, 0.98);
+  box-shadow: 0 18px 44px rgba(24, 35, 50, 0.16);
+  overflow: hidden;
+}
+
+.ui-form-popover[hidden] {
+  display: none;
+}
+
+.ui-form-select-list {
+  display: grid;
+  padding: 6px;
+}
+
+.ui-form-select-list__option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-color-text);
+  font: inherit;
+  text-align: left;
+}
+
+.ui-form-select-list__option:hover,
+.ui-form-select-list__option:focus-visible,
+.ui-form-select-list__option.is-selected {
+  background: rgba(31, 93, 107, 0.12);
+  color: var(--ui-color-primary-strong);
+  outline: none;
+}
+
+.ui-form-calendar {
+  width: 308px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.ui-form-calendar__header {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ui-form-calendar__header strong {
+  text-align: center;
+  color: var(--ui-color-text);
+}
+
+.ui-form-calendar__header button {
+  width: 36px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid rgba(31, 93, 107, 0.16);
+  border-radius: 999px;
+  background: rgba(31, 93, 107, 0.06);
+  color: var(--ui-color-primary-strong);
+  font-weight: 900;
+}
+
+.ui-form-calendar__weekdays,
+.ui-form-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.ui-form-calendar__weekdays {
+  margin-bottom: 6px;
+  color: rgba(105, 115, 130, 0.8);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ui-form-calendar__day {
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-color-text);
+  font-size: 13px;
+}
+
+.ui-form-calendar__day:hover,
+.ui-form-calendar__day:focus-visible {
+  background: rgba(31, 93, 107, 0.1);
+  color: var(--ui-color-primary-strong);
+  outline: none;
+}
+
+.ui-form-calendar__day.is-muted {
+  color: rgba(105, 115, 130, 0.45);
+}
+
+.ui-form-calendar__day.is-selected {
+  background: var(--ui-color-primary, #2563eb);
+  color: #fff;
+  font-weight: 800;
 }
 
 .ui-admin-form__field .ui-form-control,
@@ -179,26 +328,25 @@ body[data-ui-theme="dark"] .ui-form-control:focus-within {
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18);
 }
 
+html[data-ui-theme="dark"] .ui-form-popover,
+body[data-ui-theme="dark"] .ui-form-popover {
+  border-color: rgba(116, 146, 200, 0.28);
+  background: rgba(12, 22, 38, 0.98);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+}
+
+html[data-ui-theme="dark"] .ui-form-select-list__option,
+html[data-ui-theme="dark"] .ui-form-calendar__day,
+html[data-ui-theme="dark"] .ui-form-calendar__header strong,
+body[data-ui-theme="dark"] .ui-form-select-list__option,
+body[data-ui-theme="dark"] .ui-form-calendar__day,
+body[data-ui-theme="dark"] .ui-form-calendar__header strong {
+  color: #e8eefc;
+}
+
 html[data-ui-theme="dark"] .ui-form-control__clear,
 body[data-ui-theme="dark"] .ui-form-control__clear {
   border-color: rgba(116, 146, 200, 0.26);
   background: rgba(17, 30, 52, 0.9);
   color: #aab8d4;
-}
-
-html[data-ui-theme="dark"] .ui-form-control__native[type="date"],
-html[data-ui-theme="dark"] .ui-form-control__native[type="datetime-local"],
-html[data-ui-theme="dark"] .ui-form-control__native[type="month"],
-html[data-ui-theme="dark"] .ui-form-control__native[type="time"],
-body[data-ui-theme="dark"] .ui-form-control__native[type="date"],
-body[data-ui-theme="dark"] .ui-form-control__native[type="datetime-local"],
-body[data-ui-theme="dark"] .ui-form-control__native[type="month"],
-body[data-ui-theme="dark"] .ui-form-control__native[type="time"] {
-  color-scheme: dark;
-}
-
-html[data-ui-theme="dark"] select.ui-form-control__native option,
-body[data-ui-theme="dark"] select.ui-form-control__native option {
-  color: #e8eefc;
-  background: #101c30;
 }
