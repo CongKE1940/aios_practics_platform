@@ -8,6 +8,7 @@ declare global {
 
 const enhancedAttribute = "data-aios-enhanced-control";
 const ignoredInputTypes = new Set(["button", "checkbox", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+const dateLikeInputTypes = new Set(["date", "datetime-local", "month", "time"]);
 
 export function installFormControlEnhancer(root: ParentNode = document): Cleanup {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -15,7 +16,6 @@ export function installFormControlEnhancer(root: ParentNode = document): Cleanup
   }
 
   window.__aiosFormControlEnhancerCleanup?.();
-
   const cleanups = new Set<Cleanup>();
 
   function refresh() {
@@ -23,11 +23,7 @@ export function installFormControlEnhancer(root: ParentNode = document): Cleanup
       if (input.closest(".ui-form-control") || input.hasAttribute(enhancedAttribute) || ignoredInputTypes.has(input.type)) {
         return;
       }
-      if (input.type === "date") {
-        cleanups.add(enhanceDateInput(input));
-      } else {
-        cleanups.add(enhanceTextInput(input));
-      }
+      cleanups.add(dateLikeInputTypes.has(input.type) ? enhanceDateInput(input) : enhanceTextInput(input));
     });
 
     root.querySelectorAll<HTMLSelectElement>("select").forEach((select) => {
@@ -65,11 +61,7 @@ function enhanceTextInput(input: HTMLInputElement): Cleanup {
   input.parentNode?.insertBefore(wrapper, input);
   wrapper.appendChild(input);
 
-  const clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.className = "ui-form-control__clear";
-  clearButton.setAttribute("aria-label", "清空");
-  clearButton.textContent = "×";
+  const clearButton = createClearButton();
   wrapper.appendChild(clearButton);
 
   const update = () => {
@@ -78,8 +70,7 @@ function enhanceTextInput(input: HTMLInputElement): Cleanup {
   };
   const clear = () => {
     input.value = "";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    emitValueChange(input);
     input.focus();
     update();
   };
@@ -105,10 +96,11 @@ function enhanceTextInput(input: HTMLInputElement): Cleanup {
 function enhanceSelect(select: HTMLSelectElement): Cleanup {
   select.setAttribute(enhancedAttribute, "select");
   select.classList.add("ui-enhanced-native-select");
-  const firstEmptyOption = select.querySelector<HTMLOptionElement>('option[value=""]');
-  if (firstEmptyOption) {
-    firstEmptyOption.textContent = "";
-  }
+  Array.from(select.options).forEach((option) => {
+    if (!option.value) {
+      option.textContent = "";
+    }
+  });
 
   const wrapper = document.createElement("span");
   wrapper.className = "ui-form-control ui-form-control--select ui-form-control--enhanced";
@@ -121,11 +113,7 @@ function enhanceSelect(select: HTMLSelectElement): Cleanup {
   trigger.setAttribute("aria-haspopup", "listbox");
   wrapper.appendChild(trigger);
 
-  const clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.className = "ui-form-control__clear";
-  clearButton.setAttribute("aria-label", "清空");
-  clearButton.textContent = "×";
+  const clearButton = createClearButton();
   wrapper.appendChild(clearButton);
 
   const chevron = document.createElement("span");
@@ -161,13 +149,16 @@ function enhanceSelect(select: HTMLSelectElement): Cleanup {
   const renderOptions = () => {
     list.innerHTML = "";
     Array.from(select.options).forEach((option) => {
+      if (!option.value) {
+        return;
+      }
       const item = document.createElement("button");
       item.type = "button";
       item.className = "ui-form-select-list__option";
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", String(option.selected));
       item.disabled = option.disabled;
-      item.textContent = option.value ? option.textContent ?? "" : "";
+      item.textContent = option.textContent ?? "";
       if (option.selected) {
         item.classList.add("is-selected");
       }
@@ -242,11 +233,7 @@ function enhanceDateInput(input: HTMLInputElement): Cleanup {
   trigger.setAttribute("aria-haspopup", "dialog");
   wrapper.appendChild(trigger);
 
-  const clearButton = document.createElement("button");
-  clearButton.type = "button";
-  clearButton.className = "ui-form-control__clear";
-  clearButton.setAttribute("aria-label", "清空");
-  clearButton.textContent = "×";
+  const clearButton = createClearButton();
   wrapper.appendChild(clearButton);
 
   const calendarIcon = document.createElement("span");
@@ -284,9 +271,8 @@ function enhanceDateInput(input: HTMLInputElement): Cleanup {
     }
   };
   const setValue = (date: Date | null) => {
-    input.value = date ? formatISODate(date) : "";
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    input.value = date ? formatValueForInput(input.type, date) : "";
+    emitValueChange(input);
     update();
   };
   const renderCalendar = () => {
@@ -374,6 +360,20 @@ function enhanceDateInput(input: HTMLInputElement): Cleanup {
   };
 }
 
+function createClearButton(): HTMLButtonElement {
+  const clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.className = "ui-form-control__clear";
+  clearButton.setAttribute("aria-label", "清空");
+  clearButton.textContent = "×";
+  return clearButton;
+}
+
+function emitValueChange(input: HTMLInputElement) {
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 function preventDefault(event: Event) {
   event.preventDefault();
 }
@@ -391,10 +391,11 @@ function getCalendarDays(viewDate: Date) {
 }
 
 function parseISODate(value: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  const dateText = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
     return null;
   }
-  const [year, month, day] = value.split("-").map(Number);
+  const [year, month, day] = dateText.split("-").map(Number);
   return new Date(year, month - 1, day);
 }
 
@@ -403,6 +404,19 @@ function formatISODate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatValueForInput(type: string, date: Date): string {
+  if (type === "datetime-local") {
+    return `${formatISODate(date)}T00:00`;
+  }
+  if (type === "month") {
+    return formatISODate(date).slice(0, 7);
+  }
+  if (type === "time") {
+    return "00:00";
+  }
+  return formatISODate(date);
 }
 
 function addMonths(date: Date, months: number): Date {
