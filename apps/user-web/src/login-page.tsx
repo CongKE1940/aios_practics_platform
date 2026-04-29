@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import type { LoginOrganization, LoginRequest } from "@aios/api-sdk";
-import { StatusNotice } from "@aios/ui-web";
+import { FormInput, FormSelect, StatusNotice, UiButton } from "@aios/ui-web";
 import brandIcon from "../../../docs/images/图标.png";
 
 interface LoginPageProps {
@@ -47,46 +47,40 @@ export function LoginPage({
       </header>
       <div className="ui-field">
         <label htmlFor="tenant_code">组织</label>
-        <select
+        <FormSelect
           id="tenant_code"
           value={form.tenant_code}
-          onChange={(event) => setForm((current) => ({ ...current, tenant_code: event.target.value }))}
+          onValueChange={(value) => setForm((current) => ({ ...current, tenant_code: value }))}
           disabled={organizationsLoading}
-        >
-          <option value="">{organizationsLoading ? "组织加载中..." : "请选择组织"}</option>
-          {organizations.map((organization) => (
-            <option key={organization.tenant_code} value={organization.tenant_code}>
-              {formatOrganizationLabel(organization)}
-            </option>
-          ))}
-        </select>
+          emptyOption={{ value: "", label: "" }}
+          options={organizations.map((organization) => ({
+            value: organization.tenant_code,
+            label: formatOrganizationLabel(organization)
+          }))}
+        />
       </div>
       {organizationsError ? <StatusNotice tone="warning" title="组织列表加载失败" description={organizationsError} /> : null}
       <div className="ui-field">
         <label htmlFor="username">用户名</label>
-        <input
+        <FormInput
           id="username"
           value={form.username}
-          onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+          onValueChange={(value) => setForm((current) => ({ ...current, username: value }))}
         />
       </div>
       <div className="ui-field">
         <label htmlFor="password">密码</label>
-        <input
+        <FormInput
           id="password"
           type="password"
           value={form.password}
-          onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+          onValueChange={(value) => setForm((current) => ({ ...current, password: value }))}
         />
       </div>
       {errorMessage ? <StatusNotice tone="danger" title="登录失败" description={errorMessage} /> : null}
-      <button
-        type="submit"
-        className="ui-button ui-button--primary"
-        disabled={submitting || organizationsLoading || !form.tenant_code}
-      >
+      <UiButton type="submit" variant="primary" disabled={submitting || organizationsLoading || !form.tenant_code}>
         {submitting ? "登录中..." : "登录"}
-      </button>
+      </UiButton>
       <footer className="ui-auth-form__footer">
         <button type="button" className="ui-auth-link">
           管理端入口
