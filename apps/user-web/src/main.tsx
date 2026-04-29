@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { installFormControlEnhancer } from "@aios/ui-web";
 
 import "@aios/ui-web/src/ui-shell.css";
 import "@aios/ui-web/src/aios-redesign.css";
@@ -17,6 +18,8 @@ import "@aios/ui-web/src/centered-login.css";
 import "@aios/ui-web/src/form-controls.css";
 
 import { UserApp } from "./app";
+
+installFormControlEnhancer();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
