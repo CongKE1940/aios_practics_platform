@@ -33,9 +33,13 @@ SELECT
   qv.version_no
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
-WHERE q.tenant_id = ? AND q.deleted_at IS NULL
+WHERE q.deleted_at IS NULL
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 8)
+	if tenantID > 0 {
+		query += " AND q.tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.QuestionType != "" {
 		query += " AND q.question_type = ?"
 		args = append(args, filter.QuestionType)
@@ -90,7 +94,7 @@ WHERE q.tenant_id = ? AND q.deleted_at IS NULL
 }
 
 func (repo *MySQLRepository) GetQuestion(ctx context.Context, tenantID int64, id int64) (Question, error) {
-	const query = `
+	query := `
 SELECT
   q.id,
   q.tenant_id,
@@ -107,10 +111,15 @@ SELECT
   qv.version_no
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
-WHERE q.id = ? AND q.tenant_id = ? AND q.deleted_at IS NULL
-LIMIT 1
+WHERE q.id = ? AND q.deleted_at IS NULL
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND q.tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	item, err := scanQuestionScanner(row)
 	if err != nil {
 		return Question{}, wrapNotFound(err)
@@ -353,7 +362,7 @@ LIMIT 1
 }
 
 func (repo *MySQLRepository) getQuestionWithBanks(ctx context.Context, tenantID int64, id int64) (Question, error) {
-	const query = `
+	query := `
 SELECT
   q.id,
   q.tenant_id,
@@ -370,10 +379,15 @@ SELECT
   qv.version_no
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
-WHERE q.id = ? AND q.tenant_id = ? AND q.deleted_at IS NULL
-LIMIT 1
+WHERE q.id = ? AND q.deleted_at IS NULL
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND q.tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	item, err := scanQuestionScanner(row)
 	if err != nil {
 		return Question{}, wrapNotFound(err)

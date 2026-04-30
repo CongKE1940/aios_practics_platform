@@ -272,7 +272,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
 		return Scope{}, false
 	}
-	if !containsPermission(claims.Permissions, "analytics:view") {
+	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "analytics:view") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}
@@ -295,7 +295,7 @@ func (handler *Handler) authorizeExamOverview(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
 		return Scope{}, false
 	}
-	if !containsAnyPermission(claims.Permissions, "analytics:view", "exam:publish") {
+	if claims.UserType != "sys_admin" && !containsAnyPermission(claims.Permissions, "analytics:view", "exam:publish", "exam:manage") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}

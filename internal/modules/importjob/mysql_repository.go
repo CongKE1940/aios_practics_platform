@@ -84,9 +84,13 @@ func (repo *MySQLRepository) ListJobs(ctx context.Context, tenantID int64, filte
 	query := `
 SELECT id, tenant_id, import_type, template_version, file_asset_id, file_url, status, total_rows, success_rows, failed_rows, error_summary, operator_id, started_at, finished_at, created_at
 FROM import_jobs
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 4)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.ImportType != "" {
 		query += " AND import_type = ?"
 		args = append(args, filter.ImportType)
@@ -117,13 +121,18 @@ WHERE tenant_id = ?
 }
 
 func (repo *MySQLRepository) GetJob(ctx context.Context, tenantID int64, id int64) (ImportJob, error) {
-	const query = `
+	query := `
 SELECT id, tenant_id, import_type, template_version, file_asset_id, file_url, status, total_rows, success_rows, failed_rows, error_summary, operator_id, started_at, finished_at, created_at
 FROM import_jobs
-WHERE id = ? AND tenant_id = ?
-LIMIT 1
+WHERE id = ?
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	item, err := scanImportJobScanner(row)
 	if err != nil {
 		return ImportJob{}, wrapNotFound(err)

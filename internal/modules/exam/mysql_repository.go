@@ -21,16 +21,20 @@ func (repo *MySQLRepository) ListExams(ctx context.Context, scope Scope, filter 
 	if repo == nil || repo.db == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType == "student" || (scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish")) {
 		return repo.listStudentExams(ctx, scope, filter)
 	}
-	const query = `
+	query := `
 SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at
 FROM exams
-WHERE tenant_id = ?
-ORDER BY id DESC
 `
-	rows, err := repo.db.QueryContext(ctx, query, scope.TenantID)
+	args := make([]any, 0, 1)
+	if scope.TenantID > 0 {
+		query += "WHERE tenant_id = ?\n"
+		args = append(args, scope.TenantID)
+	}
+	query += " ORDER BY id DESC"
+	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return PageResult[Exam]{}, err
 	}
@@ -154,13 +158,18 @@ func (repo *MySQLRepository) GetExam(ctx context.Context, scope Scope, id int64)
 	if repo == nil || repo.db == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	const query = `
+	query := `
 SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
 FROM exams
-WHERE id = ? AND tenant_id = ?
-LIMIT 1
+WHERE id = ?
 `
-	row := repo.db.QueryRowContext(ctx, query, id, scope.TenantID)
+	args := []any{id}
+	if scope.TenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	item, ruleJSON, err := scanExamDetailScanner(row)
 	if err != nil {
 		return ExamDetail{}, wrapExamNotFound(err)

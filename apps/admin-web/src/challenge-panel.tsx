@@ -43,6 +43,7 @@ const initialChallenges: ChallengeItem[] = [
 export function ChallengePanel() {
   const [items, setItems] = useState(initialChallenges);
   const [selectedID, setSelectedID] = useState<number>(initialChallenges[0].id);
+  const [detailItem, setDetailItem] = useState<ChallengeItem | null>(null);
   const [decision, setDecision] = useState("通过并生成新版本");
   const [remark, setRemark] = useState("建议修正答案并同步更新解析。");
 
@@ -55,6 +56,11 @@ export function ChallengePanel() {
     setItems((current) =>
       current.map((item) => (item.id === selectedID ? { ...item, status: nextStatus } : item))
     );
+  }
+
+  function openDetail(item: ChallengeItem) {
+    setSelectedID(item.id);
+    setDetailItem(item);
   }
 
   return (
@@ -92,7 +98,7 @@ export function ChallengePanel() {
                   <span>{item.created_at}</span>
                 </div>
                 <span className={statusClassName(item.status)}>{formatStatus(item.status)}</span>
-                <button type="button" className="ui-admin-link" onClick={() => setSelectedID(item.id)}>
+                <button type="button" className="ui-admin-link" onClick={() => openDetail(item)}>
                   查看详情
                 </button>
               </article>
@@ -205,6 +211,55 @@ export function ChallengePanel() {
           </section>
         </aside>
       </div>
+
+      {detailItem ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="质疑详情弹层">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>质疑详情</h3>
+                <p>{detailItem.title}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDetailItem(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="ui-admin-modal__body">
+              <dl className="ui-admin-meta-list">
+                <div>
+                  <dt>质疑类型</dt>
+                  <dd>{formatChallengeType(detailItem.challenge_type)}</dd>
+                </div>
+                <div>
+                  <dt>处理状态</dt>
+                  <dd>{formatStatus(detailItem.status)}</dd>
+                </div>
+                <div>
+                  <dt>发起人</dt>
+                  <dd>{detailItem.challenger}</dd>
+                </div>
+                <div>
+                  <dt>题库</dt>
+                  <dd>{detailItem.question_bank}</dd>
+                </div>
+                <div>
+                  <dt>当前版本</dt>
+                  <dd>{detailItem.current_version}</dd>
+                </div>
+                <div>
+                  <dt>建议修正</dt>
+                  <dd>{detailItem.suggested_fix}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="ui-admin-modal__footer">
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setDetailItem(null)}>
+                我知道了
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,0 +1,170 @@
+/* 最终弹窗配色修正：详情、编辑、新增弹窗统一可读的明暗主题标题区。 */
+.ui-admin-route .ui-admin-modal,
+.ui-user-route .ui-admin-modal {
+  overflow: auto !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  border-radius: 28px !important;
+  background: #ffffff !important;
+  box-shadow: 0 26px 80px rgba(15, 23, 42, 0.24) !important;
+}
+
+.ui-admin-route .ui-admin-modal__header,
+.ui-user-route .ui-admin-modal__header {
+  border-bottom: 1px solid rgba(219, 234, 254, 0.22) !important;
+  background:
+    radial-gradient(circle at 12% 16%, rgba(96, 165, 250, 0.3), transparent 14rem),
+    linear-gradient(135deg, #13233b 0%, #1e3659 54%, #2d4b73 100%) !important;
+  color: #f8fbff !important;
+}
+
+.ui-admin-route .ui-admin-modal__header h3,
+.ui-user-route .ui-admin-modal__header h3 {
+  margin: 0 !important;
+  color: #f8fbff !important;
+  text-shadow: 0 2px 10px rgba(3, 7, 18, 0.28);
+}
+
+.ui-admin-route .ui-admin-modal__header p,
+.ui-user-route .ui-admin-modal__header p {
+  color: #dbeafe !important;
+}
+
+.ui-admin-route .ui-admin-modal__header .ui-button--ghost,
+.ui-user-route .ui-admin-modal__header .ui-button--ghost {
+  border-color: rgba(191, 219, 254, 0.58) !important;
+  background: rgba(239, 246, 255, 0.92) !important;
+  color: #174ea6 !important;
+}
+
+.ui-admin-route .ui-admin-modal__body,
+.ui-user-route .ui-admin-modal__body {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%) !important;
+}
+
+.ui-admin-route .ui-admin-modal__footer,
+.ui-user-route .ui-admin-modal__footer {
+  border-top: 1px solid rgba(226, 232, 240, 0.94) !important;
+  background: #ffffff !important;
+}
+
+.ui-admin-route .ui-admin-modal__body .ui-admin-meta-list,
+.ui-user-route .ui-admin-modal__body .ui-admin-meta-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+}
+
+.ui-admin-route .ui-admin-modal__body .ui-admin-meta-list > div,
+.ui-user-route .ui-admin-modal__body .ui-admin-meta-list > div {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.ui-admin-route .ui-admin-modal__body .ui-admin-meta-list dt,
+.ui-user-route .ui-admin-modal__body .ui-admin-meta-list dt {
+  margin: 0 0 8px;
+  color: #475569 !important;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ui-admin-route .ui-admin-modal__body .ui-admin-meta-list dd,
+.ui-user-route .ui-admin-modal__body .ui-admin-meta-list dd {
+  margin: 0;
+  color: #0f172a !important;
+  font-weight: 700;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal {
+  border-color: rgba(120, 166, 255, 0.28) !important;
+  background: #0f1b2e !important;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42) !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__header,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__header,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__header,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__header {
+  border-bottom-color: rgba(120, 166, 255, 0.26) !important;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.2), transparent 15rem),
+    linear-gradient(135deg, #07111f 0%, #10213a 56%, #173b63 100%) !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__header p,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__header p,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__header p,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__header p {
+  color: #c7d8f7 !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__header .ui-button--ghost,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__header .ui-button--ghost,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__header .ui-button--ghost,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__header .ui-button--ghost {
+  border-color: rgba(147, 197, 253, 0.35) !important;
+  background: rgba(30, 64, 117, 0.64) !important;
+  color: #dbeafe !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(59, 130, 246, 0.14), transparent 20rem),
+    linear-gradient(180deg, #0b1424 0%, #0f1b2e 100%) !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__footer,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__footer,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__footer,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__footer {
+  border-top-color: rgba(120, 166, 255, 0.18) !important;
+  background: #0f1b2e !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list > div,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body .ui-admin-meta-list > div,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list > div,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body .ui-admin-meta-list > div {
+  border-color: rgba(120, 166, 255, 0.22);
+  background: rgba(12, 22, 39, 0.78);
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list dt,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body .ui-admin-meta-list dt,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list dt,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body .ui-admin-meta-list dt {
+  color: #9fb0cf !important;
+}
+
+html[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list dd,
+html[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body .ui-admin-meta-list dd,
+body[data-ui-theme="dark"] .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list dd,
+body[data-ui-theme="dark"] .ui-user-route .ui-admin-modal__body .ui-admin-meta-list dd {
+  color: #f4f8ff !important;
+}
+
+@media (max-width: 760px) {
+  .ui-admin-route .ui-admin-modal__header,
+  .ui-user-route .ui-admin-modal__header,
+  .ui-admin-route .ui-admin-modal__footer,
+  .ui-user-route .ui-admin-modal__footer {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .ui-admin-route .ui-admin-modal__body .ui-admin-meta-list,
+  .ui-user-route .ui-admin-modal__body .ui-admin-meta-list {
+    grid-template-columns: 1fr !important;
+  }
+}

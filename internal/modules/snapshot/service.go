@@ -17,7 +17,7 @@ func (service *Service) ListAuditLogs(ctx context.Context, scope Scope, filter A
 	if service == nil || service.repo == nil {
 		return PageResult[AuditLog]{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "audit:view") {
+	if !canViewAudit(scope) {
 		return PageResult[AuditLog]{}, ErrForbidden
 	}
 	filter.ModuleName = strings.TrimSpace(filter.ModuleName)
@@ -35,7 +35,7 @@ func (service *Service) ListEntitySnapshots(
 	if service == nil || service.repo == nil {
 		return PageResult[EntitySnapshot]{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "audit:view") {
+	if !canViewAudit(scope) {
 		return PageResult[EntitySnapshot]{}, ErrForbidden
 	}
 	filter.EntityType = strings.TrimSpace(filter.EntityType)
@@ -52,7 +52,7 @@ func (service *Service) ListStudentTransitions(
 	if service == nil || service.repo == nil {
 		return PageResult[StudentTransition]{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "audit:view") {
+	if !canViewAudit(scope) {
 		return PageResult[StudentTransition]{}, ErrForbidden
 	}
 	filter.TransitionType = strings.TrimSpace(strings.ToLower(filter.TransitionType))
@@ -69,7 +69,7 @@ func (service *Service) RecordStudentTransition(
 	if service == nil || service.repo == nil {
 		return StudentTransition{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "org:manage") {
+	if !canManageOrg(scope) {
 		return StudentTransition{}, ErrForbidden
 	}
 	input.TransitionType = strings.TrimSpace(strings.ToLower(input.TransitionType))
@@ -94,7 +94,7 @@ func (service *Service) ListTeacherAssignmentHistories(
 	if service == nil || service.repo == nil {
 		return PageResult[TeacherAssignmentHistory]{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "audit:view") {
+	if !canViewAudit(scope) {
 		return PageResult[TeacherAssignmentHistory]{}, ErrForbidden
 	}
 	filter.Page = normalizePage(filter.Page)
@@ -109,6 +109,14 @@ func readTenantID(scope Scope) int64 {
 	return scope.TenantID
 }
 
+func canViewAudit(scope Scope) bool {
+	return scope.UserType == "sys_admin" || containsPermission(scope.Permissions, "audit:view") || containsPermission(scope.Permissions, "system:manage") || containsPermission(scope.Permissions, "tenant:manage")
+}
+
+func canManageOrg(scope Scope) bool {
+	return scope.UserType == "sys_admin" || containsPermission(scope.Permissions, "org:manage") || containsPermission(scope.Permissions, "system:manage") || containsPermission(scope.Permissions, "tenant:manage")
+}
+
 func (service *Service) RecordTeacherAssignmentChange(
 	ctx context.Context,
 	scope Scope,
@@ -117,7 +125,7 @@ func (service *Service) RecordTeacherAssignmentChange(
 	if service == nil || service.repo == nil {
 		return TeacherAssignmentHistory{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "org:manage") {
+	if !canManageOrg(scope) {
 		return TeacherAssignmentHistory{}, ErrForbidden
 	}
 	input.ChangeType = strings.TrimSpace(strings.ToLower(input.ChangeType))

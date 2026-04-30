@@ -78,7 +78,7 @@ func (handler *AdminHandler) updateRole(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.UpdateRole(ctx.Request.Context(), claims.TenantID, id, input)
+	result, err := handler.service.UpdateRole(ctx.Request.Context(), readTenantID(claims), id, input)
 	if err != nil {
 		writeRBACError(ctx, err)
 		return
@@ -113,7 +113,7 @@ func (handler *AdminHandler) assignRolePermissions(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.AssignRolePermissions(ctx.Request.Context(), claims.TenantID, id, input)
+	result, err := handler.service.AssignRolePermissions(ctx.Request.Context(), readTenantID(claims), id, input)
 	if err != nil {
 		writeRBACError(ctx, err)
 		return
@@ -132,7 +132,7 @@ func (handler *AdminHandler) authorize(ctx *gin.Context) (auth.AccessClaims, boo
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
-	if !containsPermission(claims.Permissions, "role:manage") {
+	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "role:manage") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
@@ -165,7 +165,7 @@ func writeRBACError(ctx *gin.Context, err error) {
 
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
 			return true
 		}
 	}

@@ -23,8 +23,10 @@ var (
 )
 
 type Scope struct {
-	TenantID int64
-	UserID   int64
+	TenantID    int64
+	UserID      int64
+	UserType    string
+	Permissions []string
 }
 
 type PageResult[T any] struct {

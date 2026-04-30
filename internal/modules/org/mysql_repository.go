@@ -329,19 +329,80 @@ func (repo *MySQLRepository) DisableClass(ctx context.Context, tenantID int64, i
 }
 
 func (repo *MySQLRepository) ListCourses(ctx context.Context, tenantID int64, filter CourseListFilter) (PageResult[Course], error) {
-	return PageResult[Course]{Items: []Course{}, Page: normalizePage(filter.Page), PageSize: normalizePageSize(filter.PageSize), Total: 0}, nil
+	query := `SELECT id, tenant_id, code, name, start_at, end_at, status, description, created_at, updated_at FROM courses WHERE deleted_at IS NULL`
+	args := make([]any, 0, 6)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	if filter.Status != "" {
+		query += " AND status = ?"
+		args = append(args, filter.Status)
+	}
+	if filter.Keyword != "" {
+		query += " AND (code LIKE ? OR name LIKE ? OR description LIKE ?)"
+		keyword := "%" + filter.Keyword + "%"
+		args = append(args, keyword, keyword, keyword)
+	}
+	if filter.ActiveAt != nil {
+		query += " AND (start_at IS NULL OR start_at <= ?) AND (end_at IS NULL OR end_at >= ?)"
+		args = append(args, *filter.ActiveAt, *filter.ActiveAt)
+	}
+	query += " ORDER BY id DESC"
+	rows, err := repo.queryContext(ctx, query, args...)
+	if err != nil {
+		return PageResult[Course]{}, err
+	}
+	defer rows.Close()
+	items := make([]Course, 0)
+	for rows.Next() {
+		course, err := scanCourse(rows)
+		if err != nil {
+			return PageResult[Course]{}, err
+		}
+		items = append(items, course)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[Course]{}, err
+	}
+	return paginateItems(items, filter.Page, filter.PageSize), nil
 }
 func (repo *MySQLRepository) GetCourse(ctx context.Context, tenantID int64, id int64) (Course, error) {
-	return Course{}, ErrNotFound
+	query := `SELECT id, tenant_id, code, name, start_at, end_at, status, description, created_at, updated_at FROM courses WHERE id = ? AND deleted_at IS NULL`
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	course, err := scanCourseScanner(repo.queryRowContext(ctx, query, args...))
+	if err != nil {
+		return Course{}, wrapNotFound(err)
+	}
+	return course, nil
 }
 func (repo *MySQLRepository) CreateCourse(ctx context.Context, course Course) (Course, error) {
-	return Course{}, ErrInvalidInput
+	const query = `INSERT INTO courses (tenant_id, code, name, start_at, end_at, status, description) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	result, err := repo.execContext(ctx, query, course.TenantID, course.Code, course.Name, nullTime(course.StartAt), nullTime(course.EndAt), course.Status, nullString(course.Description))
+	if err != nil {
+		return Course{}, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return Course{}, err
+	}
+	return repo.GetCourse(ctx, course.TenantID, id)
 }
 func (repo *MySQLRepository) UpdateCourse(ctx context.Context, course Course) (Course, error) {
-	return Course{}, ErrInvalidInput
+	const query = `UPDATE courses SET code = ?, name = ?, start_at = ?, end_at = ?, status = ?, description = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`
+	if err := repo.execAffectingOne(ctx, query, course.Code, course.Name, nullTime(course.StartAt), nullTime(course.EndAt), course.Status, nullString(course.Description), course.ID, course.TenantID); err != nil {
+		return Course{}, err
+	}
+	return repo.GetCourse(ctx, course.TenantID, course.ID)
 }
 func (repo *MySQLRepository) DisableCourse(ctx context.Context, tenantID int64, id int64) error {
-	return ErrNotFound
+	const query = `UPDATE courses SET status = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`
+	return repo.execAffectingOne(ctx, query, StatusDisabled, id, tenantID)
 }
 
 func (repo *MySQLRepository) execAffectingOne(ctx context.Context, query string, args ...any) error {
@@ -469,6 +530,26 @@ func scanClassScanner(scanner interface{ Scan(dest ...any) error }) (Class, erro
 		classItem.ClassNo = &value
 	}
 	return classItem, err
+}
+func scanCourse(rows *sql.Rows) (Course, error) { return scanCourseScanner(rows) }
+func scanCourseScanner(scanner interface{ Scan(dest ...any) error }) (Course, error) {
+	var course Course
+	var startAt sql.NullTime
+	var endAt sql.NullTime
+	var description sql.NullString
+	err := scanner.Scan(&course.ID, &course.TenantID, &course.Code, &course.Name, &startAt, &endAt, &course.Status, &description, &course.CreatedAt, &course.UpdatedAt)
+	if startAt.Valid {
+		value := startAt.Time
+		course.StartAt = &value
+	}
+	if endAt.Valid {
+		value := endAt.Time
+		course.EndAt = &value
+	}
+	if description.Valid {
+		course.Description = description.String
+	}
+	return course, err
 }
 
 func nullString(value string) any {

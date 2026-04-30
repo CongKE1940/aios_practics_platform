@@ -14,6 +14,7 @@ import "@aios/ui-web/src/page-normalization-final.css";
 import "@aios/ui-web/src/dark-mode-final.css";
 import "@aios/ui-web/src/dark-nav-borderless-final.css";
 import "@aios/ui-web/src/centered-login.css";
+import "@aios/ui-web/src/admin-modal-final.css";
 
 import { AdminApp } from "./app";
 

@@ -183,7 +183,7 @@ func (handler *Handler) authorize(ctx *gin.Context, requireManage bool) (Scope, 
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
 		return Scope{}, false
 	}
-	if requireManage && !hasPermission(claims.Permissions, "notice:manage") {
+	if requireManage && claims.UserType != "sys_admin" && !hasPermission(claims.Permissions, "notice:manage") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}
@@ -191,6 +191,7 @@ func (handler *Handler) authorize(ctx *gin.Context, requireManage bool) (Scope, 
 	return Scope{
 		UserID:      claims.UserID,
 		TenantID:    claims.TenantID,
+		UserType:    claims.UserType,
 		Permissions: claims.Permissions,
 	}, true
 }
@@ -233,7 +234,7 @@ func bearerToken(header string) string {
 
 func hasPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
 			return true
 		}
 	}

@@ -21,6 +21,7 @@ import {
 } from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
+import "./school-management-panel.css";
 
 export interface SchoolManagementApi {
   listDictionaryItems?(query: { dict_code: string; active_only?: boolean }): Promise<DictionaryItem[]>;
@@ -434,52 +435,70 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
         <div className="ui-admin-modal-backdrop">
           <section className="ui-admin-modal" aria-label="学校与组织管理弹层" style={modalShellStyle}>
             {modal.type === "detail" ? (
-              <>
-                <div className="ui-admin-modal__header">
+              <div style={editorCardStyle} className="school-management-modal-card">
+                <div style={editorHeroStyle} className="school-management-modal__hero">
                   <div>
-                    <h3>{formatSchoolType(modal.school)}详情</h3>
-                    <p>{modal.school.name}</p>
+                    <span style={editorEyebrowStyle} className="school-management-modal__eyebrow">DETAIL</span>
+                    <h3 style={editorTitleStyle} className="school-management-modal__title">{formatSchoolType(modal.school)}详情</h3>
+                    <p style={editorDescriptionStyle} className="school-management-modal__description">
+                      {`系统编码：${modal.school.code}`}
+                    </p>
                   </div>
-                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>关闭</button>
+                  <button type="button" className="ui-button ui-button--ghost school-management-modal__hero-close" onClick={closeModal}>关闭</button>
                 </div>
-                <div className="ui-admin-modal__body">
-                  <div style={profileHeaderStyle}>
-                    <img src={modal.school.logo_url || defaultLogoDataUrl} alt="" style={profileLogoStyle} onError={(event) => { event.currentTarget.src = defaultLogoDataUrl; }} />
-                    <dl className="ui-admin-meta-list" style={profileMetaStyle}>
-                      <div><dt>类型</dt><dd>{formatSchoolType(modal.school)}</dd></div>
-                      <div><dt>名称</dt><dd>{modal.school.name}</dd></div>
-                      <div><dt>英文名</dt><dd>{modal.school.english_name || "-"}</dd></div>
-                      <div><dt>系统编码</dt><dd>{modal.school.code}</dd></div>
-                      <div><dt>地址</dt><dd>{modal.school.address || "-"}</dd></div>
-                      <div><dt>校徽地址</dt><dd>{modal.school.logo_url || "默认图像"}</dd></div>
-                      <div><dt>状态</dt><dd>{formatStatusLabel(modal.school.status)}</dd></div>
+
+                <div style={editorBodyStyle} className="school-management-modal__body">
+                  <aside style={logoCardStyle} className="school-management-modal__preview-card">
+                    <span style={logoCardLabelStyle} className="school-management-modal__logo-label">头像预览</span>
+                    <img src={modal.school.logo_url || defaultLogoDataUrl} alt="" style={editorLogoStyle} onError={(event) => { event.currentTarget.src = defaultLogoDataUrl; }} />
+                    <strong style={previewNameStyle} className="school-management-modal__preview-name">{modal.school.name}</strong>
+                    <span style={previewTypeStyle} className="school-management-modal__preview-type">{formatSchoolType(modal.school)}</span>
+                    <span className={statusClassName(modal.school.status)}>{formatStatusLabel(modal.school.status)}</span>
+                  </aside>
+
+                  <section style={formCardStyle} className="school-management-modal__info-card">
+                    <div style={formSectionHeaderStyle} className="school-management-modal__section-header">
+                      <span style={formSectionKickerStyle} className="school-management-modal__section-kicker">基础资料</span>
+                      <strong>学校与组织统一管理信息</strong>
+                    </div>
+                    <dl style={detailGridStyle} className="school-management-modal__detail-grid">
+                      <DetailField label="类型" value={formatSchoolType(modal.school)} />
+                      <DetailField label="名称" value={modal.school.name} />
+                      <DetailField label="英文名" value={modal.school.english_name || "-"} />
+                      <DetailField label="系统编码" value={modal.school.code} />
+                      <DetailField label="地址" value={modal.school.address || "-"} wide />
+                      <DetailField label="校徽地址 logo_url" value={modal.school.logo_url || "默认图像"} wide />
                     </dl>
+                  </section>
+                </div>
+
+                <div style={editorFooterStyle} className="school-management-modal__footer">
+                  <span style={editorFooterHintStyle} className="school-management-modal__footer-hint">详情仅展示当前数据，进入编辑后可修改基础信息。</span>
+                  <div className="ui-admin-actions-bar__group">
+                    {isSystemAdmin ? <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleToggleStatus(modal.school)}>{modal.school.status === "active" ? "停用" : "启用"}</button> : null}
+                    <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(modal.school)}>编辑基础信息</button>
                   </div>
                 </div>
-                <div className="ui-admin-modal__footer">
-                  {isSystemAdmin ? <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleToggleStatus(modal.school)}>{modal.school.status === "active" ? "停用" : "启用"}</button> : null}
-                  <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(modal.school)}>编辑基础信息</button>
-                </div>
-              </>
+              </div>
             ) : (
-              <form onSubmit={(event) => void handleSubmit(event)} style={editorCardStyle}>
-                <div style={editorHeroStyle}>
+              <form onSubmit={(event) => void handleSubmit(event)} style={editorCardStyle} className="school-management-modal-card">
+                <div style={editorHeroStyle} className="school-management-modal__hero">
                   <div>
-                    <span style={editorEyebrowStyle}>{modal.type === "create" ? "CREATE" : "EDIT"}</span>
-                    <h3 style={editorTitleStyle}>{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3>
-                    <p style={editorDescriptionStyle}>
+                    <span style={editorEyebrowStyle} className="school-management-modal__eyebrow">{modal.type === "create" ? "CREATE" : "EDIT"}</span>
+                    <h3 style={editorTitleStyle} className="school-management-modal__title">{modal.type === "create" ? "新增学校/组织" : "编辑基础信息"}</h3>
+                    <p style={editorDescriptionStyle} className="school-management-modal__description">
                       {modal.type === "create" ? "维护基础信息后，系统将自动生成唯一编码。" : `系统编码：${modal.school.code}`}
                     </p>
                   </div>
-                  <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>关闭</button>
+                  <button type="button" className="ui-button ui-button--ghost school-management-modal__hero-close" onClick={closeModal}>关闭</button>
                 </div>
 
-                <div style={editorBodyStyle}>
-                  <aside style={logoCardStyle}>
-                    <span style={logoCardLabelStyle}>头像预览</span>
+                <div style={editorBodyStyle} className="school-management-modal__body">
+                  <aside style={logoCardStyle} className="school-management-modal__preview-card">
+                    <span style={logoCardLabelStyle} className="school-management-modal__logo-label">头像预览</span>
                     <img src={form.logo_url || defaultLogoDataUrl} alt="" style={editorLogoStyle} />
-                    <strong style={previewNameStyle}>{form.name.trim() || "未命名对象"}</strong>
-                    <span style={previewTypeStyle}>{formatFormType(form.object_type)}</span>
+                    <strong style={previewNameStyle} className="school-management-modal__preview-name">{form.name.trim() || "未命名对象"}</strong>
+                    <span style={previewTypeStyle} className="school-management-modal__preview-type">{formatFormType(form.object_type)}</span>
                     <div className="ui-admin-form__field" style={logoUploadFieldStyle}>
                       <label htmlFor="school_logo_file">上传校徽/头像</label>
                       <input id="school_logo_file" type="file" accept="image/*" onChange={(event) => void handleLogoFile(event.target.files?.[0] ?? null)} />
@@ -487,12 +506,12 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                     </div>
                   </aside>
 
-                  <section style={formCardStyle}>
-                    <div style={formSectionHeaderStyle}>
-                      <span style={formSectionKickerStyle}>基础资料</span>
+                  <section style={formCardStyle} className="school-management-modal__info-card">
+                    <div style={formSectionHeaderStyle} className="school-management-modal__section-header">
+                      <span style={formSectionKickerStyle} className="school-management-modal__section-kicker">基础资料</span>
                       <strong>学校与组织统一管理信息</strong>
                     </div>
-                    <div style={editorGridStyle}>
+                    <div style={editorGridStyle} className="school-management-modal__form-grid">
                       <div className="ui-admin-form__field">
                         <label htmlFor="school_object_type">类型</label>
                         <select
@@ -524,8 +543,8 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                   </section>
                 </div>
 
-                <div style={editorFooterStyle}>
-                  <span style={editorFooterHintStyle}>新增时编码自动生成，编辑时编码不可修改。</span>
+                <div style={editorFooterStyle} className="school-management-modal__footer">
+                  <span style={editorFooterHintStyle} className="school-management-modal__footer-hint">新增时编码自动生成，编辑时编码不可修改。</span>
                   <div className="ui-admin-actions-bar__group">
                     <button type="button" className="ui-button ui-button--ghost" onClick={closeModal}>取消</button>
                     <button type="submit" className="ui-button ui-button--primary">{modal.type === "create" ? "新增" : "保存修改"}</button>
@@ -537,6 +556,15 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function DetailField({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className="school-management-modal__detail-item" style={wide ? detailWideItemStyle : undefined}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -586,9 +614,8 @@ const identityMetaStyle: CSSProperties = { color: "#64748b", fontSize: 12, overf
 const addressTextStyle: CSSProperties = { color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: 420 };
 const typePillStyle: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 54, padding: "4px 10px", borderRadius: 999, background: "#eef2ff", color: "#3730a3", fontWeight: 700, fontSize: 12 };
 const logoStyle: CSSProperties = { width: 42, height: 42, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc", flex: "0 0 auto" };
-const profileLogoStyle: CSSProperties = { width: 96, height: 96, borderRadius: 24, objectFit: "cover", border: "1px solid rgba(148, 163, 184, 0.35)", background: "#f8fafc" };
-const profileHeaderStyle: CSSProperties = { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 18, alignItems: "start" };
-const profileMetaStyle: CSSProperties = { margin: 0, wordBreak: "break-word" };
+const detailGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, margin: 0 };
+const detailWideItemStyle: CSSProperties = { gridColumn: "1 / -1" };
 const cascadeOptionStyle: CSSProperties = { display: "flex", alignItems: "flex-start", gap: 10, marginTop: 16, fontWeight: 700 };
 const dangerHintStyle: CSSProperties = { marginTop: 12, color: "#b91c1c", fontWeight: 700 };
 const modalShellStyle: CSSProperties = { width: "min(940px, calc(100vw - 48px))", maxHeight: "calc(100vh - 64px)", overflow: "auto" };

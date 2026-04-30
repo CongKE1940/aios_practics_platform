@@ -410,7 +410,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", requestID(ctx)))
 		return Scope{}, false
 	}
-	if !hasPermission(claims.Permissions, "org:manage") {
+	if claims.UserType != "sys_admin" && !hasPermission(claims.Permissions, "org:manage") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}
@@ -494,7 +494,7 @@ func bearerToken(header string) string {
 }
 func hasPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
 			return true
 		}
 	}

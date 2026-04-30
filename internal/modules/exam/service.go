@@ -19,19 +19,19 @@ func (service *Service) ListExams(ctx context.Context, scope Scope, filter ExamL
 	if service == nil || service.repo == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "student" && !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "student" && scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
 		return PageResult[Exam]{}, ErrForbidden
 	}
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListExams(ctx, scope, filter)
+	return service.repo.ListExams(ctx, scopeForRead(scope), filter)
 }
 
 func (service *Service) CreateExam(ctx context.Context, scope Scope, input ExamInput) (ExamDetail, error) {
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
 		return ExamDetail{}, ErrForbidden
 	}
 	normalized, err := normalizeExamInput(input)
@@ -45,20 +45,20 @@ func (service *Service) GetExam(ctx context.Context, scope Scope, id int64) (Exa
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
 		return ExamDetail{}, ErrForbidden
 	}
 	if id <= 0 {
 		return ExamDetail{}, ErrInvalidInput
 	}
-	return service.repo.GetExam(ctx, scope, id)
+	return service.repo.GetExam(ctx, scopeForRead(scope), id)
 }
 
 func (service *Service) UpdateExam(ctx context.Context, scope Scope, id int64, input ExamInput) (ExamDetail, error) {
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
 		return ExamDetail{}, ErrForbidden
 	}
 	if id <= 0 {
@@ -68,20 +68,28 @@ func (service *Service) UpdateExam(ctx context.Context, scope Scope, id int64, i
 	if err != nil {
 		return ExamDetail{}, err
 	}
-	return service.repo.UpdateExam(ctx, scope, id, normalized)
+	targetScope, err := service.scopeForExamMutation(ctx, scope, id)
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	return service.repo.UpdateExam(ctx, targetScope, id, normalized)
 }
 
 func (service *Service) PublishExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error) {
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
 		return ExamDetail{}, ErrForbidden
 	}
 	if id <= 0 {
 		return ExamDetail{}, ErrInvalidInput
 	}
-	return service.repo.PublishExam(ctx, scope, id)
+	targetScope, err := service.scopeForExamMutation(ctx, scope, id)
+	if err != nil {
+		return ExamDetail{}, err
+	}
+	return service.repo.PublishExam(ctx, targetScope, id)
 }
 
 func (service *Service) StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error) {
@@ -197,6 +205,32 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	}
 
 	return input, nil
+}
+
+func (service *Service) scopeForExamMutation(ctx context.Context, scope Scope, id int64) (Scope, error) {
+	detail, err := service.repo.GetExam(ctx, scopeForRead(scope), id)
+	if err != nil {
+		return Scope{}, err
+	}
+	scope.TenantID = detail.TenantID
+	return scope, nil
+}
+
+func scopeForRead(scope Scope) Scope {
+	scope.TenantID = readTenantID(scope)
+	return scope
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" {
+		return 0
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return 0
+		}
+	}
+	return scope.TenantID
 }
 
 func judgeExamAnswer(correctAnswer map[string]any, submitted map[string]any) (bool, error) {

@@ -44,6 +44,7 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
   const [studentTransitions, setStudentTransitions] = useState<StudentTransitionItem[]>([]);
   const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignmentHistoryItem[]>([]);
   const [selectedSnapshotID, setSelectedSnapshotID] = useState<number | null>(null);
+  const [snapshotDetail, setSnapshotDetail] = useState<EntitySnapshotItem | null>(null);
   const [transitionForm, setTransitionForm] = useState(defaultTransitionForm);
   const [assignmentForm, setAssignmentForm] = useState(defaultAssignmentForm);
 
@@ -82,6 +83,11 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
     () => entitySnapshots.find((item) => item.id === selectedSnapshotID) ?? entitySnapshots[0] ?? null,
     [entitySnapshots, selectedSnapshotID]
   );
+
+  function openSnapshotDetail(item: EntitySnapshotItem) {
+    setSelectedSnapshotID(item.id);
+    setSnapshotDetail(item);
+  }
 
   async function handleTransitionSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -290,7 +296,7 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
                     <p>{`版本 ${item.version_no} · 实体 ${item.entity_id}`}</p>
                     <div className="ui-admin-row-meta">
                       <span>{formatSnapshotSummary(item)}</span>
-                      <button type="button" className="ui-admin-link" onClick={() => setSelectedSnapshotID(item.id)}>
+                      <button type="button" className="ui-admin-link" onClick={() => openSnapshotDetail(item)}>
                         查看
                       </button>
                     </div>
@@ -402,6 +408,56 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
             </aside>
           </div>
         </>
+      ) : null}
+
+      {snapshotDetail ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="快照详情弹层">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>快照详情</h3>
+                <p>{`${snapshotDetail.snapshot_type} / ${snapshotDetail.entity_type}`}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setSnapshotDetail(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="ui-admin-modal__body">
+              <dl className="ui-admin-meta-list">
+                <div>
+                  <dt>实体类型</dt>
+                  <dd>{snapshotDetail.entity_type}</dd>
+                </div>
+                <div>
+                  <dt>实体 ID</dt>
+                  <dd>{snapshotDetail.entity_id}</dd>
+                </div>
+                <div>
+                  <dt>快照类型</dt>
+                  <dd>{snapshotDetail.snapshot_type}</dd>
+                </div>
+                <div>
+                  <dt>版本号</dt>
+                  <dd>{snapshotDetail.version_no}</dd>
+                </div>
+                <div>
+                  <dt>触发事件</dt>
+                  <dd>{snapshotDetail.trigger_event_type ?? "-"}</dd>
+                </div>
+                <div>
+                  <dt>说明</dt>
+                  <dd>{formatSnapshotSummary(snapshotDetail)}</dd>
+                </div>
+              </dl>
+              <pre className="ui-admin-code-block">{JSON.stringify(snapshotDetail.snapshot_json, null, 2)}</pre>
+            </div>
+            <div className="ui-admin-modal__footer">
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setSnapshotDetail(null)}>
+                我知道了
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
     </section>
   );

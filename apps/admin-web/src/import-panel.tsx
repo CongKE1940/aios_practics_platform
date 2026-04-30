@@ -28,6 +28,7 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
   const [templatePreview, setTemplatePreview] = useState("");
   const [items, setItems] = useState<ImportJob[]>([]);
   const [rows, setRows] = useState<ImportJobRow[]>([]);
+  const [rowResultJob, setRowResultJob] = useState<ImportJob | null>(null);
   const [form, setForm] = useState(defaultForm);
 
   async function loadJobs() {
@@ -64,9 +65,10 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
     await loadJobs();
   }
 
-  async function handleLoadRows(id: number) {
-    const result = await api.listImportJobRows(id);
+  async function handleLoadRows(job: ImportJob) {
+    const result = await api.listImportJobRows(job.id);
     setRows(result.items);
+    setRowResultJob(job);
   }
 
   return (
@@ -176,7 +178,7 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
                       <td>{item.failed_rows}</td>
                       <td>
                         <div className="ui-admin-table__actions">
-                          <button type="button" className="ui-admin-link" onClick={() => void handleLoadRows(item.id)}>
+                          <button type="button" className="ui-admin-link" onClick={() => void handleLoadRows(item)}>
                             查看行结果
                           </button>
                         </div>
@@ -204,7 +206,9 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
                   <h3>行级结果</h3>
                 </div>
               </div>
-              {rows.length > 0 ? (
+              {rowResultJob ? (
+                <div className="ui-admin-empty-inline">行级结果已在弹窗中展示</div>
+              ) : rows.length > 0 ? (
                 <div className="ui-admin-mini-list">
                   {rows.map((row) => (
                     <article key={row.id} className="ui-admin-mini-item">
@@ -222,6 +226,63 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
               )}
             </section>
           </aside>
+        </div>
+      ) : null}
+
+      {rowResultJob ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="导入行结果弹层">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>导入行结果</h3>
+                <p>{`${rowResultJob.import_type} / ${rowResultJob.status}`}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setRowResultJob(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="ui-admin-modal__body">
+              <dl className="ui-admin-meta-list">
+                <div>
+                  <dt>总行数</dt>
+                  <dd>{rowResultJob.total_rows}</dd>
+                </div>
+                <div>
+                  <dt>成功</dt>
+                  <dd>{rowResultJob.success_rows}</dd>
+                </div>
+                <div>
+                  <dt>失败</dt>
+                  <dd>{rowResultJob.failed_rows}</dd>
+                </div>
+                <div>
+                  <dt>错误摘要</dt>
+                  <dd>{rowResultJob.error_summary ?? "-"}</dd>
+                </div>
+              </dl>
+              {rows.length > 0 ? (
+                <div className="ui-admin-mini-list">
+                  {rows.map((row) => (
+                    <article key={row.id} className="ui-admin-mini-item">
+                      <strong>{`第 ${row.row_no} 行`}</strong>
+                      <p>{row.error_message ?? row.status}</p>
+                      <div className="ui-admin-row-meta">
+                        <span>{row.error_code ?? "-"}</span>
+                        <span>{row.target_entity_type ?? "-"}</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="ui-admin-empty-inline">暂无行级结果</div>
+              )}
+            </div>
+            <div className="ui-admin-modal__footer">
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setRowResultJob(null)}>
+                我知道了
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
     </section>

@@ -292,6 +292,48 @@ LIMIT 1
 	return true, nil
 }
 
+func (repo *MySQLRepository) GetExamTenantID(ctx context.Context, examID int64) (int64, error) {
+	var tenantID int64
+	if err := repo.db.QueryRowContext(ctx, `SELECT tenant_id FROM exams WHERE id = ? LIMIT 1`, examID).Scan(&tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	return tenantID, nil
+}
+
+func (repo *MySQLRepository) GetExamAttemptTenantID(ctx context.Context, attemptID int64) (int64, error) {
+	var tenantID int64
+	if err := repo.db.QueryRowContext(ctx, `SELECT tenant_id FROM exam_attempts WHERE id = ? LIMIT 1`, attemptID).Scan(&tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	return tenantID, nil
+}
+
+func (repo *MySQLRepository) GetClassCourseTenantID(ctx context.Context, classID int64, courseID int64) (int64, error) {
+	const query = `
+SELECT c.tenant_id
+FROM classes c
+JOIN courses co ON co.tenant_id = c.tenant_id AND co.id = ?
+WHERE c.id = ?
+  AND c.status = 'active' AND co.status = 'active'
+  AND c.deleted_at IS NULL AND co.deleted_at IS NULL
+LIMIT 1
+`
+	var tenantID int64
+	if err := repo.db.QueryRowContext(ctx, query, courseID, classID).Scan(&tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	return tenantID, nil
+}
+
 func (repo *MySQLRepository) GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error) {
 	const statement = `
 SELECT
@@ -790,12 +832,31 @@ WHERE tcca.tenant_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC
 `
+	const allTenantQuery = `
+SELECT
+  c.id AS class_id,
+  c.name AS class_name,
+  co.id AS course_id,
+  co.name AS course_name
+FROM teacher_class_course_assignments tcca
+JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
+JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
+WHERE tcca.is_current = 1 AND tcca.status = 'active'
+  AND c.status = 'active' AND c.deleted_at IS NULL
+  AND co.status = 'active' AND co.deleted_at IS NULL
+ORDER BY c.name ASC, co.name ASC
+`
 
 	query := tenantQuery
-	args := []any{scope.TenantID}
+	tenantID := readTenantID(scope)
+	args := []any{tenantID}
+	if tenantID == 0 {
+		query = allTenantQuery
+		args = []any{}
+	}
 	if scope.UserType == "teacher" {
 		query = teacherQuery
-		args = append(args, scope.UserID)
+		args = []any{scope.TenantID, scope.UserID}
 	}
 
 	rows, err := repo.db.QueryContext(ctx, query, args...)

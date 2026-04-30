@@ -99,17 +99,29 @@ func (service *Service) CreateImportJob(ctx context.Context, scope Scope, input 
 func (service *Service) ListJobs(ctx context.Context, scope Scope, filter ImportJobListFilter) (PageResult[ImportJob], error) {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListJobs(ctx, scope.TenantID, filter)
+	return service.repo.ListJobs(ctx, readTenantID(scope), filter)
 }
 
 func (service *Service) GetJob(ctx context.Context, scope Scope, id int64) (ImportJob, error) {
-	return service.repo.GetJob(ctx, scope.TenantID, id)
+	return service.repo.GetJob(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) ListRows(ctx context.Context, scope Scope, jobID int64, filter ImportJobRowFilter) (PageResult[ImportJobRow], error) {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListRows(ctx, scope.TenantID, jobID, filter)
+	return service.repo.ListRows(ctx, readTenantID(scope), jobID, filter)
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" {
+		return 0
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return 0
+		}
+	}
+	return scope.TenantID
 }
 
 func (service *Service) importRow(ctx context.Context, scope Scope, jobID int64, importType string, dataRow csvDataRow) ImportJobRow {

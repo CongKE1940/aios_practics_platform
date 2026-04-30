@@ -21,7 +21,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) GetAdminOverview(ctx context.Context, scope Scope) (AdminOverviewResult, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return AdminOverviewResult{}, ErrForbidden
 	}
 	switch scope.UserType {
@@ -39,8 +39,56 @@ func readTenantID(scope Scope) int64 {
 	return scope.TenantID
 }
 
+type examTenantResolver interface {
+	GetExamTenantID(ctx context.Context, examID int64) (int64, error)
+}
+
+type attemptTenantResolver interface {
+	GetExamAttemptTenantID(ctx context.Context, attemptID int64) (int64, error)
+}
+
+type classCourseTenantResolver interface {
+	GetClassCourseTenantID(ctx context.Context, classID int64, courseID int64) (int64, error)
+}
+
+func canViewAnalytics(scope Scope) bool {
+	return scope.UserType == "sys_admin" || containsAnyPermission(scope.Permissions, "analytics:view", "system:manage", "tenant:manage")
+}
+
+func canViewExamAnalytics(scope Scope) bool {
+	return scope.UserType == "sys_admin" || containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish", "exam:manage", "system:manage", "tenant:manage")
+}
+
+func (service *Service) resolveExamTenantID(ctx context.Context, examID int64) (int64, error) {
+	if resolver, ok := service.repo.(examTenantResolver); ok {
+		return resolver.GetExamTenantID(ctx, examID)
+	}
+	return 0, ErrNotFound
+}
+
+func (service *Service) resolveAttemptTenantID(ctx context.Context, attemptID int64) (int64, error) {
+	if resolver, ok := service.repo.(attemptTenantResolver); ok {
+		return resolver.GetExamAttemptTenantID(ctx, attemptID)
+	}
+	return 0, ErrNotFound
+}
+
+func (service *Service) resolveClassCourseTenantID(ctx context.Context, scope Scope, classID int64, courseID int64) (int64, error) {
+	tenantID := readTenantID(scope)
+	if tenantID > 0 {
+		return tenantID, nil
+	}
+	if resolver, ok := service.repo.(classCourseTenantResolver); ok {
+		return resolver.GetClassCourseTenantID(ctx, classID, courseID)
+	}
+	if scope.TenantID > 0 {
+		return scope.TenantID, nil
+	}
+	return 0, ErrNotFound
+}
+
 func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query ExamOverviewQuery) (ExamOverviewResult, error) {
-	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+	if !canViewExamAnalytics(scope) {
 		return ExamOverviewResult{}, ErrForbidden
 	}
 	if query.ExamID <= 0 {
@@ -52,7 +100,14 @@ func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query 
 		return ExamOverviewResult{}, ErrForbidden
 	}
 
-	query.TenantID = scope.TenantID
+	query.TenantID = readTenantID(scope)
+	if query.TenantID == 0 {
+		tenantID, err := service.resolveExamTenantID(ctx, query.ExamID)
+		if err != nil {
+			return ExamOverviewResult{}, err
+		}
+		query.TenantID = tenantID
+	}
 	var err error
 	query, err = normalizeExamOverviewQuery(query)
 	if err != nil {
@@ -84,7 +139,7 @@ func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query 
 }
 
 func (service *Service) ExportExamOverviewCSV(ctx context.Context, scope Scope, query ExamOverviewQuery) ([]byte, error) {
-	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+	if !canViewExamAnalytics(scope) {
 		return nil, ErrForbidden
 	}
 	if query.ExamID <= 0 {
@@ -96,7 +151,14 @@ func (service *Service) ExportExamOverviewCSV(ctx context.Context, scope Scope, 
 		return nil, ErrForbidden
 	}
 
-	query.TenantID = scope.TenantID
+	query.TenantID = readTenantID(scope)
+	if query.TenantID == 0 {
+		tenantID, err := service.resolveExamTenantID(ctx, query.ExamID)
+		if err != nil {
+			return nil, err
+		}
+		query.TenantID = tenantID
+	}
 	var err error
 	query, err = normalizeExamOverviewQuery(query)
 	if err != nil {
@@ -119,7 +181,7 @@ func (service *Service) ExportExamOverviewCSV(ctx context.Context, scope Scope, 
 }
 
 func (service *Service) GetExamAttemptReview(ctx context.Context, scope Scope, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {
-	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+	if !canViewExamAnalytics(scope) {
 		return ExamAttemptReviewResult{}, ErrForbidden
 	}
 	if query.AttemptID <= 0 {
@@ -131,12 +193,19 @@ func (service *Service) GetExamAttemptReview(ctx context.Context, scope Scope, q
 		return ExamAttemptReviewResult{}, ErrForbidden
 	}
 
-	query.TenantID = scope.TenantID
+	query.TenantID = readTenantID(scope)
+	if query.TenantID == 0 {
+		tenantID, err := service.resolveAttemptTenantID(ctx, query.AttemptID)
+		if err != nil {
+			return ExamAttemptReviewResult{}, err
+		}
+		query.TenantID = tenantID
+	}
 	return service.repo.GetExamAttemptReview(ctx, query)
 }
 
 func (service *Service) UpsertExamAttemptQuestionReview(ctx context.Context, scope Scope, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error) {
-	if !containsAnyPermission(scope.Permissions, "analytics:view", "exam:publish") {
+	if !canViewExamAnalytics(scope) {
 		return ExamAttemptQuestionReviewResult{}, ErrForbidden
 	}
 	if command.AttemptID <= 0 || command.DisplayOrder <= 0 || command.Score < 0 {
@@ -148,7 +217,14 @@ func (service *Service) UpsertExamAttemptQuestionReview(ctx context.Context, sco
 		return ExamAttemptQuestionReviewResult{}, ErrForbidden
 	}
 
-	command.TenantID = scope.TenantID
+	command.TenantID = readTenantID(scope)
+	if command.TenantID == 0 {
+		tenantID, err := service.resolveAttemptTenantID(ctx, command.AttemptID)
+		if err != nil {
+			return ExamAttemptQuestionReviewResult{}, err
+		}
+		command.TenantID = tenantID
+	}
 	command.ReviewerUserID = scope.UserID
 	command.ReviewComment = strings.TrimSpace(command.ReviewComment)
 
@@ -278,14 +354,18 @@ func formatExamOverviewReviewStatus(status string) string {
 }
 
 func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope, query ClassPracticeSummaryQuery) (ClassPracticeSummaryResult, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return ClassPracticeSummaryResult{}, ErrForbidden
 	}
 	if query.ClassID <= 0 || query.CourseID <= 0 {
 		return ClassPracticeSummaryResult{}, ErrInvalidInput
 	}
 
-	query.TenantID = scope.TenantID
+	var tenantErr error
+	query.TenantID, tenantErr = service.resolveClassCourseTenantID(ctx, scope, query.ClassID, query.CourseID)
+	if tenantErr != nil {
+		return ClassPracticeSummaryResult{}, tenantErr
+	}
 	query.Page = normalizePage(query.Page)
 	query.PageSize = normalizePageSize(query.PageSize)
 
@@ -344,7 +424,7 @@ func (service *Service) GetClassPracticeSummary(ctx context.Context, scope Scope
 }
 
 func (service *Service) ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return nil, ErrForbidden
 	}
 
@@ -357,14 +437,18 @@ func (service *Service) ListClassCourseOptions(ctx context.Context, scope Scope)
 }
 
 func (service *Service) GetStudentPracticeDetail(ctx context.Context, scope Scope, query StudentPracticeDetailQuery) (StudentPracticeDetailResult, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return StudentPracticeDetailResult{}, ErrForbidden
 	}
 	if query.ClassID <= 0 || query.CourseID <= 0 || query.StudentUserID <= 0 {
 		return StudentPracticeDetailResult{}, ErrInvalidInput
 	}
 
-	query.TenantID = scope.TenantID
+	var tenantErr error
+	query.TenantID, tenantErr = service.resolveClassCourseTenantID(ctx, scope, query.ClassID, query.CourseID)
+	if tenantErr != nil {
+		return StudentPracticeDetailResult{}, tenantErr
+	}
 	if query.Tab == "" {
 		query.Tab = StudentDetailTabSessions
 	}
@@ -452,14 +536,18 @@ func (service *Service) GetStudentPracticeDetail(ctx context.Context, scope Scop
 }
 
 func (service *Service) GetStudentPracticeSessionDetail(ctx context.Context, scope Scope, query StudentPracticeSessionDetailQuery) (StudentPracticeSessionDetailResult, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return StudentPracticeSessionDetailResult{}, ErrForbidden
 	}
 	if query.ClassID <= 0 || query.CourseID <= 0 || query.StudentUserID <= 0 || query.SessionID <= 0 {
 		return StudentPracticeSessionDetailResult{}, ErrInvalidInput
 	}
 
-	query.TenantID = scope.TenantID
+	var tenantErr error
+	query.TenantID, tenantErr = service.resolveClassCourseTenantID(ctx, scope, query.ClassID, query.CourseID)
+	if tenantErr != nil {
+		return StudentPracticeSessionDetailResult{}, tenantErr
+	}
 
 	switch scope.UserType {
 	case "sys_admin", "school_admin":
@@ -505,14 +593,18 @@ func (service *Service) GetStudentPracticeSessionDetail(ctx context.Context, sco
 }
 
 func (service *Service) GetStudentPracticeSessionQuestionDetail(ctx context.Context, scope Scope, query StudentPracticeSessionQuestionDetailQuery) (StudentPracticeSessionQuestionDetailResult, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return StudentPracticeSessionQuestionDetailResult{}, ErrForbidden
 	}
 	if query.ClassID <= 0 || query.CourseID <= 0 || query.StudentUserID <= 0 || query.SessionID <= 0 || query.SessionQuestionID <= 0 {
 		return StudentPracticeSessionQuestionDetailResult{}, ErrInvalidInput
 	}
 
-	query.TenantID = scope.TenantID
+	var tenantErr error
+	query.TenantID, tenantErr = service.resolveClassCourseTenantID(ctx, scope, query.ClassID, query.CourseID)
+	if tenantErr != nil {
+		return StudentPracticeSessionQuestionDetailResult{}, tenantErr
+	}
 
 	switch scope.UserType {
 	case "sys_admin", "school_admin":
@@ -564,7 +656,7 @@ func (service *Service) GetStudentPracticeSessionQuestionDetail(ctx context.Cont
 }
 
 func (service *Service) UpsertStudentPracticeSessionQuestionReview(ctx context.Context, scope Scope, command UpsertStudentPracticeSessionQuestionReviewCommand) (StudentPracticeSessionQuestionReview, error) {
-	if !containsPermission(scope.Permissions, "analytics:view") {
+	if !canViewAnalytics(scope) {
 		return StudentPracticeSessionQuestionReview{}, ErrForbidden
 	}
 	if command.ClassID <= 0 || command.CourseID <= 0 || command.StudentUserID <= 0 || command.SessionID <= 0 || command.SessionQuestionID <= 0 {
@@ -576,7 +668,11 @@ func (service *Service) UpsertStudentPracticeSessionQuestionReview(ctx context.C
 		return StudentPracticeSessionQuestionReview{}, ErrInvalidInput
 	}
 
-	command.TenantID = scope.TenantID
+	var tenantErr error
+	command.TenantID, tenantErr = service.resolveClassCourseTenantID(ctx, scope, command.ClassID, command.CourseID)
+	if tenantErr != nil {
+		return StudentPracticeSessionQuestionReview{}, tenantErr
+	}
 	command.ReviewerUserID = scope.UserID
 	command.ReviewComment = trimmedComment
 

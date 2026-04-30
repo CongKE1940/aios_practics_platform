@@ -164,7 +164,7 @@ func TestService_ListAuditLogsRejectsMissingPermission(t *testing.T) {
 	_, err := service.ListAuditLogs(context.Background(), Scope{
 		TenantID: 1,
 		UserID:   1,
-		UserType: "sys_admin",
+		UserType: "school_admin",
 	}, AuditLogListFilter{})
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("error = %v", err)

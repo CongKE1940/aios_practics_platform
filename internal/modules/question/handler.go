@@ -138,13 +138,15 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
 		return Scope{}, false
 	}
-	if !containsPermission(claims.Permissions, "question:manage") {
+	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "question:manage") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 		return Scope{}, false
 	}
 	return Scope{
-		TenantID: claims.TenantID,
-		UserID:   claims.UserID,
+		TenantID:    claims.TenantID,
+		UserID:      claims.UserID,
+		UserType:    claims.UserType,
+		Permissions: append([]string{}, claims.Permissions...),
 	}, true
 }
 
@@ -174,7 +176,7 @@ func writeQuestionError(ctx *gin.Context, err error) {
 
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
 			return true
 		}
 	}

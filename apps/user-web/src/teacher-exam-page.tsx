@@ -67,6 +67,8 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [selectedExamDetail, setSelectedExamDetail] = useState<ExamDetail | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedExamOverview, setSelectedExamOverview] = useState<ExamOverviewResult | null>(null);
   const [selectedAttemptReview, setSelectedAttemptReview] = useState<ExamAttemptReviewResult | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -132,7 +134,7 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
         setSelectedExamDetail(updated);
         setSelectedAttemptReview(null);
         await loadExamOverview(updated.id, 1);
-        setForm(buildFormFromDetail(updated));
+        closeEditModal();
         await loadExams(`草稿已更新：${updated.name}`);
       } else {
         const created = await api.createExam(payload);
@@ -164,10 +166,12 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       const detail = await api.getExam(id);
       setSelectedExamDetail(detail);
       await loadExamOverview(id, 1);
+      setDetailModalOpen(true);
       setMessage("");
     } catch {
       setSelectedExamDetail(null);
       setSelectedExamOverview(null);
+      setDetailModalOpen(false);
       setMessage("考试详情加载失败，请稍后重试。");
     } finally {
       setDetailLoading(false);
@@ -189,6 +193,8 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
       setForm(buildFormFromDetail(detail));
       setFormMode("edit");
       setEditingExamId(id);
+      setDetailModalOpen(false);
+      setEditModalOpen(true);
       setMessage("");
     } catch {
       setMessage("考试草稿加载失败，请稍后重试。");
@@ -214,6 +220,13 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
     } finally {
       setPublishingId(null);
     }
+  }
+
+  function closeEditModal() {
+    setEditModalOpen(false);
+    setForm(defaultForm);
+    setFormMode("create");
+    setEditingExamId(null);
   }
 
   async function loadExamOverview(id: number, page = 1) {
@@ -339,83 +352,119 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const currentAttemptReviewQuestion =
     visibleAttemptReviewQuestions[reviewQuestionIndex] ?? visibleAttemptReviewQuestions[0] ?? null;
 
+  function renderExamDraftForm(options?: { modal?: boolean }) {
+    return (
+      <form onSubmit={(event) => void handleSubmit(event)}>
+        <div className={options?.modal ? "ui-admin-modal__body ui-admin-form__grid ui-admin-form__grid--wide" : "ui-admin-form__grid ui-admin-form__grid--wide"}>
+          <div className="ui-admin-form__field">
+            <label htmlFor="teacher_exam_name">考试名称</label>
+            <input
+              id="teacher_exam_name"
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </div>
+
+          <div className="ui-admin-form__field">
+            <label htmlFor="teacher_exam_mode">组卷方式</label>
+            <select
+              id="teacher_exam_mode"
+              value={form.examMode}
+              onChange={(event) => setForm((current) => ({ ...current, examMode: event.target.value }))}
+            >
+              <option value="fixed">固定试卷</option>
+              <option value="random_assembly">随机组卷</option>
+            </select>
+          </div>
+
+          <div className="ui-admin-form__field">
+            <label htmlFor="teacher_exam_start_time">开始时间</label>
+            <input
+              id="teacher_exam_start_time"
+              type="datetime-local"
+              value={form.startTime}
+              onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))}
+            />
+          </div>
+
+          <div className="ui-admin-form__field">
+            <label htmlFor="teacher_exam_end_time">结束时间</label>
+            <input
+              id="teacher_exam_end_time"
+              type="datetime-local"
+              value={form.endTime}
+              onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))}
+            />
+          </div>
+
+          <div className="ui-admin-form__field">
+            <label htmlFor="teacher_exam_duration">考试时长</label>
+            <input
+              id="teacher_exam_duration"
+              inputMode="numeric"
+              value={form.durationMinutes}
+              onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))}
+            />
+          </div>
+
+          <div className="ui-admin-form__field">
+            <label htmlFor="teacher_exam_targets">发布范围</label>
+            <textarea
+              id="teacher_exam_targets"
+              value={form.targetsText}
+              onChange={(event) => setForm((current) => ({ ...current, targetsText: event.target.value }))}
+            />
+          </div>
+
+          {form.examMode === "fixed" ? (
+            <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="teacher_exam_fixed_questions">固定题目</label>
+              <textarea
+                id="teacher_exam_fixed_questions"
+                value={form.fixedQuestionsText}
+                onChange={(event) => setForm((current) => ({ ...current, fixedQuestionsText: event.target.value }))}
+              />
+            </div>
+          ) : (
+            <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="teacher_exam_paper_rules">抽题规则</label>
+              <textarea
+                id="teacher_exam_paper_rules"
+                value={form.paperRulesText}
+                onChange={(event) => setForm((current) => ({ ...current, paperRulesText: event.target.value }))}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className={options?.modal ? "ui-admin-modal__footer" : "ui-admin-form__actions"} style={options?.modal ? undefined : { marginTop: 16 }}>
+          {options?.modal ? (
+            <button type="button" className="ui-button ui-button--ghost" onClick={closeEditModal}>
+              取消
+            </button>
+          ) : null}
+          <button type="submit" className="ui-button ui-button--primary" disabled={saving}>
+            {saving ? "保存中..." : formMode === "edit" ? "更新草稿" : "保存草稿"}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <section aria-label="考试管理页">
       <h2>考试管理</h2>
 
-      <form onSubmit={(event) => void handleSubmit(event)}>
-        <label htmlFor="teacher_exam_name">考试名称</label>
-        <input
-          id="teacher_exam_name"
-          value={form.name}
-          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-        />
-
-        <label htmlFor="teacher_exam_mode">组卷方式</label>
-        <select
-          id="teacher_exam_mode"
-          value={form.examMode}
-          onChange={(event) => setForm((current) => ({ ...current, examMode: event.target.value }))}
-        >
-          <option value="fixed">固定试卷</option>
-          <option value="random_assembly">随机组卷</option>
-        </select>
-
-        <label htmlFor="teacher_exam_start_time">开始时间</label>
-        <input
-          id="teacher_exam_start_time"
-          type="datetime-local"
-          value={form.startTime}
-          onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))}
-        />
-
-        <label htmlFor="teacher_exam_end_time">结束时间</label>
-        <input
-          id="teacher_exam_end_time"
-          type="datetime-local"
-          value={form.endTime}
-          onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))}
-        />
-
-        <label htmlFor="teacher_exam_duration">考试时长</label>
-        <input
-          id="teacher_exam_duration"
-          inputMode="numeric"
-          value={form.durationMinutes}
-          onChange={(event) => setForm((current) => ({ ...current, durationMinutes: event.target.value }))}
-        />
-
-        <label htmlFor="teacher_exam_targets">发布范围</label>
-        <textarea
-          id="teacher_exam_targets"
-          value={form.targetsText}
-          onChange={(event) => setForm((current) => ({ ...current, targetsText: event.target.value }))}
-        />
-
-        {form.examMode === "fixed" ? (
-          <>
-            <label htmlFor="teacher_exam_fixed_questions">固定题目</label>
-            <textarea
-              id="teacher_exam_fixed_questions"
-              value={form.fixedQuestionsText}
-              onChange={(event) => setForm((current) => ({ ...current, fixedQuestionsText: event.target.value }))}
-            />
-          </>
-        ) : (
-          <>
-            <label htmlFor="teacher_exam_paper_rules">抽题规则</label>
-            <textarea
-              id="teacher_exam_paper_rules"
-              value={form.paperRulesText}
-              onChange={(event) => setForm((current) => ({ ...current, paperRulesText: event.target.value }))}
-            />
-          </>
-        )}
-
-        <button type="submit" disabled={saving}>
-          {saving ? "保存中..." : formMode === "edit" ? "更新草稿" : "保存草稿"}
-        </button>
-      </form>
+      {!editModalOpen ? (
+        <section className="ui-admin-card" aria-label="考试草稿编辑区">
+          <div className="ui-admin-card__header">
+            <div>
+              <h3>创建考试草稿</h3>
+            </div>
+          </div>
+          {renderExamDraftForm()}
+        </section>
+      ) : null}
 
       {message ? <p>{message}</p> : null}
       {loading ? <p>正在刷新...</p> : null}
@@ -453,8 +502,8 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
         ) : null}
       </section>
 
-      <section aria-label="考试详情区">
-        <h3>考试详情</h3>
+      <section aria-label="考试统计区">
+        <h3>考试统计与答卷</h3>
         {detailLoading ? <p>正在加载详情...</p> : null}
         {!detailLoading && selectedExamDetail ? (
           <>
@@ -695,6 +744,72 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
           !detailLoading ? <p>请选择一场考试查看详情。</p> : null
         )}
       </section>
+
+      {editModalOpen ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="考试编辑弹层">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>编辑考试</h3>
+                <p>{selectedExamDetail?.name ?? "考试草稿"}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={closeEditModal}>
+                关闭
+              </button>
+            </div>
+            {renderExamDraftForm({ modal: true })}
+          </section>
+        </div>
+      ) : null}
+
+      {detailModalOpen && selectedExamDetail ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="考试详情弹层">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>考试详情</h3>
+                <p>{selectedExamDetail.name}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDetailModalOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <div className="ui-admin-modal__body">
+              <dl className="ui-admin-meta-list">
+                <div>
+                  <dt>考试名称</dt>
+                  <dd>{selectedExamDetail.name}</dd>
+                </div>
+                <div>
+                  <dt>组卷方式</dt>
+                  <dd>{formatMode(selectedExamDetail.exam_mode)}</dd>
+                </div>
+                <div>
+                  <dt>考试状态</dt>
+                  <dd>{formatStatus(selectedExamDetail.status)}</dd>
+                </div>
+                <div>
+                  <dt>考试时长</dt>
+                  <dd>{selectedExamDetail.duration_minutes} 分钟</dd>
+                </div>
+                <div>
+                  <dt>考试时间</dt>
+                  <dd>{formatTime(selectedExamDetail.start_time)} 至 {formatTime(selectedExamDetail.end_time)}</dd>
+                </div>
+                <div>
+                  <dt>发布范围</dt>
+                  <dd>{formatTargets(selectedExamDetail.targets)}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="ui-admin-modal__footer">
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setDetailModalOpen(false)}>
+                查看下方统计
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

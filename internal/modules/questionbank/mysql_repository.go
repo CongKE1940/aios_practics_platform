@@ -18,9 +18,13 @@ func (repo *MySQLRepository) ListQuestionBanks(ctx context.Context, tenantID int
 	query := `
 SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, course_id, name, description, status, source_type, created_at, updated_at
 FROM question_banks
-WHERE tenant_id = ? AND deleted_at IS NULL
+WHERE deleted_at IS NULL
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 5)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.CourseID != nil {
 		query += " AND course_id = ?"
 		args = append(args, *filter.CourseID)
@@ -58,13 +62,18 @@ WHERE tenant_id = ? AND deleted_at IS NULL
 }
 
 func (repo *MySQLRepository) GetQuestionBank(ctx context.Context, tenantID int64, id int64) (QuestionBank, error) {
-	const query = `
+	query := `
 SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, course_id, name, description, status, source_type, created_at, updated_at
 FROM question_banks
-WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
-LIMIT 1
+WHERE id = ? AND deleted_at IS NULL
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	item, err := scanQuestionBankScanner(row)
 	if err != nil {
 		return QuestionBank{}, wrapNotFound(err)

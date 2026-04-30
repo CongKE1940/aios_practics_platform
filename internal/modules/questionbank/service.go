@@ -14,7 +14,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) ListQuestionBanks(ctx context.Context, scope Scope, filter QuestionBankListFilter) (PageResult[QuestionBank], error) {
-	return service.repo.ListQuestionBanks(ctx, scope.TenantID, normalizeListFilter(filter))
+	return service.repo.ListQuestionBanks(ctx, readTenantID(scope), normalizeListFilter(filter))
 }
 
 func (service *Service) CreateQuestionBank(ctx context.Context, scope Scope, input QuestionBankInput) (QuestionBank, error) {
@@ -40,7 +40,7 @@ func (service *Service) UpdateQuestionBank(ctx context.Context, scope Scope, id 
 		return QuestionBank{}, ErrInvalidInput
 	}
 
-	current, err := service.repo.GetQuestionBank(ctx, scope.TenantID, id)
+	current, err := service.repo.GetQuestionBank(ctx, readTenantID(scope), id)
 	if err != nil {
 		return QuestionBank{}, err
 	}
@@ -52,14 +52,19 @@ func (service *Service) UpdateQuestionBank(ctx context.Context, scope Scope, id 
 }
 
 func (service *Service) PublishQuestionBank(ctx context.Context, scope Scope, id int64) (QuestionBank, error) {
-	return service.repo.PublishQuestionBank(ctx, scope.TenantID, id)
+	current, err := service.repo.GetQuestionBank(ctx, readTenantID(scope), id)
+	if err != nil {
+		return QuestionBank{}, err
+	}
+	return service.repo.PublishQuestionBank(ctx, current.TenantID, id)
 }
 
 func (service *Service) AssignVisibility(ctx context.Context, scope Scope, id int64, input QuestionBankVisibilityInput) error {
 	if len(input.Grants) == 0 {
 		return ErrInvalidInput
 	}
-	if _, err := service.repo.GetQuestionBank(ctx, scope.TenantID, id); err != nil {
+	current, err := service.repo.GetQuestionBank(ctx, readTenantID(scope), id)
+	if err != nil {
 		return err
 	}
 	for _, grant := range input.Grants {
@@ -67,11 +72,23 @@ func (service *Service) AssignVisibility(ctx context.Context, scope Scope, id in
 			return ErrInvalidInput
 		}
 	}
-	return service.repo.ReplaceVisibility(ctx, scope.TenantID, id, scope.UserID, input.Grants)
+	return service.repo.ReplaceVisibility(ctx, current.TenantID, id, scope.UserID, input.Grants)
 }
 
 func normalizeListFilter(filter QuestionBankListFilter) QuestionBankListFilter {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" {
+		return 0
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return 0
+		}
+	}
+	return scope.TenantID
 }

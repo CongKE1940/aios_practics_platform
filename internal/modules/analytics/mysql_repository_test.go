@@ -466,12 +466,11 @@ SELECT
 FROM teacher_class_course_assignments tcca
 JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
 JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
-WHERE tcca.tenant_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+WHERE tcca.is_current = 1 AND tcca.status = 'active'
   AND c.status = 'active' AND c.deleted_at IS NULL
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC
 `)).
-		WithArgs(int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"class_id", "class_name", "course_id", "course_name"}).
 			AddRow(int64(302), "七年级二班", int64(12), "英语").
 			AddRow(int64(301), "七年级一班", int64(10), "数学").

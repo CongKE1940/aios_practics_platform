@@ -54,13 +54,18 @@ WHERE 1 = 1
 }
 
 func (repo *MySQLAdminRepository) GetRole(ctx context.Context, tenantID int64, id int64) (Role, error) {
-	const query = `
+	query := `
 SELECT id, tenant_id, code, name, role_type, data_scope_type, status, remark, created_at, updated_at
 FROM roles
-WHERE id = ? AND tenant_id = ?
-LIMIT 1
+WHERE id = ?
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	role, err := scanRoleScanner(row)
 	if err != nil {
 		return Role{}, wrapRBACNotFound(err)

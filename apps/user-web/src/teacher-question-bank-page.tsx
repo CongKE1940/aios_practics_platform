@@ -25,6 +25,7 @@ export function TeacherQuestionBankPage({ api }: { api: TeacherQuestionBankApi }
   const [errorMessage, setErrorMessage] = useState("");
   const [items, setItems] = useState<QuestionBank[]>([]);
   const [selectedID, setSelectedID] = useState<number | null>(null);
+  const [detailItem, setDetailItem] = useState<QuestionBank | null>(null);
   const [form, setForm] = useState(defaultForm);
 
   useEffect(() => {
@@ -78,6 +79,11 @@ export function TeacherQuestionBankPage({ api }: { api: TeacherQuestionBankApi }
         }
       ]
     });
+  }
+
+  function openDetail(item: QuestionBank) {
+    setSelectedID(item.id);
+    setDetailItem(item);
   }
 
   const selectedItem = useMemo(() => items.find((item) => item.id === selectedID) ?? items[0] ?? null, [items, selectedID]);
@@ -166,7 +172,7 @@ export function TeacherQuestionBankPage({ api }: { api: TeacherQuestionBankApi }
                       </td>
                       <td>
                         <div className="ui-admin-table__actions">
-                          <button type="button" className="ui-admin-link" onClick={() => setSelectedID(item.id)}>
+                          <button type="button" className="ui-admin-link" onClick={() => openDetail(item)}>
                             查看
                           </button>
                           <button type="button" className="ui-admin-link" onClick={() => void handlePublish(item.id)}>
@@ -215,6 +221,47 @@ export function TeacherQuestionBankPage({ api }: { api: TeacherQuestionBankApi }
               )}
             </section>
           </aside>
+        </div>
+      ) : null}
+
+      {detailItem ? (
+        <div className="ui-admin-modal-backdrop">
+          <section className="ui-admin-modal" aria-label="老师题库详情弹层">
+            <div className="ui-admin-modal__header">
+              <div>
+                <h3>题库详情</h3>
+                <p>{detailItem.name}</p>
+              </div>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDetailItem(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="ui-admin-modal__body">
+              <dl className="ui-admin-meta-list">
+                <div>
+                  <dt>名称</dt>
+                  <dd>{detailItem.name}</dd>
+                </div>
+                <div>
+                  <dt>课程 ID</dt>
+                  <dd>{detailItem.course_id ?? "-"}</dd>
+                </div>
+                <div>
+                  <dt>状态</dt>
+                  <dd>{detailItem.status === "active" ? "已发布" : "草稿"}</dd>
+                </div>
+                <div>
+                  <dt>说明</dt>
+                  <dd>{detailItem.description ?? "暂无说明"}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="ui-admin-modal__footer">
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setDetailItem(null)}>
+                我知道了
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
     </section>

@@ -17,7 +17,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) ListQuestions(ctx context.Context, scope Scope, filter QuestionListFilter) (PageResult[Question], error) {
-	return service.repo.ListQuestions(ctx, scope.TenantID, normalizeListFilter(filter))
+	return service.repo.ListQuestions(ctx, readTenantID(scope), normalizeListFilter(filter))
 }
 
 func (service *Service) CreateQuestion(ctx context.Context, scope Scope, input QuestionInput) (Question, error) {
@@ -49,7 +49,7 @@ func (service *Service) CreateQuestion(ctx context.Context, scope Scope, input Q
 }
 
 func (service *Service) UpdateQuestion(ctx context.Context, scope Scope, id int64, input QuestionUpdateInput) (Question, error) {
-	current, err := service.repo.GetQuestion(ctx, scope.TenantID, id)
+	current, err := service.repo.GetQuestion(ctx, readTenantID(scope), id)
 	if err != nil {
 		return Question{}, err
 	}
@@ -62,11 +62,11 @@ func (service *Service) UpdateQuestion(ctx context.Context, scope Scope, id int6
 }
 
 func (service *Service) ListVersions(ctx context.Context, scope Scope, id int64) ([]QuestionVersion, error) {
-	return service.repo.ListVersions(ctx, scope.TenantID, id)
+	return service.repo.ListVersions(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64, input QuestionVersionInput) (QuestionVersion, error) {
-	current, err := service.repo.GetQuestion(ctx, scope.TenantID, id)
+	current, err := service.repo.GetQuestion(ctx, readTenantID(scope), id)
 	if err != nil {
 		return QuestionVersion{}, err
 	}
@@ -74,7 +74,7 @@ func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64
 		return QuestionVersion{}, ErrInvalidInput
 	}
 
-	version, _, err := service.repo.CreateVersion(ctx, scope.TenantID, id, QuestionVersion{
+	version, _, err := service.repo.CreateVersion(ctx, current.TenantID, id, QuestionVersion{
 		Content:       input.Content,
 		Answer:        input.Answer,
 		Analysis:      input.Analysis,
@@ -93,6 +93,18 @@ func normalizeListFilter(filter QuestionListFilter) QuestionListFilter {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" {
+		return 0
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return 0
+		}
+	}
+	return scope.TenantID
 }
 
 func isAllowedQuestionType(questionType string) bool {

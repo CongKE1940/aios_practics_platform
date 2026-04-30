@@ -138,7 +138,7 @@ func buildUserMenus(permissions []string) []MenuItem {
 		return []MenuItem{}
 	}
 
-	if containsAnyPermission(permissions, "exam:publish") {
+	if containsAnyPermission(permissions, "exam:publish", "exam:manage", "tenant:manage", "system:manage") {
 		menus[0].Children = append(menus[0].Children, MenuItem{
 			ID:       30,
 			Name:     "考试管理",
@@ -187,6 +187,12 @@ func filterMenus(menus []menuDef, permissions []string) []MenuItem {
 
 func hasPermissions(permissionSet map[string]struct{}, required []string) bool {
 	if len(required) == 0 {
+		return true
+	}
+	if _, ok := permissionSet["system:manage"]; ok {
+		return true
+	}
+	if _, ok := permissionSet["tenant:manage"]; ok {
 		return true
 	}
 	for _, permission := range required {

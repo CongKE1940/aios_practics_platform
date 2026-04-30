@@ -11,11 +11,11 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) ListNotices(ctx context.Context, scope Scope, filter NoticeListFilter) (PageResult[Notice], error) {
-	return service.repo.ListNotices(ctx, scope.TenantID, normalizeNoticeListFilter(filter))
+	return service.repo.ListNotices(ctx, readTenantID(scope), normalizeNoticeListFilter(filter))
 }
 
 func (service *Service) GetNotice(ctx context.Context, scope Scope, id int64) (Notice, error) {
-	return service.repo.GetNotice(ctx, scope.TenantID, id)
+	return service.repo.GetNotice(ctx, readTenantID(scope), id)
 }
 
 func (service *Service) CreateNotice(ctx context.Context, scope Scope, input NoticeInput) (Notice, error) {
@@ -32,22 +32,31 @@ func (service *Service) UpdateNotice(ctx context.Context, scope Scope, id int64,
 	if err != nil {
 		return Notice{}, err
 	}
-	current, err := service.repo.GetNotice(ctx, scope.TenantID, id)
+	current, err := service.repo.GetNotice(ctx, readTenantID(scope), id)
 	if err != nil {
 		return Notice{}, err
 	}
 	notice.ID = current.ID
+	notice.TenantID = current.TenantID
 	notice.PublisherID = current.PublisherID
 	notice.Status = current.Status
 	return service.repo.UpdateNotice(ctx, notice)
 }
 
 func (service *Service) PublishNotice(ctx context.Context, scope Scope, id int64) (Notice, error) {
-	return service.repo.PublishNotice(ctx, scope.TenantID, id)
+	current, err := service.repo.GetNotice(ctx, readTenantID(scope), id)
+	if err != nil {
+		return Notice{}, err
+	}
+	return service.repo.PublishNotice(ctx, current.TenantID, id)
 }
 
 func (service *Service) RecallNotice(ctx context.Context, scope Scope, id int64) (Notice, error) {
-	return service.repo.RecallNotice(ctx, scope.TenantID, id)
+	current, err := service.repo.GetNotice(ctx, readTenantID(scope), id)
+	if err != nil {
+		return Notice{}, err
+	}
+	return service.repo.RecallNotice(ctx, current.TenantID, id)
 }
 
 func (service *Service) ListNotifications(ctx context.Context, scope Scope, filter NotificationListFilter) (PageResult[Notification], error) {
@@ -95,6 +104,18 @@ func normalizeNotificationListFilter(filter NotificationListFilter) Notification
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
+}
+
+func readTenantID(scope Scope) int64 {
+	if scope.UserType == "sys_admin" {
+		return 0
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return 0
+		}
+	}
+	return scope.TenantID
 }
 
 func normalizePage(page int) int {

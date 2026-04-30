@@ -476,7 +476,10 @@ func emptyPageResult[T any](page int, pageSize int) PageResult[T] {
 
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
+			return true
+		}
+		if target == "exam:publish" && permission == "exam:manage" {
 			return true
 		}
 	}

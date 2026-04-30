@@ -230,7 +230,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 	if !ok {
 		return Scope{}, false
 	}
-	if !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}

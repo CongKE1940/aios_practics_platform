@@ -464,7 +464,7 @@ func TestMySQLRepositorySaveAttemptAnswerUpsertsByDisplayOrder(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMySQLRepository(db)
-	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-10 * time.Minute)
 	expectAttemptByID(mock, 801, 9, 10001, 701, now, ExamAttemptStatusInProgress)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT question_id, question_version_id, order_no, score
@@ -506,7 +506,7 @@ func TestMySQLRepositoryGetAttemptIncludesQuestionContent(t *testing.T) {
 	defer db.Close()
 
 	repo := NewMySQLRepository(db)
-	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-10 * time.Minute)
 	expectAttemptByID(mock, 801, 9, 10001, 701, now, ExamAttemptStatusInProgress)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
@@ -552,7 +552,7 @@ func TestMySQLRepositorySubmitAttemptJudgesAndUpdatesExamWrongCount(t *testing.T
 	defer db.Close()
 
 	repo := NewMySQLRepository(db)
-	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-10 * time.Minute)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
 FROM exam_attempts ea
@@ -616,7 +616,7 @@ func TestMySQLRepositorySubmitAttemptKeepsSubjectiveQuestionPendingReview(t *tes
 	defer db.Close()
 
 	repo := NewMySQLRepository(db)
-	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-10 * time.Minute)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
 FROM exam_attempts ea

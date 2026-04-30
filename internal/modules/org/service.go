@@ -62,7 +62,7 @@ func (service *Service) CreateSchool(ctx context.Context, scope Scope, input Sch
 }
 
 func (service *Service) UpdateSchool(ctx context.Context, scope Scope, id int64, input SchoolInput) (School, error) {
-	current, err := service.repo.GetSchool(ctx, scope.TenantID, id)
+	current, err := service.repo.GetSchool(ctx, readTenantID(scope), id)
 	if err != nil {
 		return School{}, err
 	}
@@ -89,19 +89,23 @@ func (service *Service) DisableSchool(ctx context.Context, scope Scope, id int64
 	if !isSystemAdmin(scope) {
 		return ErrForbidden
 	}
-	return service.repo.DisableSchool(ctx, scope.TenantID, id)
+	current, err := service.repo.GetSchool(ctx, readTenantID(scope), id)
+	if err != nil {
+		return err
+	}
+	return service.repo.DisableSchool(ctx, current.TenantID, id)
 }
 
 func (service *Service) EnableSchool(ctx context.Context, scope Scope, id int64) error {
 	if !isSystemAdmin(scope) {
 		return ErrForbidden
 	}
-	if repo, ok := service.repo.(schoolEnableRepository); ok {
-		return repo.EnableSchool(ctx, scope.TenantID, id)
-	}
-	current, err := service.repo.GetSchool(ctx, scope.TenantID, id)
+	current, err := service.repo.GetSchool(ctx, readTenantID(scope), id)
 	if err != nil {
 		return err
+	}
+	if repo, ok := service.repo.(schoolEnableRepository); ok {
+		return repo.EnableSchool(ctx, current.TenantID, id)
 	}
 	current.Status = StatusActive
 	_, err = service.repo.UpdateSchool(ctx, current)
@@ -112,7 +116,11 @@ func (service *Service) DeleteSchool(ctx context.Context, scope Scope, id int64,
 	if !isSystemAdmin(scope) {
 		return ErrForbidden
 	}
-	return service.deleteSchool(ctx, scope.TenantID, id, cascadeDelete)
+	current, err := service.repo.GetSchool(ctx, readTenantID(scope), id)
+	if err != nil {
+		return err
+	}
+	return service.deleteSchool(ctx, current.TenantID, id, cascadeDelete)
 }
 
 func (service *Service) BatchDeleteSchools(ctx context.Context, scope Scope, input SchoolBatchDeleteInput) error {
@@ -124,7 +132,11 @@ func (service *Service) BatchDeleteSchools(ctx context.Context, scope Scope, inp
 		return ErrInvalidInput
 	}
 	for _, id := range ids {
-		if err := service.deleteSchool(ctx, scope.TenantID, id, input.CascadeDelete); err != nil {
+		current, err := service.repo.GetSchool(ctx, readTenantID(scope), id)
+		if err != nil {
+			return err
+		}
+		if err := service.deleteSchool(ctx, current.TenantID, id, input.CascadeDelete); err != nil {
 			return err
 		}
 	}
@@ -176,8 +188,12 @@ func (service *Service) GetGrade(ctx context.Context, scope Scope, id int64) (Gr
 }
 
 func (service *Service) CreateGrade(ctx context.Context, scope Scope, input GradeInput) (Grade, error) {
+	school, err := service.repo.GetSchool(ctx, readTenantID(scope), input.SchoolID)
+	if err != nil {
+		return Grade{}, err
+	}
 	return service.repo.CreateGrade(ctx, Grade{
-		TenantID:   scope.TenantID,
+		TenantID:   school.TenantID,
 		SchoolID:   input.SchoolID,
 		Code:       input.Code,
 		Name:       input.Name,
@@ -188,8 +204,11 @@ func (service *Service) CreateGrade(ctx context.Context, scope Scope, input Grad
 }
 
 func (service *Service) UpdateGrade(ctx context.Context, scope Scope, id int64, input GradeInput) (Grade, error) {
-	current, err := service.repo.GetGrade(ctx, scope.TenantID, id)
+	current, err := service.repo.GetGrade(ctx, readTenantID(scope), id)
 	if err != nil {
+		return Grade{}, err
+	}
+	if _, err := service.repo.GetSchool(ctx, current.TenantID, input.SchoolID); err != nil {
 		return Grade{}, err
 	}
 
@@ -202,7 +221,11 @@ func (service *Service) UpdateGrade(ctx context.Context, scope Scope, id int64, 
 }
 
 func (service *Service) DisableGrade(ctx context.Context, scope Scope, id int64) error {
-	return service.repo.DisableGrade(ctx, scope.TenantID, id)
+	current, err := service.repo.GetGrade(ctx, readTenantID(scope), id)
+	if err != nil {
+		return err
+	}
+	return service.repo.DisableGrade(ctx, current.TenantID, id)
 }
 
 func (service *Service) ListClasses(ctx context.Context, scope Scope, filter ClassListFilter) (PageResult[Class], error) {
@@ -214,8 +237,19 @@ func (service *Service) GetClass(ctx context.Context, scope Scope, id int64) (Cl
 }
 
 func (service *Service) CreateClass(ctx context.Context, scope Scope, input ClassInput) (Class, error) {
+	school, err := service.repo.GetSchool(ctx, readTenantID(scope), input.SchoolID)
+	if err != nil {
+		return Class{}, err
+	}
+	grade, err := service.repo.GetGrade(ctx, school.TenantID, input.GradeID)
+	if err != nil {
+		return Class{}, err
+	}
+	if grade.SchoolID != school.ID {
+		return Class{}, ErrInvalidInput
+	}
 	return service.repo.CreateClass(ctx, Class{
-		TenantID: scope.TenantID,
+		TenantID: school.TenantID,
 		SchoolID: input.SchoolID,
 		GradeID:  input.GradeID,
 		Code:     input.Code,
@@ -226,9 +260,20 @@ func (service *Service) CreateClass(ctx context.Context, scope Scope, input Clas
 }
 
 func (service *Service) UpdateClass(ctx context.Context, scope Scope, id int64, input ClassInput) (Class, error) {
-	current, err := service.repo.GetClass(ctx, scope.TenantID, id)
+	current, err := service.repo.GetClass(ctx, readTenantID(scope), id)
 	if err != nil {
 		return Class{}, err
+	}
+	school, err := service.repo.GetSchool(ctx, current.TenantID, input.SchoolID)
+	if err != nil {
+		return Class{}, err
+	}
+	grade, err := service.repo.GetGrade(ctx, current.TenantID, input.GradeID)
+	if err != nil {
+		return Class{}, err
+	}
+	if grade.SchoolID != school.ID {
+		return Class{}, ErrInvalidInput
 	}
 
 	current.SchoolID = input.SchoolID
@@ -240,7 +285,11 @@ func (service *Service) UpdateClass(ctx context.Context, scope Scope, id int64, 
 }
 
 func (service *Service) DisableClass(ctx context.Context, scope Scope, id int64) error {
-	return service.repo.DisableClass(ctx, scope.TenantID, id)
+	current, err := service.repo.GetClass(ctx, readTenantID(scope), id)
+	if err != nil {
+		return err
+	}
+	return service.repo.DisableClass(ctx, current.TenantID, id)
 }
 
 func (service *Service) ListCourses(ctx context.Context, scope Scope, filter CourseListFilter) (PageResult[Course], error) {
@@ -272,7 +321,7 @@ func (service *Service) UpdateCourse(ctx context.Context, scope Scope, id int64,
 		return Course{}, ErrInvalidInput
 	}
 
-	current, err := service.repo.GetCourse(ctx, scope.TenantID, id)
+	current, err := service.repo.GetCourse(ctx, readTenantID(scope), id)
 	if err != nil {
 		return Course{}, err
 	}
@@ -286,7 +335,11 @@ func (service *Service) UpdateCourse(ctx context.Context, scope Scope, id int64,
 }
 
 func (service *Service) DisableCourse(ctx context.Context, scope Scope, id int64) error {
-	return service.repo.DisableCourse(ctx, scope.TenantID, id)
+	current, err := service.repo.GetCourse(ctx, readTenantID(scope), id)
+	if err != nil {
+		return err
+	}
+	return service.repo.DisableCourse(ctx, current.TenantID, id)
 }
 
 func normalizeSchoolListFilter(filter SchoolListFilter) SchoolListFilter {
