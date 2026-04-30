@@ -24,6 +24,13 @@ tags:
   - name: Analytics
   - name: Audit
 paths:
+  /auth/login-organizations:
+    get:
+      tags: [Auth]
+      summary: 登录组织列表
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/LoginOrganizationListOk' }
   /auth/login:
     post:
       tags: [Auth]
@@ -478,45 +485,130 @@ paths:
       summary: 禁用用户
       responses:
         '200': { $ref: '#/components/responses/Ok' }
-  /students/transitions:
+  /student-transitions:
+    get:
+      tags: [Audit]
+      summary: 学籍变更列表
+      parameters:
+        - in: query
+          name: student_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: transition_type
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/StudentTransitionPageOk' }
     post:
-      tags: [User]
-      summary: 学生流转
+      tags: [Audit]
+      summary: 记录学籍变更
+      requestBody:
+        $ref: '#/components/requestBodies/StudentTransitionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
-  /teachers/assignments:
+        '200': { $ref: '#/components/responses/StudentTransitionOk' }
+  /teacher-assignment-histories:
+    get:
+      tags: [Audit]
+      summary: 任课变更历史列表
+      parameters:
+        - in: query
+          name: teacher_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: class_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/TeacherAssignmentHistoryPageOk' }
+  /teacher-assignment-changes:
     post:
-      tags: [User]
-      summary: 教师任课分配
+      tags: [Audit]
+      summary: 记录任课变更
+      requestBody:
+        $ref: '#/components/requestBodies/TeacherAssignmentChangeBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
-  /teachers/assignments/{id}/end:
-    parameters:
-      - $ref: '#/components/parameters/Id'
-    put:
-      tags: [User]
-      summary: 结束教师任课
-      responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/TeacherAssignmentHistoryOk' }
   /question-banks:
     get:
       tags: [QuestionBank]
       summary: 题库列表
+      parameters:
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: keyword
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankPageOk' }
     post:
       tags: [QuestionBank]
       summary: 创建题库
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBankBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankOk' }
   /question-banks/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
     put:
       tags: [QuestionBank]
       summary: 更新题库
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBankBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankOk' }
   /question-banks/{id}/publish:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -524,34 +616,80 @@ paths:
       tags: [QuestionBank]
       summary: 发布题库
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionBankOk' }
   /question-banks/{id}/visibility:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [QuestionBank]
       summary: 下发题库可见范围
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBankVisibilityBody'
       responses:
         '200': { $ref: '#/components/responses/Ok' }
   /questions:
     get:
       tags: [Question]
       summary: 题目列表
+      parameters:
+        - in: query
+          name: question_type
+          schema:
+            type: string
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: bank_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: keyword
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionPageOk' }
     post:
       tags: [Question]
       summary: 创建题目
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionOk' }
   /questions/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
     put:
       tags: [Question]
       summary: 更新题目主信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                difficulty:
+                  type: string
+                status:
+                  type: string
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionOk' }
   /questions/{id}/versions:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -559,12 +697,14 @@ paths:
       tags: [Question]
       summary: 题目版本列表
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionVersionListOk' }
     post:
       tags: [Question]
       summary: 新增题目版本
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionVersionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/QuestionVersionOk' }
   /questions/{id}/tags:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -590,11 +730,55 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Ok' }
   /practice/sessions:
+    get:
+      tags: [Practice]
+      summary: 练题记录列表
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, finished]
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: flow_mode
+          schema:
+            type: string
+            enum: [fixed_count, continuous]
+        - in: query
+          name: practice_mode
+          schema:
+            type: string
+            enum: [random, sequential]
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionPageOk' }
     post:
       tags: [Practice]
       summary: 创建练题会话
+      requestBody:
+        $ref: '#/components/requestBodies/PracticeSessionBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/PracticeSessionOk' }
+  /practice/sessions/from-questions:
+    post:
+      tags: [Practice]
+      summary: 从题目列表创建练题会话
+      requestBody:
+        $ref: '#/components/requestBodies/PracticeSessionFromQuestionsBody'
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionOk' }
   /practice/sessions/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -602,56 +786,136 @@ paths:
       tags: [Practice]
       summary: 练题会话详情
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/PracticeSessionOk' }
+  /practice/sessions/{id}/results:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Practice]
+      summary: 练题会话结果详情
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionResultsOk' }
+  /practice/sessions/{id}/next-question:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 获取下一题
+      responses:
+        '200': { $ref: '#/components/responses/PracticeNextQuestionOk' }
   /practice/sessions/{id}/answer:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Practice]
       summary: 提交练题答案
+      requestBody:
+        $ref: '#/components/requestBodies/PracticeAnswerBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/PracticeAnswerOk' }
+  /practice/sessions/{id}/finish:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Practice]
+      summary: 结束练题会话
+      responses:
+        '200': { $ref: '#/components/responses/PracticeSessionSummaryOk' }
   /practice/questions/{id}/mark-mastered:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Practice]
       summary: 标记熟题
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionStateBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/UserQuestionStateOk' }
   /practice/questions/{id}/mark-confused:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Practice]
       summary: 标记疑惑题
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionStateBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/UserQuestionStateOk' }
   /user-question-states:
     get:
       tags: [Practice]
       summary: 用户题目状态列表
+      parameters:
+        - in: query
+          name: state_type
+          schema:
+            type: string
+            enum: [wrong, mastered, confused]
+        - in: query
+          name: bank_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: course_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/UserQuestionStatePageOk' }
   /exams:
     get:
       tags: [Exam]
       summary: 考试列表
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: keyword
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamPageOk' }
     post:
       tags: [Exam]
       summary: 创建考试
+      requestBody:
+        $ref: '#/components/requestBodies/ExamBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
   /exams/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Exam]
+      summary: 考试详情
+      responses:
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
     put:
       tags: [Exam]
       summary: 更新考试
+      requestBody:
+        $ref: '#/components/requestBodies/ExamBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
   /exams/{id}/publish:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -659,7 +923,7 @@ paths:
       tags: [Exam]
       summary: 发布考试
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamDetailOk' }
   /exams/{id}/generate-paper:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -667,7 +931,7 @@ paths:
       tags: [Exam]
       summary: 生成试卷
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamPaperGenerationOk' }
   /exams/{id}/attempts:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -675,15 +939,25 @@ paths:
       tags: [Exam]
       summary: 开始考试
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptDetailOk' }
+  /exam-attempts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Exam]
+      summary: 考试作答详情
+      responses:
+        '200': { $ref: '#/components/responses/ExamAttemptDetailOk' }
   /exam-attempts/{id}/answers:
     parameters:
       - $ref: '#/components/parameters/Id'
     post:
       tags: [Exam]
       summary: 保存考试作答
+      requestBody:
+        $ref: '#/components/requestBodies/ExamAttemptAnswerBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptAnswerOk' }
   /exam-attempts/{id}/submit:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -691,7 +965,7 @@ paths:
       tags: [Exam]
       summary: 交卷
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptResultOk' }
   /exam-attempts/{id}/result:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -699,7 +973,7 @@ paths:
       tags: [Exam]
       summary: 考试结果
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamAttemptResultOk' }
   /notices:
     get:
       tags: [Notice]
@@ -776,23 +1050,33 @@ paths:
     get:
       tags: [Import]
       summary: 导入任务列表
+      parameters:
+        - in: query
+          name: import_type
+          schema:
+            type: string
+            enum: [question, question_bank]
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobPageOk' }
     post:
       tags: [Import]
       summary: 创建导入任务
       requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [import_type, template_version, file]
-              properties:
-                import_type: { type: string, enum: [question, question_bank, exam] }
-                template_version: { type: string }
-                file: { type: string, format: binary }
+        $ref: '#/components/requestBodies/ImportJobBody'
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobOk' }
   /import/jobs/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -800,15 +1084,29 @@ paths:
       tags: [Import]
       summary: 导入任务详情
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobOk' }
   /import/jobs/{id}/rows:
     parameters:
       - $ref: '#/components/parameters/Id'
     get:
       tags: [Import]
       summary: 导入明细行
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [success, failed]
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ImportJobRowPageOk' }
   /import/templates/{type}:
     parameters:
       - in: path
@@ -822,8 +1120,8 @@ paths:
         '200':
           description: 文件流
           content:
-            text/csv:
-              schema: { type: string, format: binary }
+            text/csv; charset=utf-8:
+              schema: { type: string }
   /files/upload:
     post:
       tags: [File]
@@ -869,12 +1167,131 @@ paths:
       summary: 练题概览
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /analytics/admin-overview:
+    get:
+      tags: [Analytics]
+      summary: 管理端阶段六数据看板总览
+      operationId: getAdminOverview
+      responses:
+        '200': { $ref: '#/components/responses/AdminOverviewOk' }
   /analytics/exam-overview:
     get:
       tags: [Analytics]
       summary: 考试概览
+      operationId: getExamOverview
+      parameters:
+        - in: query
+          name: exam_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 考试 ID。
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: attempt_status
+          required: false
+          schema:
+            type: string
+            enum: [not_started, in_progress, submitted]
+          description: 作答状态筛选；不传表示全部，submitted 包含超时交卷。
+        - in: query
+          name: review_status
+          required: false
+          schema:
+            type: string
+            enum: [pending, reviewed]
+          description: 批阅状态筛选；pending 表示仍有待人工批阅主观题，reviewed 表示无需批阅或已完成批阅。
+        - in: query
+          name: keyword
+          required: false
+          schema:
+            type: string
+          description: 按学生姓名或学号模糊搜索。
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/ExamOverviewOk' }
+  /analytics/exam-overview-export:
+    get:
+      tags: [Analytics]
+      summary: 导出考试成绩明细 CSV
+      operationId: exportExamOverview
+      parameters:
+        - in: query
+          name: exam_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 考试 ID。
+        - in: query
+          name: attempt_status
+          required: false
+          schema:
+            type: string
+            enum: [not_started, in_progress, submitted]
+          description: 作答状态筛选；与考试概览列表保持一致。
+        - in: query
+          name: review_status
+          required: false
+          schema:
+            type: string
+            enum: [pending, reviewed]
+          description: 批阅状态筛选；与考试概览列表保持一致。
+        - in: query
+          name: keyword
+          required: false
+          schema:
+            type: string
+          description: 按学生姓名或学号模糊搜索。
+      responses:
+        '200':
+          description: CSV 文件内容。
+          content:
+            text/csv:
+              schema:
+                type: string
+  /analytics/exam-attempt-review:
+    get:
+      tags: [Analytics]
+      summary: 老师侧单个学生考试答卷明细
+      operationId: getExamAttemptReview
+      parameters:
+        - in: query
+          name: attempt_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 考试作答记录 ID。
+      responses:
+        '200': { $ref: '#/components/responses/ExamAttemptReviewOk' }
+  /analytics/exam-attempt-question-review:
+    put:
+      tags: [Analytics]
+      summary: 老师侧主观题批阅与补评分
+      operationId: reviewExamAttemptQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExamAttemptQuestionReviewBody'
+      responses:
+        '200': { $ref: '#/components/responses/ExamAttemptQuestionReviewOk' }
   /analytics/wrong-questions:
     get:
       tags: [Analytics]
@@ -887,12 +1304,278 @@ paths:
       summary: 班级表现分析
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /analytics/class-course-options:
+    get:
+      tags: [Analytics]
+      summary: 班级课程级联选项
+      operationId: listClassCourseOptions
+      responses:
+        '200': { $ref: '#/components/responses/ClassCourseOptionsOk' }
+  /analytics/class-practice-summary:
+    get:
+      tags: [Analytics]
+      summary: 老师侧班级课程练题概览
+      operationId: getClassPracticeSummary
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: start_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计开始时间，RFC3339 格式。
+        - in: query
+          name: end_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计结束时间，RFC3339 格式。
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/ClassPracticeSummaryOk' }
+  /analytics/student-practice-detail:
+    get:
+      tags: [Analytics]
+      summary: 老师侧学生学习详情
+      operationId: getStudentPracticeDetail
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: student_user_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 学生用户 ID。
+        - in: query
+          name: tab
+          required: false
+          schema:
+            type: string
+            enum: [sessions, wrong, confused]
+          description: 当前展示的标签页，默认 sessions。
+        - in: query
+          name: start_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计开始时间，RFC3339 格式。
+        - in: query
+          name: end_at
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: 统计结束时间，RFC3339 格式。
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: 当前分页页码。
+        - in: query
+          name: page_size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: 当前分页大小。
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeDetailOk' }
+  /analytics/student-practice-session-detail:
+    get:
+      tags: [Analytics]
+      summary: 老师侧单次练题详情
+      operationId: getStudentPracticeSessionDetail
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: student_user_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 学生用户 ID。
+        - in: query
+          name: session_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 练题会话 ID。
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeSessionDetailOk' }
+  /analytics/student-practice-session-question-detail:
+    get:
+      tags: [Analytics]
+      summary: 老师侧单题完整详情
+      operationId: getStudentPracticeSessionQuestionDetail
+      parameters:
+        - in: query
+          name: class_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 班级 ID。
+        - in: query
+          name: course_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 课程 ID。
+        - in: query
+          name: student_user_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 学生用户 ID。
+        - in: query
+          name: session_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 练题会话 ID。
+        - in: query
+          name: session_question_id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: 会话题目 ID。
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeSessionQuestionDetailOk' }
+  /analytics/student-practice-session-question-review:
+    put:
+      tags: [Analytics]
+      summary: 保存老师讲评
+      operationId: upsertStudentPracticeSessionQuestionReview
+      requestBody:
+        $ref: '#/components/requestBodies/StudentPracticeSessionQuestionReviewBody'
+      responses:
+        '200': { $ref: '#/components/responses/StudentPracticeSessionQuestionReviewOk' }
   /audit-logs:
     get:
       tags: [Audit]
       summary: 审计日志列表
+      operationId: listAuditLogs
+      parameters:
+        - in: query
+          name: module_name
+          schema:
+            type: string
+        - in: query
+          name: resource_type
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
-        '200': { $ref: '#/components/responses/Ok' }
+        '200': { $ref: '#/components/responses/AuditLogPageOk' }
+  /entity-snapshots:
+    get:
+      tags: [Audit]
+      summary: 实体快照列表
+      operationId: listEntitySnapshots
+      parameters:
+        - in: query
+          name: entity_type
+          schema:
+            type: string
+        - in: query
+          name: entity_id
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200': { $ref: '#/components/responses/EntitySnapshotPageOk' }
 components:
   securitySchemes:
     bearerAuth:
@@ -914,6 +1597,246 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/BaseResponse'
+    LoginOrganizationListOk:
+      description: 登录组织列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LoginOrganizationListResponse'
+    QuestionBankOk:
+      description: 题库详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankResponse'
+    QuestionBankPageOk:
+      description: 题库分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankPageResponse'
+    QuestionOk:
+      description: 题目详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionResponse'
+    QuestionPageOk:
+      description: 题目分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionPageResponse'
+    QuestionVersionOk:
+      description: 题目版本详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionVersionResponse'
+    QuestionVersionListOk:
+      description: 题目版本列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionVersionListResponse'
+    ImportJobOk:
+      description: 导入任务详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobResponse'
+    ImportJobPageOk:
+      description: 导入任务分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobPageResponse'
+    ImportJobRowPageOk:
+      description: 导入明细行分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobRowPageResponse'
+    PracticeSessionOk:
+      description: 练题会话详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionResponse'
+    PracticeSessionPageOk:
+      description: 练题会话分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionPageResponse'
+    PracticeSessionResultsOk:
+      description: 练题会话结果详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionResultsResponse'
+    PracticeNextQuestionOk:
+      description: 下一题结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeNextQuestionResponse'
+    PracticeAnswerOk:
+      description: 练题答题结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeAnswerResponse'
+    PracticeSessionSummaryOk:
+      description: 练题会话结束摘要
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionSummaryResponse'
+    UserQuestionStateOk:
+      description: 用户题目状态
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserQuestionStateResponse'
+    UserQuestionStatePageOk:
+      description: 用户题目状态分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserQuestionStatePageResponse'
+    AdminOverviewOk:
+      description: 管理端阶段六数据看板总览
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminOverviewResponse'
+    AuditLogPageOk:
+      description: 审计日志分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuditLogPageResponse'
+    EntitySnapshotPageOk:
+      description: 实体快照分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EntitySnapshotPageResponse'
+    StudentTransitionOk:
+      description: 学籍变更详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentTransitionResponse'
+    StudentTransitionPageOk:
+      description: 学籍变更分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentTransitionPageResponse'
+    TeacherAssignmentHistoryOk:
+      description: 任课变更详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeacherAssignmentHistoryResponse'
+    TeacherAssignmentHistoryPageOk:
+      description: 任课变更分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeacherAssignmentHistoryPageResponse'
+    ClassCourseOptionsOk:
+      description: 班级课程级联选项
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassCourseOptionsResponse'
+    ClassPracticeSummaryOk:
+      description: 班级课程练题概览和学生明细
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ClassPracticeSummaryResponse'
+    ExamOverviewOk:
+      description: 考试概览和成绩列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamOverviewResponse'
+    ExamAttemptReviewOk:
+      description: 老师侧单个学生考试答卷明细
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptReviewResponse'
+    ExamAttemptQuestionReviewOk:
+      description: 老师侧主观题批阅与补评分结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptQuestionReviewResponse'
+    StudentPracticeDetailOk:
+      description: 老师侧学生学习详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeDetailResponse'
+    StudentPracticeSessionDetailOk:
+      description: 老师侧单次练题详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionDetailResponse'
+    StudentPracticeSessionQuestionDetailOk:
+      description: 老师侧单题完整详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionDetailResponse'
+    StudentPracticeSessionQuestionReviewOk:
+      description: 老师讲评保存结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionReviewResponse'
+    ExamPageOk:
+      description: 考试分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamPageResponse'
+    ExamDetailOk:
+      description: 考试详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamDetailResponse'
+    ExamPaperGenerationOk:
+      description: 试卷生成结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamPaperGenerationResponse'
+    ExamAttemptDetailOk:
+      description: 考试作答详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptDetailResponse'
+    ExamAttemptAnswerOk:
+      description: 考试单题作答保存结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptAnswerResponse'
+    ExamAttemptResultOk:
+      description: 考试结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptResultResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -975,6 +1898,90 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/CourseInput'
+    QuestionBankBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankInput'
+    QuestionBankVisibilityBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionBankVisibilityInput'
+    QuestionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionInput'
+    QuestionVersionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionVersionInput'
+    ImportJobBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ImportJobInput'
+    PracticeSessionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionInput'
+    PracticeSessionFromQuestionsBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeSessionFromQuestionsInput'
+    PracticeAnswerBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PracticeAnswerInput'
+    QuestionStateBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionStateInput'
+    StudentTransitionBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentTransitionInput'
+    TeacherAssignmentChangeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeacherAssignmentChangeInput'
+    StudentPracticeSessionQuestionReviewBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionReviewInput'
+    ExamBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamInput'
+    ExamAttemptAnswerBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExamAttemptAnswerInput'
   schemas:
     BaseResponse:
       type: object
@@ -989,6 +1996,31 @@ components:
           nullable: true
         request_id:
           type: string
+    LoginOrganization:
+      type: object
+      required: [tenant_id, tenant_code, tenant_name, tenant_type]
+      properties:
+        tenant_id:
+          type: integer
+          format: int64
+        tenant_code:
+          type: string
+        tenant_name:
+          type: string
+        tenant_type:
+          type: string
+        is_default:
+          type: boolean
+    LoginOrganizationListResponse:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/LoginOrganization'
     SchoolInput:
       type: object
       required: [code, name]
@@ -1134,3 +2166,2514 @@ components:
         description:
           type: string
           nullable: true
+    QuestionBank:
+      type: object
+      required: [id, tenant_id, owner_org_type, owner_org_id, creator_id, name, status, source_type]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        owner_org_type:
+          type: string
+          example: school
+        owner_org_id:
+          type: integer
+          format: int64
+        creator_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          example: draft
+        source_type:
+          type: string
+          example: manual
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    QuestionBankInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    QuestionBankVisibilityInput:
+      type: object
+      required: [grants]
+      properties:
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionBankVisibilityGrant'
+    QuestionBankVisibilityGrant:
+      type: object
+      required: [grant_type, target_type, target_id, permission_type]
+      properties:
+        grant_type:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: integer
+          format: int64
+        permission_type:
+          type: string
+        inherit_to_children:
+          type: boolean
+    Question:
+      type: object
+      required: [id, tenant_id, owner_org_type, owner_org_id, question_type, status, source_type, creator_id]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        owner_org_type:
+          type: string
+          example: school
+        owner_org_id:
+          type: integer
+          format: int64
+        question_type:
+          type: string
+          example: single_choice
+        difficulty:
+          type: string
+          nullable: true
+        current_version_id:
+          type: integer
+          format: int64
+          nullable: true
+        current_version_no:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          example: active
+        source_type:
+          type: string
+          example: manual
+        creator_id:
+          type: integer
+          format: int64
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    QuestionVersion:
+      type: object
+      required: [id, question_id, version_no, content, answer, structure_hash, created_by]
+      properties:
+        id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        version_no:
+          type: integer
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        structure_hash:
+          type: string
+        change_summary:
+          type: string
+          nullable: true
+        is_published:
+          type: boolean
+        created_by:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+    QuestionInput:
+      type: object
+      required: [question_type, content, answer]
+      properties:
+        question_type:
+          type: string
+        difficulty:
+          type: string
+          nullable: true
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+    QuestionVersionInput:
+      type: object
+      required: [content, answer]
+      properties:
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        change_summary:
+          type: string
+          nullable: true
+    QuestionContentInput:
+      type: object
+      required: [stem]
+      properties:
+        stem:
+          $ref: '#/components/schemas/QuestionContentBlock'
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+        option_order_randomizable:
+          type: boolean
+        ext:
+          type: object
+          additionalProperties: true
+    QuestionContentBlock:
+      type: object
+      properties:
+        content_type:
+          type: string
+        text:
+          type: string
+          nullable: true
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionAsset'
+    QuestionOption:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        content_type:
+          type: string
+        text:
+          type: string
+          nullable: true
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionAsset'
+    QuestionAsset:
+      type: object
+      properties:
+        url:
+          type: string
+        type:
+          type: string
+    QuestionAnswerInput:
+      type: object
+      required: [judge_mode]
+      properties:
+        judge_mode:
+          type: string
+        correct_keys:
+          type: array
+          items:
+            type: string
+        correct_value:
+          type: boolean
+      additionalProperties: true
+    QuestionAnalysisInput:
+      type: object
+      additionalProperties: true
+    ImportJobInput:
+      type: object
+      required: [import_type, file_url, content]
+      properties:
+        import_type:
+          type: string
+          enum: [question, question_bank]
+        template_version:
+          type: string
+          default: v1
+        file_asset_id:
+          type: integer
+          format: int64
+          nullable: true
+        file_url:
+          type: string
+          example: /api/v1/files/1/content
+        content:
+          type: string
+          description: 阶段 2B 同步导入使用的 CSV 文本内容
+    ImportJob:
+      type: object
+      required: [id, tenant_id, import_type, template_version, file_url, status, total_rows, success_rows, failed_rows, operator_id]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        import_type:
+          type: string
+          enum: [question, question_bank]
+        template_version:
+          type: string
+        file_asset_id:
+          type: integer
+          format: int64
+          nullable: true
+        file_url:
+          type: string
+        status:
+          type: string
+          enum: [uploaded, parsing, validating, importing, success, partial_success, failed]
+        total_rows:
+          type: integer
+        success_rows:
+          type: integer
+        failed_rows:
+          type: integer
+        error_summary:
+          type: string
+          nullable: true
+        operator_id:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    ImportJobRow:
+      type: object
+      required: [id, job_id, row_no, raw_data, status]
+      properties:
+        id:
+          type: integer
+          format: int64
+        job_id:
+          type: integer
+          format: int64
+        row_no:
+          type: integer
+        raw_data:
+          type: object
+          additionalProperties: true
+        normalized_data:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum: [success, failed]
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        target_entity_type:
+          type: string
+          nullable: true
+        target_entity_id:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    Exam:
+      type: object
+      required: [id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        owner_org_type:
+          type: string
+        owner_org_id:
+          type: integer
+          format: int64
+        creator_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        exam_mode:
+          type: string
+          enum: [fixed, random_assembly]
+        status:
+          type: string
+          enum: [draft, published]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExamTarget:
+      type: object
+      required: [target_type, target_id]
+      properties:
+        target_type:
+          type: string
+          enum: [class, course, user]
+        target_id:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+    ExamFixedQuestion:
+      type: object
+      required: [question_id, question_version_id, score, display_order]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+        display_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    ExamPaperRule:
+      type: object
+      required: [question_type, score_per_question, question_count]
+      properties:
+        question_type:
+          type: string
+        score_per_question:
+          type: number
+          format: double
+        question_count:
+          type: integer
+        knowledge_tag_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        difficulty_range:
+          type: array
+          items:
+            type: string
+        per_knowledge_count:
+          type: object
+          additionalProperties:
+            type: integer
+    ExamDetail:
+      allOf:
+        - $ref: '#/components/schemas/Exam'
+        - type: object
+          required: [targets, fixed_questions, paper_rules]
+          properties:
+            targets:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamTarget'
+            fixed_questions:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamFixedQuestion'
+            paper_rules:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamPaperRule'
+    ExamTargetInput:
+      type: object
+      required: [target_type, target_id]
+      properties:
+        target_type:
+          type: string
+          enum: [class, course, user]
+        target_id:
+          type: integer
+          format: int64
+    ExamFixedQuestionInput:
+      type: object
+      required: [question_id, question_version_id, score, display_order]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        score:
+          type: number
+          format: double
+        display_order:
+          type: integer
+    ExamInput:
+      type: object
+      required: [name, exam_mode, start_time, end_time, duration_minutes, targets]
+      properties:
+        name:
+          type: string
+        exam_mode:
+          type: string
+          enum: [fixed, random_assembly]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamTargetInput'
+        fixed_questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamFixedQuestionInput'
+        paper_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamPaperRule'
+    ExamPaperGenerationResult:
+      type: object
+      required: [paper_id, question_count, total_score]
+      properties:
+        paper_id:
+          type: integer
+          format: int64
+        question_count:
+          type: integer
+        total_score:
+          type: number
+          format: double
+    ExamAttempt:
+      type: object
+      required: [id, exam_id, paper_id, tenant_id, user_id, status, objective_score, subjective_score, final_score]
+      properties:
+        id:
+          type: integer
+          format: int64
+        exam_id:
+          type: integer
+          format: int64
+        paper_id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        start_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [not_started, in_progress, submitted, timeout_submitted]
+        objective_score:
+          type: number
+          format: double
+        subjective_score:
+          type: number
+          format: double
+        final_score:
+          type: number
+          format: double
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ExamAttemptQuestion:
+      type: object
+      required: [question_id, question_version_id, display_order, score]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        score:
+          type: number
+          format: double
+        question_type:
+          type: string
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+    ExamAttemptAnswerInput:
+      type: object
+      required: [display_order, answer]
+      properties:
+        display_order:
+          type: integer
+        answer:
+          type: object
+          additionalProperties: true
+    ExamAttemptAnswer:
+      type: object
+      required: [attempt_id, question_id, question_version_id, display_order, answer, score]
+      properties:
+        attempt_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        answer:
+          type: object
+          additionalProperties: true
+        is_correct:
+          type: boolean
+          nullable: true
+        score:
+          type: number
+          format: double
+    ExamAttemptDetail:
+      type: object
+      required: [attempt, questions, answers]
+      properties:
+        attempt:
+          $ref: '#/components/schemas/ExamAttempt'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptQuestion'
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptAnswer'
+    ExamAttemptResult:
+      type: object
+      required: [attempt, answers, objective_score, final_score]
+      properties:
+        attempt:
+          $ref: '#/components/schemas/ExamAttempt'
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptAnswer'
+        objective_score:
+          type: number
+          format: double
+        final_score:
+          type: number
+          format: double
+    PracticeSessionInput:
+      type: object
+      required: [source_mode, bank_ids]
+      properties:
+        practice_mode:
+          type: string
+          enum: [random, sequential]
+        source_mode:
+          type: string
+          enum: [single_bank, multi_bank, course, question_list]
+          description: source_mode=course 时需要传 course_id；bank_ids 可为空数组
+        flow_mode:
+          type: string
+          enum: [fixed_count, continuous]
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: source_mode=course 时必填
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: source_mode=course 时可为空数组
+        exclude_mastered:
+          type: boolean
+        question_count:
+          type: integer
+        random_seed:
+          type: integer
+          format: int64
+    PracticeSessionFromQuestionsInput:
+      type: object
+      required: [question_ids]
+      properties:
+        question_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        practice_mode:
+          type: string
+          enum: [random, sequential]
+        flow_mode:
+          type: string
+          enum: [fixed_count, continuous]
+        question_count:
+          type: integer
+        exclude_mastered:
+          type: boolean
+        random_seed:
+          type: integer
+          format: int64
+    PracticeSessionQuestion:
+      type: object
+      required: [session_question_id, session_id, question_id, question_version_id, display_order, question_type, content, round_no]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        session_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        round_no:
+          type: integer
+        answered:
+          type: boolean
+        is_correct:
+          type: boolean
+          nullable: true
+    PracticeSessionDetail:
+      type: object
+      required: [id, tenant_id, user_id, practice_mode, source_mode, flow_mode, bank_scope, bank_ids, exclude_mastered, random_seed, round_no, status, questions]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        practice_mode:
+          type: string
+        source_mode:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        flow_mode:
+          type: string
+        bank_scope:
+          type: object
+          additionalProperties: true
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        exclude_mastered:
+          type: boolean
+        question_count:
+          type: integer
+        random_seed:
+          type: integer
+          format: int64
+        round_no:
+          type: integer
+        status:
+          type: string
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PracticeSessionQuestion'
+    PracticeSessionListItem:
+      type: object
+      required: [id, status, practice_mode, source_mode, flow_mode, bank_ids, total_count, answered_count, correct_count, wrong_count, accuracy]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+        practice_mode:
+          type: string
+        source_mode:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+          nullable: true
+        flow_mode:
+          type: string
+        bank_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+          nullable: true
+        total_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+    PracticeSessionResultQuestion:
+      type: object
+      required: [session_question_id, question_id, question_version_id, display_order, question_type, content, correct_answer, is_correct, state]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        answer:
+          type: object
+          additionalProperties: true
+          nullable: true
+        correct_answer:
+          type: object
+          additionalProperties: true
+        is_correct:
+          type: boolean
+        analysis:
+          type: object
+          additionalProperties: true
+        state:
+          $ref: '#/components/schemas/UserQuestionState'
+    PracticeSessionResults:
+      type: object
+      required: [session, questions]
+      properties:
+        session:
+          $ref: '#/components/schemas/PracticeSessionListItem'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PracticeSessionResultQuestion'
+    PracticeAnswerInput:
+      type: object
+      required: [session_question_id, answer]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        answer:
+          type: object
+          additionalProperties: true
+    QuestionStateInput:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+    UserQuestionState:
+      type: object
+      required: [id, tenant_id, user_id, question_id, question_version_id, practice_correct_count, practice_wrong_count, exam_wrong_count, is_mastered, is_confused]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        question_type:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        practice_correct_count:
+          type: integer
+        practice_wrong_count:
+          type: integer
+        exam_wrong_count:
+          type: integer
+        is_mastered:
+          type: boolean
+        is_confused:
+          type: boolean
+        mastered_at:
+          type: string
+          format: date-time
+          nullable: true
+        confused_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_wrong_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_answer:
+          type: object
+          additionalProperties: true
+        last_result:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    PracticeAnswerResult:
+      type: object
+      required: [is_correct, correct_answer, state]
+      properties:
+        is_correct:
+          type: boolean
+        correct_answer:
+          type: object
+          additionalProperties: true
+        analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        state:
+          $ref: '#/components/schemas/UserQuestionState'
+    NextPracticeQuestionResult:
+      type: object
+      required: [question, round_no]
+      properties:
+        question:
+          $ref: '#/components/schemas/PracticeSessionQuestion'
+        round_no:
+          type: integer
+    PracticeSessionSummary:
+      type: object
+      required: [id, status, answered_count, correct_count, wrong_count]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+    CourseOptionItem:
+      type: object
+      required: [course_id, course_name]
+      properties:
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+    ClassCourseOption:
+      type: object
+      required: [class_id, class_name, courses]
+      properties:
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        courses:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseOptionItem'
+    ClassCourseOptionsResult:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassCourseOption'
+    ClassPracticeSummary:
+      type: object
+      required: [class_id, class_name, course_id, course_name, student_count, participated_student_count, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
+      properties:
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+        student_count:
+          type: integer
+        participated_student_count:
+          type: integer
+        session_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        wrong_question_count:
+          type: integer
+        confused_question_count:
+          type: integer
+        last_practiced_at:
+          type: string
+          format: date-time
+          nullable: true
+    ClassPracticeStudentItem:
+      type: object
+      required: [student_id, student_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
+      properties:
+        student_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        session_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        wrong_question_count:
+          type: integer
+        confused_question_count:
+          type: integer
+        last_practiced_at:
+          type: string
+          format: date-time
+          nullable: true
+    ClassPracticeSummaryResult:
+      type: object
+      required: [summary, students]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ClassPracticeSummary'
+        students:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ClassPracticeStudentItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+    ExamOverviewSummary:
+      type: object
+      required: [exam_id, exam_name, exam_mode, status, duration_minutes, total_score, student_count, participated_student_count, submitted_count, in_progress_count, absent_count, average_score, highest_score, lowest_score]
+      properties:
+        exam_id:
+          type: integer
+          format: int64
+        exam_name:
+          type: string
+        exam_mode:
+          type: string
+        status:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+        duration_minutes:
+          type: integer
+        total_score:
+          type: number
+          format: double
+        student_count:
+          type: integer
+        participated_student_count:
+          type: integer
+        submitted_count:
+          type: integer
+        in_progress_count:
+          type: integer
+        absent_count:
+          type: integer
+        average_score:
+          type: number
+          format: double
+        highest_score:
+          type: number
+          format: double
+        lowest_score:
+          type: number
+          format: double
+    ExamOverviewStudentItem:
+      type: object
+      required: [student_user_id, student_name, attempt_status, review_status]
+      properties:
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+          nullable: true
+        class_name:
+          type: string
+          nullable: true
+        attempt_id:
+          type: integer
+          format: int64
+          nullable: true
+        attempt_status:
+          type: string
+        review_status:
+          type: string
+          description: not_started 表示未开考，not_ready 表示尚未交卷，pending 表示待人工批阅，reviewed 表示已完成或无需批阅。
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_at:
+          type: string
+          format: date-time
+          nullable: true
+        objective_score:
+          type: number
+          format: double
+          nullable: true
+        subjective_score:
+          type: number
+          format: double
+          nullable: true
+        final_score:
+          type: number
+          format: double
+          nullable: true
+    ExamOverviewResult:
+      type: object
+      required: [summary, students]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExamOverviewSummary'
+        students:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ExamOverviewStudentItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+    ExamAttemptReviewSummary:
+      type: object
+      required: [attempt_id, exam_id, exam_name, student_user_id, student_name, attempt_status, objective_score, subjective_score, final_score]
+      properties:
+        attempt_id:
+          type: integer
+          format: int64
+        exam_id:
+          type: integer
+          format: int64
+        exam_name:
+          type: string
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+          nullable: true
+        class_name:
+          type: string
+          nullable: true
+        attempt_status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        submit_at:
+          type: string
+          format: date-time
+          nullable: true
+        objective_score:
+          type: number
+          format: double
+        subjective_score:
+          type: number
+          format: double
+        final_score:
+          type: number
+          format: double
+    ExamAttemptReviewQuestionItem:
+      type: object
+      required: [question_id, question_version_id, display_order, question_type, score, content, correct_answer, is_answered, answer_score]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        score:
+          type: number
+          format: double
+        content:
+          type: object
+          additionalProperties: true
+        correct_answer:
+          type: object
+          additionalProperties: true
+        student_answer:
+          type: object
+          additionalProperties: true
+        is_answered:
+          type: boolean
+        is_correct:
+          type: boolean
+          nullable: true
+        answer_score:
+          type: number
+          format: double
+        judge_source:
+          type: string
+          nullable: true
+        review_comment:
+          type: string
+          nullable: true
+        reviewer_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+    ExamAttemptReviewResult:
+      type: object
+      required: [summary, questions]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExamAttemptReviewSummary'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExamAttemptReviewQuestionItem'
+    ExamAttemptQuestionReviewBody:
+      type: object
+      required: [attempt_id, display_order, score, review_comment]
+      properties:
+        attempt_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        score:
+          type: number
+          format: double
+        review_comment:
+          type: string
+    ExamAttemptQuestionReviewResult:
+      type: object
+      required: [summary, question]
+      properties:
+        summary:
+          $ref: '#/components/schemas/ExamAttemptReviewSummary'
+        question:
+          $ref: '#/components/schemas/ExamAttemptReviewQuestionItem'
+    StudentPracticeSummary:
+      type: object
+      required: [student_user_id, student_name, class_id, class_name, course_id, course_name, session_count, answered_count, correct_count, wrong_count, accuracy, wrong_question_count, confused_question_count]
+      properties:
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+        session_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+        wrong_question_count:
+          type: integer
+        confused_question_count:
+          type: integer
+        last_practiced_at:
+          type: string
+          format: date-time
+          nullable: true
+    StudentPracticeSessionItem:
+      type: object
+      required: [session_id, status, total_count, answered_count, correct_count, wrong_count, accuracy]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        total_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+    StudentPracticeQuestionItem:
+      type: object
+      required: [question_id, question_version_id, question_type, stem, practice_wrong_count, is_confused, last_result]
+      properties:
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        question_type:
+          type: string
+        stem:
+          type: string
+        practice_wrong_count:
+          type: integer
+        last_wrong_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_confused:
+          type: boolean
+        confused_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_result:
+          type: string
+        last_session_id:
+          type: integer
+          format: int64
+          nullable: true
+        last_session_question_id:
+          type: integer
+          format: int64
+          nullable: true
+    StudentPracticeDetailResult:
+      type: object
+      required: [student_summary, active_tab, sessions, wrong_questions, confused_questions]
+      properties:
+        student_summary:
+          $ref: '#/components/schemas/StudentPracticeSummary'
+        active_tab:
+          type: string
+          enum: [sessions, wrong, confused]
+        sessions:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentPracticeSessionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        wrong_questions:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentPracticeQuestionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        confused_questions:
+          type: object
+          required: [items, page, page_size, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentPracticeQuestionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+    StudentPracticeDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeDetailResult'
+        request_id:
+          type: string
+    StudentPracticeSessionStudentSummary:
+      type: object
+      required: [student_user_id, student_name, class_id, class_name, course_id, course_name]
+      properties:
+        student_user_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        student_no:
+          type: string
+          nullable: true
+        class_id:
+          type: integer
+          format: int64
+        class_name:
+          type: string
+        course_id:
+          type: integer
+          format: int64
+        course_name:
+          type: string
+    StudentPracticeSessionSummary:
+      type: object
+      required: [session_id, status, practice_mode, source_mode, flow_mode, total_count, answered_count, correct_count, wrong_count, accuracy]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+        practice_mode:
+          type: string
+        source_mode:
+          type: string
+        flow_mode:
+          type: string
+        total_count:
+          type: integer
+        answered_count:
+          type: integer
+        correct_count:
+          type: integer
+        wrong_count:
+          type: integer
+        accuracy:
+          type: number
+          format: double
+    StudentPracticeSessionQuestionItem:
+      type: object
+      required: [session_question_id, question_id, question_version_id, display_order, question_type, content, is_answered]
+      properties:
+        session_question_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        display_order:
+          type: integer
+        question_type:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+        student_answer:
+          type: object
+          additionalProperties: true
+        correct_answer:
+          type: object
+          additionalProperties: true
+        is_answered:
+          type: boolean
+        is_correct:
+          type: boolean
+          nullable: true
+        answered_at:
+          type: string
+          format: date-time
+          nullable: true
+        analysis:
+          type: object
+          additionalProperties: true
+    StudentPracticeSessionDetailResult:
+      type: object
+      required: [student_summary, session, questions]
+      properties:
+        student_summary:
+          $ref: '#/components/schemas/StudentPracticeSessionStudentSummary'
+        session:
+          $ref: '#/components/schemas/StudentPracticeSessionSummary'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentPracticeSessionQuestionItem'
+    StudentPracticeSessionDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeSessionDetailResult'
+        request_id:
+          type: string
+    StudentPracticeSessionQuestionDetailResult:
+      type: object
+      required: [student_summary, session, question_detail]
+      properties:
+        student_summary:
+          $ref: '#/components/schemas/StudentPracticeSessionStudentSummary'
+        session:
+          $ref: '#/components/schemas/StudentPracticeSessionSummary'
+        question_detail:
+          $ref: '#/components/schemas/StudentPracticeSessionQuestionItem'
+        teacher_review:
+          allOf:
+            - $ref: '#/components/schemas/StudentPracticeSessionQuestionReview'
+          nullable: true
+    StudentPracticeSessionQuestionDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeSessionQuestionDetailResult'
+        request_id:
+          type: string
+    StudentPracticeSessionQuestionReview:
+      type: object
+      required: [review_id, reviewer_user_id, review_comment]
+      properties:
+        review_id:
+          type: integer
+          format: int64
+        reviewer_user_id:
+          type: integer
+          format: int64
+        review_comment:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    StudentPracticeSessionQuestionReviewInput:
+      type: object
+      required: [class_id, course_id, student_user_id, session_id, session_question_id, review_comment]
+      properties:
+        class_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        student_user_id:
+          type: integer
+          format: int64
+        session_id:
+          type: integer
+          format: int64
+        session_question_id:
+          type: integer
+          format: int64
+        review_comment:
+          type: string
+          description: 讲评内容，服务端会自动去除首尾空白，去除后不能为空。
+    StudentPracticeSessionQuestionReviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentPracticeSessionQuestionReview'
+        request_id:
+          type: string
+    QuestionBankResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/QuestionBank'
+        request_id:
+          type: string
+    QuestionBankPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/QuestionBank'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    QuestionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/Question'
+        request_id:
+          type: string
+    QuestionPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Question'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    QuestionVersionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/QuestionVersion'
+        request_id:
+          type: string
+    QuestionVersionListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionVersion'
+        request_id:
+          type: string
+    ImportJobResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ImportJob'
+        request_id:
+          type: string
+    ImportJobPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportJob'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    ImportJobRowPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/ImportJobRow'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    PracticeSessionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeSessionDetail'
+        request_id:
+          type: string
+    PracticeSessionPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/PracticeSessionListItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    PracticeSessionResultsResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeSessionResults'
+        request_id:
+          type: string
+    PracticeNextQuestionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/NextPracticeQuestionResult'
+        request_id:
+          type: string
+    PracticeAnswerResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeAnswerResult'
+        request_id:
+          type: string
+    PracticeSessionSummaryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PracticeSessionSummary'
+        request_id:
+          type: string
+    UserQuestionStateResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/UserQuestionState'
+        request_id:
+          type: string
+    UserQuestionStatePageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserQuestionState'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    AdminOverviewSummary:
+      type: object
+      required: [school_count, class_count, course_count, active_student_count, active_teacher_count, practice_session_count_7d, published_exam_count, submitted_exam_attempt_count, pending_review_count, recent_transition_count_30d]
+      properties:
+        school_count: { type: integer }
+        class_count: { type: integer }
+        course_count: { type: integer }
+        active_student_count: { type: integer }
+        active_teacher_count: { type: integer }
+        practice_session_count_7d: { type: integer }
+        published_exam_count: { type: integer }
+        submitted_exam_attempt_count: { type: integer }
+        pending_review_count: { type: integer }
+        recent_transition_count_30d: { type: integer }
+    AdminOverviewRecentTransitionItem:
+      type: object
+      required: [transition_id, student_id, student_name, transition_type, occurred_at, operator_id]
+      properties:
+        transition_id:
+          type: integer
+          format: int64
+        student_id:
+          type: integer
+          format: int64
+        student_name:
+          type: string
+        transition_type:
+          type: string
+        from_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        from_class_name:
+          type: string
+          nullable: true
+        to_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_class_name:
+          type: string
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        operator_id:
+          type: integer
+          format: int64
+        operator_name:
+          type: string
+          nullable: true
+    AdminOverviewRecentAuditLogItem:
+      type: object
+      required: [id, module_name, action_name, resource_type, result, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        module_name:
+          type: string
+        action_name:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: integer
+          format: int64
+          nullable: true
+        operator_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        operator_name:
+          type: string
+          nullable: true
+        result:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AdminOverviewResult:
+      type: object
+      required: [summary, recent_transitions, recent_audit_logs]
+      properties:
+        summary:
+          $ref: '#/components/schemas/AdminOverviewSummary'
+        recent_transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverviewRecentTransitionItem'
+        recent_audit_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverviewRecentAuditLogItem'
+    AdminOverviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/AdminOverviewResult'
+        request_id:
+          type: string
+    AuditLogItem:
+      type: object
+      required: [id, tenant_id, module_name, action_name, resource_type, result, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        operator_user_id:
+          type: integer
+          format: int64
+          nullable: true
+        module_name:
+          type: string
+        action_name:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: integer
+          format: int64
+          nullable: true
+        before_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        after_json:
+          type: object
+          additionalProperties: true
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        ip:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+        result:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    EntitySnapshotItem:
+      type: object
+      required: [id, tenant_id, entity_type, entity_id, snapshot_type, snapshot_json, version_no, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        entity_type:
+          type: string
+        entity_id:
+          type: integer
+          format: int64
+        snapshot_type:
+          type: string
+        snapshot_json:
+          type: object
+          additionalProperties: true
+        version_no:
+          type: integer
+        trigger_event_type:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    StudentTransitionInput:
+      type: object
+      required: [student_id, transition_type, occurred_at]
+      properties:
+        student_id:
+          type: integer
+          format: int64
+        transition_type:
+          type: string
+          enum: [class_change, promote, transfer_in, transfer_out, graduate, leave_school, re_enroll]
+        to_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        remark:
+          type: string
+          nullable: true
+    StudentTransitionItem:
+      type: object
+      required: [id, tenant_id, student_id, transition_type, occurred_at, operator_id, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        student_id:
+          type: integer
+          format: int64
+        transition_type:
+          type: string
+        from_school_id:
+          type: integer
+          format: int64
+          nullable: true
+        from_grade_id:
+          type: integer
+          format: int64
+          nullable: true
+        from_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_school_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_grade_id:
+          type: integer
+          format: int64
+          nullable: true
+        to_class_id:
+          type: integer
+          format: int64
+          nullable: true
+        occurred_at:
+          type: string
+          format: date-time
+        operator_id:
+          type: integer
+          format: int64
+        remark:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    TeacherAssignmentChangeInput:
+      type: object
+      required: [teacher_id, class_id, course_id, change_type, effective_at]
+      properties:
+        teacher_id:
+          type: integer
+          format: int64
+        class_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        change_type:
+          type: string
+          enum: [assign, unassign]
+        effective_at:
+          type: string
+          format: date-time
+    TeacherAssignmentHistoryItem:
+      type: object
+      required: [id, tenant_id, teacher_id, class_id, course_id, change_type, effective_from, operator_id, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        teacher_id:
+          type: integer
+          format: int64
+        class_id:
+          type: integer
+          format: int64
+        course_id:
+          type: integer
+          format: int64
+        change_type:
+          type: string
+        effective_from:
+          type: string
+          format: date-time
+        effective_to:
+          type: string
+          format: date-time
+          nullable: true
+        operator_id:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+    AuditLogPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditLogItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    EntitySnapshotPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/EntitySnapshotItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    StudentTransitionResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/StudentTransitionItem'
+        request_id:
+          type: string
+    StudentTransitionPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/StudentTransitionItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    TeacherAssignmentHistoryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/TeacherAssignmentHistoryItem'
+        request_id:
+          type: string
+    TeacherAssignmentHistoryPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/TeacherAssignmentHistoryItem'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    ClassPracticeSummaryResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ClassPracticeSummaryResult'
+        request_id:
+          type: string
+    ExamOverviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamOverviewResult'
+        request_id:
+          type: string
+    ExamAttemptReviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptReviewResult'
+        request_id:
+          type: string
+    ExamAttemptQuestionReviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptQuestionReviewResult'
+        request_id:
+          type: string
+    ClassCourseOptionsResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ClassCourseOptionsResult'
+        request_id:
+          type: string
+    ExamPageResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Exam'
+            page:
+              type: integer
+            page_size:
+              type: integer
+            total:
+              type: integer
+        request_id:
+          type: string
+    ExamDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamDetail'
+        request_id:
+          type: string
+    ExamPaperGenerationResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamPaperGenerationResult'
+        request_id:
+          type: string
+    ExamAttemptDetailResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptDetail'
+        request_id:
+          type: string
+    ExamAttemptAnswerResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptAnswer'
+        request_id:
+          type: string
+    ExamAttemptResultResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ExamAttemptResult'
+        request_id:
+          type: string

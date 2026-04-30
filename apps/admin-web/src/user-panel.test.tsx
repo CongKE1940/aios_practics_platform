@@ -44,7 +44,7 @@ describe("UserPanel", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "用户管理" })).toBeTruthy();
     });
-    expect(screen.getByText("张老师")).toBeTruthy();
+    expect(screen.getAllByText("张老师").length).toBeGreaterThan(0);
     expect(screen.getAllByText("学校审核员").length).toBeGreaterThan(0);
   });
 
@@ -111,20 +111,21 @@ describe("UserPanel", () => {
       expect(listUsers).toHaveBeenCalledTimes(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "新增用户" }));
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "teacher001" } });
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "张老师" } });
-    fireEvent.change(screen.getByLabelText("用户类型"), { target: { value: "teacher" } });
+    fireEvent.change(screen.getAllByLabelText("用户类型")[1], { target: { value: "teacher" } });
     fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "Init@123456" } });
     fireEvent.change(screen.getByLabelText("默认角色"), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增用户" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增用户" })[1]);
 
     await waitFor(() => {
       expect(createUser).toHaveBeenCalledTimes(1);
       expect(listUsers).toHaveBeenCalledTimes(2);
     });
 
-    fireEvent.change(screen.getByLabelText("用户角色-7"), { target: { value: "3" } });
-    fireEvent.click(screen.getByRole("button", { name: "分配角色-7" }));
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
+    fireEvent.click(screen.getByRole("button", { name: "同步角色" }));
 
     await waitFor(() => {
       expect(assignUserRoles).toHaveBeenCalledWith(7, { role_ids: [3] });

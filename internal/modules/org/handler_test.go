@@ -212,9 +212,10 @@ func TestHandler_RejectsCrossTenantAccess(t *testing.T) {
 	repo := newMemoryRepository()
 	createService := NewService(repo)
 
-	if _, err := createService.CreateSchool(context.Background(), Scope{TenantID: 1}, SchoolInput{
-		Code: "school_001",
-		Name: "第一中学",
+	if _, err := createService.CreateSchool(context.Background(), Scope{TenantID: 1, UserType: "sys_admin"}, SchoolInput{
+		Code:       "school_001",
+		Name:       "第一中学",
+		ObjectType: ObjectTypeSchool,
 	}); err != nil {
 		t.Fatalf("seed school: %v", err)
 	}
@@ -285,7 +286,10 @@ func newMemoryRepository() *memoryRepository {
 func (repo *memoryRepository) ListSchools(_ context.Context, tenantID int64, filter SchoolListFilter) (PageResult[School], error) {
 	items := make([]School, 0)
 	for _, school := range repo.schools {
-		if school.TenantID != tenantID {
+		if tenantID > 0 && school.TenantID != tenantID {
+			continue
+		}
+		if filter.ObjectType > 0 && school.ObjectType != filter.ObjectType {
 			continue
 		}
 		if filter.Status != "" && school.Status != filter.Status {
@@ -301,7 +305,7 @@ func (repo *memoryRepository) ListSchools(_ context.Context, tenantID int64, fil
 
 func (repo *memoryRepository) GetSchool(_ context.Context, tenantID int64, id int64) (School, error) {
 	school, ok := repo.schools[id]
-	if !ok || school.TenantID != tenantID {
+	if !ok || (tenantID > 0 && school.TenantID != tenantID) {
 		return School{}, ErrNotFound
 	}
 	return school, nil
@@ -310,6 +314,12 @@ func (repo *memoryRepository) GetSchool(_ context.Context, tenantID int64, id in
 func (repo *memoryRepository) CreateSchool(_ context.Context, school School) (School, error) {
 	school.ID = repo.nextSchoolID
 	repo.nextSchoolID++
+	if school.ObjectType == 0 {
+		school.ObjectType = ObjectTypeSchool
+	}
+	if school.ObjectTypeLabel == "" {
+		school.ObjectTypeLabel = formatObjectTypeLabel(school.ObjectType)
+	}
 	school.Status = defaultStatus(school.Status)
 	repo.schools[school.ID] = school
 	return school, nil
@@ -338,7 +348,7 @@ func (repo *memoryRepository) DisableSchool(_ context.Context, tenantID int64, i
 func (repo *memoryRepository) ListGrades(_ context.Context, tenantID int64, filter GradeListFilter) (PageResult[Grade], error) {
 	items := make([]Grade, 0)
 	for _, grade := range repo.grades {
-		if grade.TenantID != tenantID {
+		if tenantID > 0 && grade.TenantID != tenantID {
 			continue
 		}
 		if filter.SchoolID > 0 && grade.SchoolID != filter.SchoolID {
@@ -354,7 +364,7 @@ func (repo *memoryRepository) ListGrades(_ context.Context, tenantID int64, filt
 
 func (repo *memoryRepository) GetGrade(_ context.Context, tenantID int64, id int64) (Grade, error) {
 	grade, ok := repo.grades[id]
-	if !ok || grade.TenantID != tenantID {
+	if !ok || (tenantID > 0 && grade.TenantID != tenantID) {
 		return Grade{}, ErrNotFound
 	}
 	return grade, nil
@@ -394,7 +404,7 @@ func (repo *memoryRepository) DisableGrade(_ context.Context, tenantID int64, id
 func (repo *memoryRepository) ListClasses(_ context.Context, tenantID int64, filter ClassListFilter) (PageResult[Class], error) {
 	items := make([]Class, 0)
 	for _, classItem := range repo.classes {
-		if classItem.TenantID != tenantID {
+		if tenantID > 0 && classItem.TenantID != tenantID {
 			continue
 		}
 		if filter.SchoolID > 0 && classItem.SchoolID != filter.SchoolID {
@@ -413,7 +423,7 @@ func (repo *memoryRepository) ListClasses(_ context.Context, tenantID int64, fil
 
 func (repo *memoryRepository) GetClass(_ context.Context, tenantID int64, id int64) (Class, error) {
 	classItem, ok := repo.classes[id]
-	if !ok || classItem.TenantID != tenantID {
+	if !ok || (tenantID > 0 && classItem.TenantID != tenantID) {
 		return Class{}, ErrNotFound
 	}
 	return classItem, nil
@@ -456,7 +466,7 @@ func (repo *memoryRepository) DisableClass(_ context.Context, tenantID int64, id
 func (repo *memoryRepository) ListCourses(_ context.Context, tenantID int64, filter CourseListFilter) (PageResult[Course], error) {
 	items := make([]Course, 0)
 	for _, course := range repo.courses {
-		if course.TenantID != tenantID {
+		if tenantID > 0 && course.TenantID != tenantID {
 			continue
 		}
 		if filter.Status != "" && course.Status != filter.Status {
@@ -475,7 +485,7 @@ func (repo *memoryRepository) ListCourses(_ context.Context, tenantID int64, fil
 
 func (repo *memoryRepository) GetCourse(_ context.Context, tenantID int64, id int64) (Course, error) {
 	course, ok := repo.courses[id]
-	if !ok || course.TenantID != tenantID {
+	if !ok || (tenantID > 0 && course.TenantID != tenantID) {
 		return Course{}, ErrNotFound
 	}
 	return course, nil
@@ -626,6 +636,13 @@ func defaultStatus(status string) string {
 		return StatusActive
 	}
 	return status
+}
+
+func formatObjectTypeLabel(objectType int) string {
+	if objectType == ObjectTypeOrganization {
+		return "组织"
+	}
+	return "学校"
 }
 
 func courseActiveAt(course Course, activeAt time.Time) bool {

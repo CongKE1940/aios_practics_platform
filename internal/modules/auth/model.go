@@ -27,6 +27,14 @@ type LoginCommand struct {
 	Password   string `json:"password" binding:"required"`
 }
 
+type LoginOrganization struct {
+	TenantID   int64  `json:"tenant_id"`
+	TenantCode string `json:"tenant_code"`
+	TenantName string `json:"tenant_name"`
+	TenantType string `json:"tenant_type"`
+	IsDefault  bool   `json:"is_default,omitempty"`
+}
+
 type RefreshCommand struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }

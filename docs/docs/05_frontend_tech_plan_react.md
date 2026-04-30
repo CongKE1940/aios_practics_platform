@@ -73,7 +73,7 @@ pages/question-bank/index/
 - `/admin/exams`
 - `/admin/challenges`
 - `/admin/analytics`
-- `/admin/snapshots`
+- `/admin/history`
 
 ### 6.2 用户端
 - `/app/home`

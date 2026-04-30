@@ -1,0 +1,402 @@
+/* Loaded after all shell styles.
+   This file is the final layout arbiter for both admin-web and user-web.
+   The page frame never scrolls; only the right data region scrolls. */
+html,
+body,
+#root {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+body {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overscroll-behavior: none !important;
+}
+
+/* Remove the oversized decorative frame from the global redesign layer. */
+.ui-app-frame::before,
+.ui-auth-page::before {
+  display: none !important;
+}
+
+.ui-app-frame,
+.ui-shell,
+.ui-shell__main {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.ui-shell__main {
+  display: grid !important;
+  grid-template-rows: 64px minmax(0, 1fr) !important;
+}
+
+.ui-shell__content {
+  box-sizing: border-box !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  display: block !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  overscroll-behavior: none !important;
+}
+
+/* Sidebar: middle menu scrolls, bottom user block stays pinned. */
+.ui-shell__sidebar {
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.ui-shell__nav {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  overflow: hidden !important;
+}
+
+.ui-nav-tree {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  overflow: hidden !important;
+}
+
+.ui-nav-tree > ul {
+  min-height: 0 !important;
+  height: 100% !important;
+  display: grid !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  align-items: start !important;
+  justify-items: stretch !important;
+  gap: 7px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 4px !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree {
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  justify-items: center !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-nav-tree > ul,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-nav-tree > ul {
+  width: 100% !important;
+  height: 100% !important;
+  display: grid !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  align-items: start !important;
+  justify-items: center !important;
+  gap: 8px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 0 !important;
+}
+
+.ui-shell__nav > .ui-sidebar-user,
+.ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user {
+  flex: 0 0 auto !important;
+  margin-top: auto !important;
+  align-self: stretch !important;
+}
+
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-sidebar-user,
+.ui-shell.is-sidebar-collapsed:not(.is-sidebar-peeking) .ui-shell__sidebar:hover .ui-sidebar-user {
+  width: var(--ui-sidebar-rail-button, 46px) !important;
+  justify-self: center !important;
+}
+
+/* Right lower data region: transparent fixed-height scroll container. */
+.ui-admin-route,
+.ui-user-route,
+.ui-shell__content > .ui-workbench,
+.ui-shell__content > .ui-page-section,
+.ui-shell__content > .ui-admin-page {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain !important;
+  scrollbar-gutter: stable !important;
+  padding: 0 4px 6px 0 !important;
+}
+
+.ui-admin-route,
+.ui-user-route {
+  display: block !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.ui-admin-route > *,
+.ui-user-route > * {
+  min-width: 0 !important;
+}
+
+/* Actual page surfaces: visible cards live here, not on the transparent scroll wrapper. */
+.ui-admin-route > .ui-admin-page,
+.ui-user-route > .ui-admin-page,
+.ui-user-route > .ui-user-page,
+.ui-admin-route > .ui-workbench,
+.ui-user-route > .ui-workbench,
+.ui-admin-route > .ui-page-section,
+.ui-user-route > .ui-page-section,
+.ui-shell__content > .ui-admin-page,
+.ui-shell__content > .ui-workbench,
+.ui-shell__content > .ui-page-section {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 100% !important;
+}
+
+.ui-admin-page,
+.ui-user-page,
+.ui-workbench,
+.ui-page-section {
+  display: flex !important;
+  flex-direction: column !important;
+  align-self: stretch !important;
+  gap: 14px !important;
+}
+
+/* Stretch the final major content card when data is sparse. */
+.ui-admin-page > .ui-admin-layout,
+.ui-admin-page > .ui-admin-main:last-child,
+.ui-admin-page > .ui-admin-table-card:last-child,
+.ui-admin-page > .ui-admin-card:last-child,
+.ui-admin-page > .ui-admin-list-card:last-child,
+.ui-admin-page > .ui-admin-tree-card:last-child,
+.ui-user-page > .ui-admin-card:last-child,
+.ui-user-page > .ui-user-card:last-child,
+.ui-user-page > .ui-user-grid:last-child,
+.ui-workbench > .ui-workbench-grid:last-child,
+.ui-workbench > .ui-dashboard-panel-grid:last-child,
+.ui-workbench > .ui-learning-plan-grid:last-child,
+.ui-page-section > .ui-page-section__body {
+  flex: 1 1 auto !important;
+}
+
+.ui-admin-main,
+.ui-admin-layout,
+.ui-admin-side-card {
+  min-height: 0 !important;
+}
+
+/* User-side raw pages/cards should visually match the admin card system. */
+.ui-user-card,
+.ui-user-grid,
+.ui-page-header {
+  box-sizing: border-box !important;
+}
+
+.ui-user-card,
+.ui-page-header {
+  border: 1px solid rgba(24, 35, 50, 0.12) !important;
+  border-radius: 24px !important;
+  background: rgba(255, 252, 245, 0.9) !important;
+  box-shadow: var(--ui-shadow-card) !important;
+  backdrop-filter: blur(18px) !important;
+  padding: 22px !important;
+}
+
+.ui-page-header h2,
+.ui-user-card h3 {
+  margin: 0 !important;
+  color: var(--ui-color-ink) !important;
+}
+
+.ui-page-breadcrumb,
+.ui-user-card__eyebrow {
+  margin: 0 0 8px !important;
+  color: var(--ui-color-primary-strong) !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+}
+
+.ui-user-grid {
+  display: grid !important;
+  gap: 14px !important;
+}
+
+.ui-user-grid--courses {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.ui-inline-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 10px !important;
+  margin-top: 14px !important;
+}
+
+.ui-user-kv {
+  display: grid !important;
+  gap: 8px !important;
+  margin: 12px 0 0 !important;
+}
+
+.ui-user-kv div {
+  display: grid !important;
+  grid-template-columns: 92px minmax(0, 1fr) !important;
+  gap: 10px !important;
+}
+
+.ui-user-kv dt {
+  color: var(--ui-color-text-muted) !important;
+  font-weight: 700 !important;
+}
+
+.ui-user-kv dd {
+  margin: 0 !important;
+}
+
+/* Compact checkbox treatment; overrides global input width/min-height. */
+.ui-inline-checkbox {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 34px !important;
+  color: var(--ui-color-text) !important;
+  font-weight: 700 !important;
+}
+
+.ui-inline-checkbox input[type="checkbox"] {
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  accent-color: var(--ui-color-primary) !important;
+}
+
+.ui-practice-form__footer {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  flex-wrap: wrap !important;
+}
+
+.ui-practice-options {
+  display: grid !important;
+  gap: 10px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  list-style: none !important;
+}
+
+.ui-practice-options li,
+.ui-practice-stem {
+  border: 1px solid rgba(24, 35, 50, 0.1) !important;
+  border-radius: 16px !important;
+  background: rgba(255, 252, 246, 0.62) !important;
+  padding: 14px !important;
+}
+
+.ui-practice-stem {
+  margin: 0 !important;
+}
+
+.ui-user-route > p,
+.ui-admin-route > p {
+  box-sizing: border-box !important;
+  min-height: 100% !important;
+  margin: 0 !important;
+  padding: 24px !important;
+  border: 1px solid rgba(24, 35, 50, 0.08) !important;
+  border-radius: 24px !important;
+  background: rgba(255, 252, 246, 0.58) !important;
+}
+
+.ui-admin-route::-webkit-scrollbar,
+.ui-user-route::-webkit-scrollbar,
+.ui-shell__content > .ui-workbench::-webkit-scrollbar,
+.ui-shell__content > .ui-page-section::-webkit-scrollbar,
+.ui-shell__content > .ui-admin-page::-webkit-scrollbar,
+.ui-nav-tree > ul::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ui-admin-route::-webkit-scrollbar-thumb,
+.ui-user-route::-webkit-scrollbar-thumb,
+.ui-shell__content > .ui-workbench::-webkit-scrollbar-thumb,
+.ui-shell__content > .ui-page-section::-webkit-scrollbar-thumb,
+.ui-shell__content > .ui-admin-page::-webkit-scrollbar-thumb,
+.ui-nav-tree > ul::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(76, 132, 244, 0.32);
+}
+
+html[data-ui-theme="dark"] .ui-admin-route,
+html[data-ui-theme="dark"] .ui-user-route,
+body[data-ui-theme="dark"] .ui-admin-route,
+body[data-ui-theme="dark"] .ui-user-route {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="dark"] .ui-user-card,
+html[data-ui-theme="dark"] .ui-page-header,
+html[data-ui-theme="dark"] .ui-user-route > p,
+html[data-ui-theme="dark"] .ui-admin-route > p,
+body[data-ui-theme="dark"] .ui-user-card,
+body[data-ui-theme="dark"] .ui-page-header,
+body[data-ui-theme="dark"] .ui-user-route > p,
+body[data-ui-theme="dark"] .ui-admin-route > p {
+  border-color: rgba(106, 130, 174, 0.32) !important;
+  background: rgba(17, 27, 46, 0.82) !important;
+  color: #e8eefc !important;
+}
+
+@media (max-width: 1200px) {
+  .ui-user-grid--courses {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .ui-shell__main {
+    grid-template-rows: 58px minmax(0, 1fr) !important;
+  }
+
+  .ui-admin-route,
+  .ui-user-route {
+    padding: 0 2px 4px 0 !important;
+  }
+
+  .ui-user-grid--courses {
+    grid-template-columns: 1fr !important;
+  }
+}

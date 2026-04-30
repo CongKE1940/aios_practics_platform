@@ -47,11 +47,10 @@ describe("NoticePanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "公告通知" })).toBeTruthy();
+      expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
     });
 
-    expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
-    expect(screen.getByText("周五晚维护")).toBeTruthy();
+    expect(screen.getAllByText("周五晚维护").length).toBeGreaterThan(0);
   });
 
   it("creates notice and marks notification as read", async () => {
@@ -86,7 +85,7 @@ describe("NoticePanel", () => {
       publish_at: "2026-04-22T09:00:00+08:00",
       status: "draft"
     });
-    const markNotificationRead = vi.fn<NoticeApi["markNotificationRead"]>().mockResolvedValue({
+    const markNotificationRead = vi.fn<NonNullable<NoticeApi["markNotificationRead"]>>().mockResolvedValue({
       id: 10,
       tenant_id: 1,
       recipient_user_id: 1,
@@ -128,10 +127,11 @@ describe("NoticePanel", () => {
       expect(listNotices).toHaveBeenCalledTimes(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "新增公告" }));
     fireEvent.change(screen.getByLabelText("公告标题"), { target: { value: "系统维护通知" } });
     fireEvent.change(screen.getByLabelText("公告内容"), { target: { value: "周五晚维护" } });
     fireEvent.change(screen.getByLabelText("发布时间"), { target: { value: "2026-04-22T09:00" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增公告" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增公告" })[1]);
 
     await waitFor(() => {
       expect(createNotice).toHaveBeenCalledTimes(1);
@@ -154,6 +154,25 @@ function createNoticeApi(seed?: {
     listNotices: async () => pageOf(seed?.notices ?? []),
     createNotice: async (body) => ({
       id: 1,
+      tenant_id: 1,
+      publisher_id: 1,
+      status: "draft",
+      ...body
+    }),
+    getNotice: async (id) => ({
+      id,
+      tenant_id: 1,
+      title: "系统维护通知",
+      content: "周五晚维护",
+      notice_type: "system",
+      publisher_id: 1,
+      publish_scope_type: "all",
+      publish_scope: {},
+      publish_at: "2026-04-22T09:00:00+08:00",
+      status: "draft"
+    }),
+    updateNotice: async (id, body) => ({
+      id,
       tenant_id: 1,
       publisher_id: 1,
       status: "draft",

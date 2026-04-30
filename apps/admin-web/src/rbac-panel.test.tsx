@@ -45,7 +45,8 @@ describe("RbacPanel", () => {
       expect(screen.getByRole("heading", { name: "角色权限" })).toBeTruthy();
     });
     expect(screen.getAllByText("学校审核员").length).toBeGreaterThan(0);
-    expect(screen.getByText("用户管理")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
+    expect(screen.getAllByText("用户管理").length).toBeGreaterThan(0);
   });
 
   it("creates role and assigns permissions", async () => {
@@ -113,15 +114,17 @@ describe("RbacPanel", () => {
       expect(listRoles).toHaveBeenCalledTimes(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "新增角色" }));
     fireEvent.change(screen.getByLabelText("角色编码"), { target: { value: "school_reviewer" } });
     fireEvent.change(screen.getByLabelText("角色名称"), { target: { value: "学校审核员" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增角色" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增角色" })[1]);
 
     await waitFor(() => {
       expect(createRole).toHaveBeenCalledTimes(1);
       expect(listRoles).toHaveBeenCalledTimes(2);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
     fireEvent.click(screen.getByRole("button", { name: "授予全部权限-3" }));
 
     await waitFor(() => {

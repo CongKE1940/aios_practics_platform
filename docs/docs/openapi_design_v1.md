@@ -401,6 +401,7 @@ QuestionAnswer:
 - `GET /api/v1/files/{id}`
 
 ### 统计分析
+- `GET /api/v1/analytics/admin-overview`
 - `GET /api/v1/analytics/practice-overview`
 - `GET /api/v1/analytics/exam-overview`
 - `GET /api/v1/analytics/wrong-questions`
@@ -410,7 +411,43 @@ QuestionAnswer:
 
 ## 6. 认证接口
 
-## 6.1 登录
+## 6.1 登录组织列表
+
+### GET `/api/v1/auth/login-organizations`
+
+**Tag**: Auth
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": [
+    {
+      "tenant_id": 1,
+      "tenant_code": "platform",
+      "tenant_name": "平台管理",
+      "tenant_type": "platform",
+      "is_default": true
+    },
+    {
+      "tenant_id": 2,
+      "tenant_code": "school_alpha",
+      "tenant_name": "示例学校",
+      "tenant_type": "school"
+    }
+  ],
+  "request_id": "req_orgs"
+}
+```
+
+### 说明
+- 登录页先调用该接口加载组织下拉选项。
+- 前端仍然向登录接口提交 `tenant_code`，只是录入方式从手输改为选择。
+
+---
+
+## 6.2 登录
 
 ### POST `/api/v1/auth/login`
 
@@ -453,7 +490,7 @@ QuestionAnswer:
 
 ---
 
-## 6.2 登出
+## 6.3 登出
 
 ### POST `/api/v1/auth/logout`
 
@@ -978,19 +1015,28 @@ QuestionAnswer:
 - `course_id`
 - `status`
 - `keyword`
-- `visible_for_me` bool
+- `page`
+- `page_size`
 
 ### Response Item
 ```json
 {
   "id": 1,
+  "tenant_id": 2,
   "name": "高一数学基础题库",
   "course_id": 10,
   "status": "active",
   "owner_org_type": "school",
-  "owner_org_id": 1
+  "owner_org_id": 1,
+  "creator_id": 20001,
+  "source_type": "manual",
+  "description": "代数基础"
 }
 ```
+
+### 说明
+- 阶段 2A 题库归属先固定为学校级。
+- 列表返回统一分页结构：`items / page / page_size / total`。
 
 ---
 
@@ -1007,15 +1053,43 @@ QuestionAnswer:
 }
 ```
 
+### 业务说明
+- 新建默认 `status=draft`
+- 新建默认 `source_type=manual`
+- 新建默认 `owner_org_type=school`
+
 ---
 
 ## 9.3 更新题库
 
 ### PUT `/api/v1/question-banks/{id}`
 
+### Request Body
+```json
+{
+  "name": "高一数学基础题库（修订）",
+  "course_id": 10,
+  "description": "代数基础与函数入门"
+}
+```
+
+### 业务说明
+- 仅允许更新当前租户下的题库
+- 更新不改变题库归属与来源类型
+
 ---
 
-## 9.4 下发题库可见范围
+## 9.4 发布题库
+
+### POST `/api/v1/question-banks/{id}/publish`
+
+### 业务说明
+- 发布后 `status` 变更为 `active`
+- 阶段 2A 不实现归档流转
+
+---
+
+## 9.5 下发题库可见范围
 
 ### POST `/api/v1/question-banks/{id}/visibility`
 
@@ -1043,6 +1117,8 @@ QuestionAnswer:
 
 ### 说明
 - 题库下发采用授权模型，不复制题库或题目。
+- `permission_type` 阶段 2A 开放 `view / practice / exam`
+- `target_type` 阶段 2A 开放 `school / grade / class / user`
 
 ---
 
@@ -1055,21 +1131,33 @@ QuestionAnswer:
 ### Query
 - `question_type`
 - `course_id`
-- `tag_id`
 - `bank_id`
 - `status`
 - `keyword`
+- `page`
+- `page_size`
 
 ### Response Item
 ```json
 {
   "id": 1001,
+  "tenant_id": 2,
+  "owner_org_type": "school",
+  "owner_org_id": 1,
   "question_type": "single_choice",
   "difficulty": "medium",
   "status": "active",
-  "current_version_id": 3001
+  "current_version_id": 3001,
+  "current_version_no": 1,
+  "source_type": "manual",
+  "creator_id": 20001,
+  "bank_ids": [1, 2]
 }
 ```
+
+### 说明
+- 列表返回统一分页结构：`items / page / page_size / total`
+- `course_id` 查询通过题库与课程关系过滤题目
 
 ---
 
@@ -1103,8 +1191,7 @@ QuestionAnswer:
   "analysis": {
     "text": "基础算术"
   },
-  "bank_ids": [1, 2],
-  "tag_ids": [11, 12]
+  "bank_ids": [1, 2]
 }
 ```
 
@@ -1112,6 +1199,7 @@ QuestionAnswer:
 - 创建时生成 `questions`
 - 同时生成 `question_versions(version_no=1)`
 - 题库关系写入 `question_bank_questions`
+- 阶段 2A 仅开放 `single_choice / multiple_choice / true_false`
 
 ---
 
@@ -1122,6 +1210,14 @@ QuestionAnswer:
 ### 说明
 - 不直接覆盖内容版本
 - 仅更新非版本化主字段，如 `status`、`difficulty`
+
+### Request Body
+```json
+{
+  "difficulty": "hard",
+  "status": "disabled"
+}
+```
 
 ---
 
@@ -1137,8 +1233,31 @@ QuestionAnswer:
   "data": [
     {
       "id": 3001,
+      "question_id": 1001,
       "version_no": 1,
+      "content": {
+        "stem": {
+          "content_type": "text",
+          "text": "1+1等于几？",
+          "assets": []
+        },
+        "options": [
+          {"key": "A", "content_type": "text", "text": "1", "assets": []},
+          {"key": "B", "content_type": "text", "text": "2", "assets": []}
+        ],
+        "option_order_randomizable": true,
+        "ext": {}
+      },
+      "answer": {
+        "judge_mode": "by_option_key",
+        "correct_keys": ["B"]
+      },
+      "analysis": {
+        "text": "基础算术"
+      },
+      "structure_hash": "sha256:demo",
       "change_summary": "初始版本",
+      "created_by": 20001,
       "created_at": "2026-04-21T10:00:00+08:00"
     }
   ],
@@ -1182,6 +1301,7 @@ QuestionAnswer:
 ### 说明
 - 题目修订应新增版本，不直接覆盖历史版本
 - 考试与练题记录需要绑定 `question_version_id`
+- 新版本创建成功后，`questions.current_version_id` 应回指最新版本
 
 ---
 
@@ -1234,11 +1354,12 @@ QuestionAnswer:
 ```json
 {
   "practice_mode": "random",
-  "source_mode": "multi_bank",
+  "source_mode": "course",
+  "flow_mode": "fixed_count",
   "course_id": 10,
-  "bank_ids": [1, 2, 3],
+  "bank_ids": [],
   "exclude_mastered": true,
-  "question_count": 20
+  "question_count": 10
 }
 ```
 
@@ -1248,22 +1369,30 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "session_id": 501,
+    "id": 501,
+    "practice_mode": "random",
+    "source_mode": "course",
+    "course_id": 10,
+    "flow_mode": "fixed_count",
+    "status": "active",
     "questions": [
       {
         "session_question_id": 9001,
+        "session_id": 501,
         "question_id": 1001,
         "question_version_id": 3001,
         "display_order": 1,
+        "question_type": "single_choice",
         "content": {
           "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
           "options": [
-            {"key": "B", "content_type": "text", "text": "2", "assets": []},
-            {"key": "A", "content_type": "text", "text": "1", "assets": []}
+            {"key": "A", "content_type": "text", "text": "1", "assets": []},
+            {"key": "B", "content_type": "text", "text": "2", "assets": []}
           ],
           "option_order_randomizable": true,
           "ext": {}
-        }
+        },
+        "round_no": 1
       }
     ]
   },
@@ -1273,8 +1402,12 @@ QuestionAnswer:
 
 ### 说明
 - 支持顺序练题 / 随机练题
-- 支持单题库 / 多题库
+- 支持单题库 / 多题库 / 课程来源
+- `source_mode=question_list` 表示按前端已选题目列表创建练题会话的业务场景；在当前 OpenAPI 中，这类请求通过 `/api/v1/practice/sessions/from-questions` 携带 `question_ids` 发起，不依赖 `bank_ids` 或 `course_id`，且题目顺序默认与传入列表一致，除非另行启用随机出题策略。
+- 支持 `fixed_count` 与 `continuous`
+- 定量练习未传题量时默认 10 题
 - 熟题可从练题中排除，这来自原始需求。
+- 当 `source_mode=course` 时，`course_id` 必填，`bank_ids` 可为空数组，候选题来自当前租户下该课程关联的可用题库。
 
 ---
 
@@ -1282,9 +1415,49 @@ QuestionAnswer:
 
 ### GET `/api/v1/practice/sessions/{id}`
 
+返回会话基础信息与已抽取题目。
+会话详情需要能直接读取 `course_id`，用于课程入口和结果页一致展示。
+
 ---
 
-## 11.3 提交练题答案
+## 11.3 获取下一题
+
+### POST `/api/v1/practice/sessions/{id}/next-question`
+
+主要用于连续刷题。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "question": {
+      "session_question_id": 9002,
+      "session_id": 501,
+      "question_id": 1002,
+      "question_version_id": 3002,
+      "display_order": 2,
+      "question_type": "single_choice",
+      "content": {
+        "stem": {"content_type": "text", "text": "第二题", "assets": []},
+        "options": [
+          {"key": "A", "content_type": "text", "text": "1", "assets": []},
+          {"key": "B", "content_type": "text", "text": "2", "assets": []}
+        ],
+        "option_order_randomizable": true,
+        "ext": {}
+      },
+      "round_no": 1
+    },
+    "round_no": 1
+  }
+}
+```
+
+---
+
+## 11.4 提交练题答案
 
 ### POST `/api/v1/practice/sessions/{id}/answer`
 
@@ -1305,8 +1478,18 @@ QuestionAnswer:
   "message": "ok",
   "data": {
     "is_correct": true,
+    "correct_answer": {
+      "judge_mode": "by_option_key",
+      "correct_keys": ["B"]
+    },
     "analysis": {
       "text": "基础算术"
+    },
+    "state": {
+      "practice_correct_count": 1,
+      "practice_wrong_count": 0,
+      "is_mastered": false,
+      "is_confused": false
     }
   },
   "request_id": "req_8"
@@ -1320,42 +1503,185 @@ QuestionAnswer:
 
 ---
 
-## 11.4 标记熟题
+## 11.5 结束练题会话
+
+### POST `/api/v1/practice/sessions/{id}/finish`
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "id": 501,
+    "status": "finished",
+    "answered_count": 8,
+    "correct_count": 6,
+    "wrong_count": 2
+  }
+}
+```
+
+---
+
+## 11.6 标记熟题
 
 ### POST `/api/v1/practice/questions/{id}/mark-mastered`
 
 ### Request Body
 ```json
 {
-  "question_id": 1001,
   "value": true
 }
 ```
 
 ---
 
-## 11.5 标记疑惑题
+## 11.7 标记疑惑题
 
 ### POST `/api/v1/practice/questions/{id}/mark-confused`
 
 ### Request Body
 ```json
 {
-  "question_id": 1001,
   "value": true
 }
 ```
 
 ---
 
-## 11.6 用户题目状态列表
+## 11.8 用户题目状态列表
 
 ### GET `/api/v1/user-question-states`
 
 ### Query
 - `state_type`: `wrong` / `mastered` / `confused`
-- `course_id`
 - `bank_id`
+- `course_id`
+- `page`
+- `page_size`
+
+### 阶段 2D 增强响应字段
+- `question_type`
+- `content`
+
+用于错题本、熟题本、疑惑题列表直接展示题干摘要，并支持从当前筛选结果继续练。
+`course_id` 用于按课程筛选用户题目状态；与 `bank_id` 同时传入时仍保持租户与用户隔离口径。
+
+---
+
+## 11.9 练题记录列表
+
+### GET `/api/v1/practice/sessions`
+
+### Query
+- `status`: `active` / `finished`
+- `flow_mode`: `fixed_count` / `continuous`
+- `practice_mode`: `random` / `sequential`
+- `course_id`
+- `page`
+- `page_size`
+
+### Response Data
+```json
+{
+  "items": [
+    {
+      "id": 501,
+      "status": "finished",
+      "practice_mode": "random",
+      "source_mode": "multi_bank",
+      "course_id": 10,
+      "flow_mode": "fixed_count",
+      "bank_ids": [1, 2],
+      "total_count": 10,
+      "answered_count": 10,
+      "correct_count": 8,
+      "wrong_count": 2,
+      "accuracy": 0.8
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+### 业务说明
+- 默认按会话维度展示练题记录。
+- 统计口径按每道会话题目的最新一次作答计算。
+- 仅返回当前登录用户自己的练题会话。
+- `course_id` 用于按课程筛选练题记录；如果传入该参数，只返回该课程下的会话。
+- 结果页和详情页应能直接读取会话的 `course_id`。
+
+---
+
+## 11.10 练题会话结果详情
+
+### GET `/api/v1/practice/sessions/{id}/results`
+
+### Response Data
+```json
+{
+  "session": {
+    "id": 501,
+    "status": "finished",
+    "course_id": 10,
+    "answered_count": 10,
+    "correct_count": 8,
+    "wrong_count": 2,
+    "accuracy": 0.8
+  },
+  "questions": [
+    {
+      "session_question_id": 9001,
+      "question_id": 1001,
+      "question_version_id": 3001,
+      "display_order": 1,
+      "question_type": "single_choice",
+      "content": {},
+      "answer": {"selected_keys": ["B"]},
+      "correct_answer": {"judge_mode": "by_option_key", "correct_keys": ["B"]},
+      "is_correct": true,
+      "analysis": {"text": "基础算术"},
+      "state": {
+        "practice_correct_count": 1,
+        "practice_wrong_count": 0,
+        "is_mastered": false,
+        "is_confused": false
+      }
+    }
+  ]
+}
+```
+
+### 业务说明
+- 用于练题结果页和练题会话详情页。
+- 仅允许查看当前登录用户自己的会话，跨用户或跨租户返回 404。
+- 结果页中的 `session` 复用练题记录列表项结构，因此可以直接读取 `course_id`。
+
+---
+
+## 11.11 从题目列表继续练
+
+### POST `/api/v1/practice/sessions/from-questions`
+
+### Request Body
+```json
+{
+  "question_ids": [1001, 1002],
+  "practice_mode": "random",
+  "flow_mode": "fixed_count",
+  "question_count": 10,
+  "exclude_mastered": false
+}
+```
+
+### 业务说明
+- 用于错题本、熟题本、疑惑题从当前筛选结果发起新练习。
+- `question_count` 未传或小于等于 0 时默认 10。
+- 候选题为空时返回明确的暂无可练题目错误。
+- 后端仍按当前租户和当前用户状态校验候选题。
 
 ---
 
@@ -1407,12 +1733,51 @@ QuestionAnswer:
 
 ### 说明
 - 满足按题型、分值、数量、知识点随机组卷的要求。
+- 正式 OpenAPI 使用 `ExamDetailResponse`，返回强类型 `ExamDetail`。
+
+---
+
+## 12.2A 获取考试详情
+
+### GET `/api/v1/exams/{id}`
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "id": 70001,
+    "tenant_id": 1,
+    "owner_org_type": "school",
+    "owner_org_id": 1,
+    "creator_id": 2001,
+    "name": "高一数学周测1",
+    "exam_mode": "fixed",
+    "status": "draft",
+    "start_time": "2026-04-25T09:00:00+08:00",
+    "end_time": "2026-04-25T10:00:00+08:00",
+    "duration_minutes": 60,
+    "targets": [
+      {"target_type": "class", "target_id": 301}
+    ],
+    "fixed_questions": [
+      {"question_id": 1001, "question_version_id": 3001, "score": 2, "display_order": 1}
+    ],
+    "paper_rules": []
+  },
+  "request_id": "req_exam_detail"
+}
+```
 
 ---
 
 ## 12.3 更新考试
 
 ### PUT `/api/v1/exams/{id}`
+
+### Response
+- 正式 OpenAPI 使用 `ExamDetailResponse`，返回更新后的完整 `ExamDetail`。
 
 ---
 
@@ -1431,6 +1796,7 @@ QuestionAnswer:
 - 更新 `exams.status`
 - 根据规则生成试卷
 - 写 `notifications`
+- 正式 OpenAPI 使用 `ExamDetailResponse`。
 
 ---
 
@@ -1464,29 +1830,41 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "attempt_id": 90001,
-    "paper": {
+    "attempt": {
+      "id": 90001,
+      "exam_id": 70001,
       "paper_id": 801,
-      "questions": [
-        {
-          "question_id": 1001,
-          "question_version_id": 3001,
-          "display_order": 1,
-          "content": {
-            "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
-            "options": [
-              {"key": "B", "content_type": "text", "text": "2", "assets": []},
-              {"key": "A", "content_type": "text", "text": "1", "assets": []}
-            ]
-          },
-          "score": 2
-        }
-      ]
-    }
+      "tenant_id": 1,
+      "user_id": 10001,
+      "status": "in_progress",
+      "objective_score": 0,
+      "subjective_score": 0,
+      "final_score": 0
+    },
+    "questions": [
+      {
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "question_type": "single_choice",
+        "content": {
+          "stem": {"content_type": "text", "text": "1+1等于几？", "assets": []},
+          "options": [
+            {"key": "B", "content_type": "text", "text": "2", "assets": []},
+            {"key": "A", "content_type": "text", "text": "1", "assets": []}
+          ]
+        },
+        "score": 2
+      }
+    ],
+    "answers": []
   },
   "request_id": "req_10"
 }
 ```
+
+### 说明
+- 正式 OpenAPI 使用 `ExamAttemptDetailResponse`。
 
 ---
 
@@ -1497,22 +1875,35 @@ QuestionAnswer:
 ### Request Body
 ```json
 {
-  "answers": [
-    {
-      "question_id": 1001,
-      "question_version_id": 3001,
-      "display_order": 1,
-      "answer": {
-        "selected_keys": ["B"]
-      }
+  "display_order": 1,
+  "answer": {
+    "selected_keys": ["B"]
+  }
+}
+```
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "attempt_id": 90001,
+    "question_id": 1001,
+    "question_version_id": 3001,
+    "display_order": 1,
+    "answer": {
+      "selected_keys": ["B"]
     }
-  ]
+  },
+  "request_id": "req_11"
 }
 ```
 
 ### 说明
-- 服务端落库时应保存 `presented_options_json`
-- 考试答题与练题答题必须分离
+- `display_order` 用于定位当前试卷中的题目顺序。
+- 考试答题与练题答题必须分离。
+- 正式 OpenAPI 使用 `ExamAttemptAnswerResponse`。
 
 ---
 
@@ -1526,9 +1917,30 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "attempt_id": 90001,
-    "status": "submitted",
-    "objective_score": 96
+    "attempt": {
+      "id": 90001,
+      "exam_id": 70001,
+      "paper_id": 801,
+      "tenant_id": 1,
+      "user_id": 10001,
+      "status": "submitted",
+      "objective_score": 96,
+      "subjective_score": 0,
+      "final_score": 96
+    },
+    "answers": [
+      {
+        "attempt_id": 90001,
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "answer": {"selected_keys": ["B"]},
+        "is_correct": true,
+        "score": 2
+      }
+    ],
+    "objective_score": 96,
+    "final_score": 96
   },
   "request_id": "req_11"
 }
@@ -1561,6 +1973,9 @@ QuestionAnswer:
   "request_id": "req_12"
 }
 ```
+
+### 说明
+- 正式 OpenAPI 使用 `ExamAttemptResultResponse`。
 
 ---
 
@@ -1637,12 +2052,25 @@ QuestionAnswer:
 ### POST `/api/v1/import/jobs`
 
 ### Content-Type
-- `multipart/form-data`
+- `application/json`
 
-### Form Data
-- `import_type`
-- `template_version`
-- `file`
+### Request
+```json
+{
+  "import_type": "question",
+  "template_version": "v1",
+  "file_asset_id": 30001,
+  "file_url": "/api/v1/files/30001/content",
+  "content": "bank_name,course_name,question_type,..."
+}
+```
+
+### 字段说明
+- `import_type`: `question` / `question_bank`，阶段 2B 支持题目和题库导入。
+- `template_version`: 模板版本，默认 `v1`。
+- `file_asset_id`: 可选，关联文件资产。
+- `file_url`: 必填，记录导入来源地址。
+- `content`: 必填，阶段 2B 同步导入使用的 CSV 文本内容；后续接入对象存储后可由服务端读取文件资产内容。
 
 ### Response
 ```json
@@ -1650,8 +2078,18 @@ QuestionAnswer:
   "code": 0,
   "message": "ok",
   "data": {
-    "job_id": 10001,
-    "status": "uploaded"
+    "id": 10001,
+    "tenant_id": 1,
+    "import_type": "question",
+    "template_version": "v1",
+    "file_asset_id": 30001,
+    "file_url": "/api/v1/files/30001/content",
+    "status": "partial_success",
+    "total_rows": 2,
+    "success_rows": 1,
+    "failed_rows": 1,
+    "error_summary": "1 行导入失败",
+    "operator_id": 1
   },
   "request_id": "req_14"
 }
@@ -1666,18 +2104,8 @@ QuestionAnswer:
 ### Query
 - `import_type`
 - `status`
-
----
-
-## 14.3 导入任务详情
-
-### GET `/api/v1/import/jobs/{id}`
-
----
-
-## 14.4 导入明细行列表
-
-### GET `/api/v1/import/jobs/{id}/rows`
+- `page`
+- `page_size`
 
 ### Response
 ```json
@@ -1687,10 +2115,62 @@ QuestionAnswer:
   "data": {
     "items": [
       {
+        "id": 10001,
+        "tenant_id": 1,
+        "import_type": "question",
+        "template_version": "v1",
+        "file_url": "/api/v1/files/30001/content",
+        "status": "partial_success",
+        "total_rows": 2,
+        "success_rows": 1,
+        "failed_rows": 1,
+        "operator_id": 1
+      }
+    ],
+    "page": 1,
+    "page_size": 20,
+    "total": 1
+  },
+  "request_id": "req_14_list"
+}
+```
+
+---
+
+## 14.3 导入任务详情
+
+### GET `/api/v1/import/jobs/{id}`
+
+按 `tenant_id` 隔离，跨租户访问返回 404。
+
+---
+
+## 14.4 导入明细行列表
+
+### GET `/api/v1/import/jobs/{id}/rows`
+
+### Query
+- `status`: `success` / `failed`
+- `page`
+- `page_size`
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "id": 90001,
+        "job_id": 10001,
         "row_no": 2,
+        "raw_data": {
+          "bank_name": "未知题库"
+        },
         "status": "failed",
-        "error_code": "QUESTION_OPTION_INVALID",
-        "error_message": "选项数量不能为空"
+        "error_code": "bank_not_found",
+        "error_message": "题库不存在"
       }
     ],
     "page": 1,
@@ -1711,10 +2191,12 @@ QuestionAnswer:
 - `type`: `question` / `question_bank` / `exam`
 
 ### Response
-- 文件流下载
+- `text/csv; charset=utf-8`
 
 ### 说明
-- 一期仅支持模板导入，这来自原始需求。
+- 阶段 2B 模板从仓库 `docs/templates` 读取。
+- `question`、`question_bank`、`exam` 三类模板均可下载。
+- `exam` 当前仅支持模板下载，考试导入落库进入后续阶段。
 
 ---
 
@@ -1820,6 +2302,280 @@ QuestionAnswer:
 
 ### GET `/api/v1/analytics/exam-overview`
 
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Query
+- `exam_id`：必填，考试 ID。
+- `page`：可选，成绩列表页码，默认 1。
+- `page_size`：可选，成绩列表分页大小，默认 20，最大 100。
+- `attempt_status`：可选，作答状态筛选，允许 `not_started`、`in_progress`、`submitted`；`submitted` 包含正常交卷和超时交卷。
+- `review_status`：可选，批阅状态筛选，允许 `pending`、`reviewed`。
+- `keyword`：可选，按学生姓名或学号模糊搜索。
+
+### 作用
+- 用于老师侧考试详情页查看整场考试的参加人数、提交情况、均分以及学生成绩列表。
+- 成绩列表基于考试发布范围展开应参加学生，再按 `exam_attempts` 实时拼接作答状态与得分。
+- 老师端成绩列表筛选和 CSV 导出共用同一套筛选语义，确保页面结果与导出结果一致。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "exam_id": 901,
+      "exam_name": "期中测验",
+      "exam_mode": "fixed",
+      "status": "published",
+      "start_time": "2026-04-24T09:00:00+08:00",
+      "end_time": "2026-04-24T10:00:00+08:00",
+      "duration_minutes": 60,
+      "total_score": 100,
+      "student_count": 42,
+      "participated_student_count": 40,
+      "submitted_count": 39,
+      "in_progress_count": 1,
+      "absent_count": 2,
+      "average_score": 84.5,
+      "highest_score": 98,
+      "lowest_score": 61
+    },
+    "students": {
+      "items": [
+        {
+          "student_user_id": 7001,
+          "student_name": "张三",
+          "student_no": "S001",
+          "class_id": 301,
+          "class_name": "七年级一班",
+          "attempt_id": 8001,
+          "attempt_status": "submitted",
+          "review_status": "reviewed",
+          "started_at": "2026-04-24T09:01:00+08:00",
+          "submit_at": "2026-04-24T09:48:00+08:00",
+          "objective_score": 86,
+          "subjective_score": 0,
+          "final_score": 86
+        },
+        {
+          "student_user_id": 7002,
+          "student_name": "李四",
+          "student_no": "S002",
+          "class_id": 301,
+          "class_name": "七年级一班",
+          "attempt_status": "not_started",
+          "review_status": "not_started"
+        }
+      ],
+      "page": 1,
+      "page_size": 20,
+      "total": 42
+    }
+  },
+  "request_id": "req_exam_overview_1"
+}
+```
+
+---
+
+### GET `/api/v1/analytics/exam-overview-export`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Query
+- `exam_id`：必填，考试 ID。
+- `attempt_status`：可选，作答状态筛选，与考试概览列表一致。
+- `review_status`：可选，批阅状态筛选，与考试概览列表一致。
+- `keyword`：可选，按学生姓名或学号模糊搜索。
+
+### 作用
+- 导出当前筛选结果全集，不受页面分页限制。
+- 返回 `text/csv; charset=utf-8`，用于老师侧下载成绩明细。
+
+### CSV 列
+- 学生姓名
+- 学号
+- 班级
+- 作答状态
+- 批阅状态
+- 客观题得分
+- 主观题得分
+- 总分
+- 开始时间
+- 交卷时间
+
+---
+
+### GET `/api/v1/analytics/exam-attempt-review`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Query
+- `attempt_id`：必填，考试作答记录 ID。
+
+### 作用
+- 用于老师侧从成绩列表点进单个学生，查看这场考试的完整答卷。
+- 返回学生信息、考试得分摘要，以及按题展开的题干、标准答案、学生答案、判题结果和得分。
+- 对主观题还会额外返回 `judge_source`、`review_comment`、`reviewer_user_id`、`reviewed_at`，用于显示是否待批阅、由谁批阅以及批注内容。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "attempt_id": 8001,
+      "exam_id": 901,
+      "exam_name": "期中测验",
+      "student_user_id": 7001,
+      "student_name": "张三",
+      "student_no": "S001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "attempt_status": "submitted",
+      "started_at": "2026-04-24T09:01:00+08:00",
+      "submit_at": "2026-04-24T09:48:00+08:00",
+      "objective_score": 86,
+      "subjective_score": 0,
+      "final_score": 86
+    },
+    "questions": [
+      {
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "question_type": "single_choice",
+        "score": 10,
+        "content": {
+          "stem": {"text": "1+1等于几？"},
+          "options": [
+            {"key": "A", "text": "1"},
+            {"key": "B", "text": "2"}
+          ]
+        },
+        "correct_answer": {
+          "judge_mode": "by_option_key",
+          "correct_keys": ["B"]
+        },
+        "student_answer": {
+          "selected_keys": ["B"]
+        },
+        "is_answered": true,
+        "is_correct": true,
+        "answer_score": 10,
+        "judge_source": "auto"
+      },
+      {
+        "question_id": 1002,
+        "question_version_id": 3002,
+        "display_order": 2,
+        "question_type": "essay",
+        "score": 20,
+        "content": {
+          "stem": {"text": "请简述分数通分的基本步骤。"}
+        },
+        "correct_answer": {
+          "reference_points": ["先求最小公倍数", "统一分母", "再比较或运算"]
+        },
+        "student_answer": {
+          "text": "先找公分母，再把分数改写成同分母分数。"
+        },
+        "is_answered": true,
+        "is_correct": null,
+        "answer_score": 12,
+        "judge_source": "manual",
+        "review_comment": "步骤基本正确，但缺少最小公倍数的表述。",
+        "reviewer_user_id": 701,
+        "reviewed_at": "2026-04-24T10:02:00+08:00"
+      }
+    ]
+  },
+  "request_id": "req_exam_attempt_review_1"
+}
+```
+
+---
+
+### PUT `/api/v1/analytics/exam-attempt-question-review`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 或 `exam:publish` 权限。
+- `user_type` 允许 `teacher`、`school_admin`、`sys_admin`。
+
+### Body
+- `attempt_id`：必填，考试作答记录 ID。
+- `display_order`：必填，题目在本次答卷中的顺序号。
+- `score`：必填，老师为该题补录的得分，必须大于等于 `0` 且不超过该题满分。
+- `review_comment`：必填，老师批阅说明。服务端会去除首尾空白，去除后不能为空。
+
+### 说明
+- 仅允许对 `attempt_status=submitted` 或 `attempt_status=timeout_submitted` 的答卷执行批阅。
+- 仅允许对 `short_answer`、`essay` 这两类主观题补评分；客观题仍由交卷时自动判分。
+- 保存后服务端会回写题目批阅人、批语、批阅时间，并重算整份答卷的 `subjective_score` 与 `final_score`。
+- 同一题重复批阅时执行覆盖更新，以最后一次保存结果为准。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "attempt_id": 8001,
+      "exam_id": 901,
+      "exam_name": "期中测验",
+      "student_user_id": 7001,
+      "student_name": "张三",
+      "student_no": "S001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "attempt_status": "submitted",
+      "started_at": "2026-04-24T09:01:00+08:00",
+      "submit_at": "2026-04-24T09:48:00+08:00",
+      "objective_score": 86,
+      "subjective_score": 12,
+      "final_score": 98
+    },
+    "question": {
+      "question_id": 1002,
+      "question_version_id": 3002,
+      "display_order": 2,
+      "question_type": "essay",
+      "score": 20,
+      "content": {
+        "stem": {"text": "请简述分数通分的基本步骤。"}
+      },
+      "correct_answer": {
+        "reference_points": ["先求最小公倍数", "统一分母", "再比较或运算"]
+      },
+      "student_answer": {
+        "text": "先找公分母，再把分数改写成同分母分数。"
+      },
+      "is_answered": true,
+      "is_correct": null,
+      "answer_score": 12,
+      "judge_source": "manual",
+      "review_comment": "步骤基本正确，但缺少最小公倍数的表述。",
+      "reviewer_user_id": 701,
+      "reviewed_at": "2026-04-24T10:02:00+08:00"
+    }
+  },
+  "request_id": "req_exam_attempt_question_review_1"
+}
+```
+
 ---
 
 ## 16.3 错题分析
@@ -1844,6 +2600,426 @@ QuestionAnswer:
 
 ---
 
+## 16.5 老师侧班级课程练题概览
+
+### GET `/api/v1/analytics/class-course-options`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，仅返回当前老师当前任课的班级课程树。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，返回当前 token 租户范围内有效任课关系对应的班级课程树。
+
+### 作用
+- 用于老师侧班级学习页的单个级联选择器。
+- 前端先选班级，再在同一个控件中选择课程，最终仍以 `class_id + course_id` 查询练题概览。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "class_id": 301,
+        "class_name": "七年级一班",
+        "courses": [
+          {
+            "course_id": 10,
+            "course_name": "数学"
+          },
+          {
+            "course_id": 11,
+            "course_name": "语文"
+          }
+        ]
+      }
+    ]
+  },
+  "request_id": "req_analytics_class_options_1"
+}
+```
+
+### GET `/api/v1/analytics/class-practice-summary`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，后端按 `teacher_class_course_assignments` 校验当前老师是否正在任教该班级课程。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 租户范围查看。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `start_at`：可选，统计开始时间，RFC3339 格式。
+- `end_at`：可选，统计结束时间，RFC3339 格式。
+- `page`：可选，学生明细页码，默认 1。
+- `page_size`：可选，学生明细分页大小，默认 20，最大 100。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "summary": {
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学",
+      "student_count": 42,
+      "participated_student_count": 35,
+      "session_count": 120,
+      "answered_count": 1800,
+      "correct_count": 1440,
+      "wrong_count": 360,
+      "accuracy": 0.8,
+      "wrong_question_count": 80,
+      "confused_question_count": 24,
+      "last_practiced_at": "2026-04-22T10:00:00+08:00"
+    },
+    "students": {
+      "items": [
+        {
+          "student_id": 7,
+          "student_name": "李同学",
+          "student_no": "stu_007",
+          "session_count": 3,
+          "answered_count": 30,
+          "correct_count": 24,
+          "wrong_count": 6,
+          "accuracy": 0.8,
+          "wrong_question_count": 4,
+          "confused_question_count": 1,
+          "last_practiced_at": "2026-04-22T10:00:00+08:00"
+        }
+      ],
+      "page": 1,
+      "page_size": 20,
+      "total": 42
+    }
+  },
+  "request_id": "req_analytics_class_1"
+}
+```
+
+### 统计口径
+- 班级学生范围来自当前 `current` 状态的学生班级归属。
+- `session_count` 按练题会话开始时间统计。
+- `answered_count`、`correct_count`、`wrong_count` 按答题时间统计。
+- `wrong_question_count` 和 `confused_question_count` 仅统计当前课程下有效题库与有效题目。
+- 阶段 2F 暂不新增统计表，直接基于现有练题会话、答题记录和用户题目状态实时聚合。
+- 用户端当前通过 `GET /api/v1/analytics/class-course-options` 先拉取班级课程树，再选择具体课程后调用本接口。
+
+---
+
+## 16.6 老师侧学生学习详情
+
+### GET `/api/v1/analytics/student-practice-detail`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能查看当前任课班级课程下的学生学习详情。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围查看学生学习详情。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `tab`：可选，`sessions` / `wrong` / `confused`，默认 `sessions`。
+- `start_at`：可选，统计开始时间，RFC3339 格式。
+- `end_at`：可选，统计结束时间，RFC3339 格式。
+- `page`：可选，当前标签页分页页码，默认 1。
+- `page_size`：可选，当前标签页分页大小，默认 20，最大 100。
+
+### 说明
+- `student_summary` 返回该学生在当前班级课程下的总览指标。
+- `sessions`、`wrong_questions`、`confused_questions` 均采用分页结构，前端根据 `tab` 选择其中一个分页列表展示。
+- `active_tab` 用于回显当前激活标签页，便于前端和后端在切换时保持一致。
+- `wrong_questions` 和 `confused_questions` 每个题目项可返回 `last_session_id`、`last_session_question_id`，用于前端直接下钻到单题详情页。
+- `teacher` 访问时，后端应复用班级课程任课关系校验，避免越权查看同班其他课程或其他班级学生数据。
+- `sys_admin` 和 `school_admin` 仍需受租户边界限制，不得跨租户读取学生数据。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "student_summary": {
+      "student_user_id": 501,
+      "student_name": "张三",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学",
+      "session_count": 3,
+      "answered_count": 18,
+      "correct_count": 12,
+      "wrong_count": 6,
+      "accuracy": 0.67,
+      "wrong_question_count": 2,
+      "confused_question_count": 1
+    },
+    "active_tab": "wrong",
+    "sessions": {
+      "items": [],
+      "page": 1,
+      "page_size": 20,
+      "total": 0
+    },
+    "wrong_questions": {
+      "items": [
+        {
+          "question_id": 1001,
+          "question_version_id": 3001,
+          "question_type": "single_choice",
+          "stem": "1+1等于几？",
+          "practice_wrong_count": 2,
+          "last_wrong_at": "2026-04-22T09:15:00+08:00",
+          "is_confused": false,
+          "confused_at": null,
+          "last_result": "wrong",
+          "last_session_id": 9001,
+          "last_session_question_id": 70001
+        }
+      ],
+      "page": 1,
+      "page_size": 20,
+      "total": 2
+    },
+    "confused_questions": {
+      "items": [],
+      "page": 1,
+      "page_size": 20,
+      "total": 0
+    }
+  },
+  "request_id": "req_analytics_student_1"
+}
+```
+
+---
+
+## 16.7 老师侧单次练题详情
+
+### GET `/api/v1/analytics/student-practice-session-detail`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能查看当前任课班级课程下学生的该次练题。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围查看。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `session_id`：必填，练题会话 ID。
+
+### 说明
+- 本接口按 `session_id` 精确定位单次练题，不使用时间窗口筛选。
+- `session` 汇总统计口径基于该会话每道题的最新作答结果。
+- `questions` 按 `display_order` 升序返回。
+- 题目内容、标准答案与解析优先读取 `practice_session_questions.presented_options_json` 快照，避免题目后续改版导致历史详情漂移。
+- 学生答案按 `session_question_id + user_id` 取最新一条作答记录。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "student_summary": {
+      "student_user_id": 501,
+      "student_name": "张三",
+      "student_no": "S2026001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学"
+    },
+    "session": {
+      "session_id": 9001,
+      "started_at": "2026-04-23T10:00:00+08:00",
+      "finished_at": "2026-04-23T10:20:00+08:00",
+      "status": "finished",
+      "practice_mode": "random",
+      "source_mode": "course",
+      "flow_mode": "fixed_count",
+      "total_count": 2,
+      "answered_count": 2,
+      "correct_count": 1,
+      "wrong_count": 1,
+      "accuracy": 0.5
+    },
+    "questions": [
+      {
+        "session_question_id": 70001,
+        "question_id": 1001,
+        "question_version_id": 3001,
+        "display_order": 1,
+        "question_type": "single_choice",
+        "content": {
+          "stem": {
+            "type": "text",
+            "text": "1+1 等于几？"
+          }
+        },
+        "student_answer": {
+          "selected_options": ["B"]
+        },
+        "correct_answer": {
+          "selected_options": ["B"]
+        },
+        "is_answered": true,
+        "is_correct": true,
+        "answered_at": "2026-04-23T10:02:00+08:00",
+        "analysis": {
+          "text": "基础加法。"
+        }
+      }
+    ]
+  },
+  "request_id": "req_analytics_student_session_1"
+}
+```
+
+---
+
+## 16.8 老师侧单题完整详情
+
+### GET `/api/v1/analytics/student-practice-session-question-detail`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能查看当前任课班级课程下学生该次练题中的题目详情。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围查看。
+
+### Query
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `session_id`：必填，练题会话 ID。
+- `session_question_id`：必填，会话题目 ID。
+
+### 说明
+- 本接口在单次练题详情基础上，精确定位到指定 `session_question_id`。
+- 若 `session_question_id` 不属于目标 `session_id`，返回 `404`。
+- `question_detail` 题面、标准答案、解析优先读取练题快照，避免历史漂移。
+- 学生答案按 `session_question_id + user_id` 最新一条作答返回。
+- 若当前老师已保存过讲评，返回 `teacher_review`，用于前端回填编辑内容。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "student_summary": {
+      "student_user_id": 501,
+      "student_name": "张三",
+      "student_no": "S2026001",
+      "class_id": 301,
+      "class_name": "七年级一班",
+      "course_id": 10,
+      "course_name": "数学"
+    },
+    "session": {
+      "session_id": 9001,
+      "started_at": "2026-04-23T10:00:00+08:00",
+      "finished_at": "2026-04-23T10:20:00+08:00",
+      "status": "finished",
+      "practice_mode": "random",
+      "source_mode": "course",
+      "flow_mode": "fixed_count",
+      "total_count": 2,
+      "answered_count": 2,
+      "correct_count": 1,
+      "wrong_count": 1,
+      "accuracy": 0.5
+    },
+    "question_detail": {
+      "session_question_id": 70001,
+      "question_id": 1001,
+      "question_version_id": 3001,
+      "display_order": 1,
+      "question_type": "single_choice",
+      "content": {
+        "stem": {
+          "type": "text",
+          "text": "1+1 等于几？"
+        }
+      },
+      "student_answer": {
+        "selected_options": ["B"]
+      },
+      "correct_answer": {
+        "selected_options": ["B"]
+      },
+      "is_answered": true,
+      "is_correct": true,
+      "answered_at": "2026-04-23T10:02:00+08:00",
+      "analysis": {
+        "text": "基础加法。"
+      }
+    },
+    "teacher_review": {
+      "review_id": 81001,
+      "reviewer_user_id": 701,
+      "review_comment": "注意基础加法与审题步骤。",
+      "updated_at": "2026-04-23T16:20:00+08:00"
+    }
+  },
+  "request_id": "req_analytics_student_session_question_1"
+}
+```
+
+---
+
+## 16.9 老师讲评保存
+
+### PUT `/api/v1/analytics/student-practice-session-question-review`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type=teacher` 时，只能对当前任课班级课程下学生该次练题中的题目保存讲评。
+- `user_type=sys_admin` 或 `user_type=school_admin` 时，按当前 token 的租户范围保存讲评。
+
+### Body
+- `class_id`：必填，班级 ID。
+- `course_id`：必填，课程 ID。
+- `student_user_id`：必填，学生用户 ID。
+- `session_id`：必填，练题会话 ID。
+- `session_question_id`：必填，会话题目 ID。
+- `review_comment`：必填，讲评内容。服务端会自动去除首尾空白，去除后不能为空。
+
+### 说明
+- 保存讲评前，服务端会复用单题详情接口的权限和归属校验。
+- 讲评按 `tenant_id + session_question_id + teacher_user_id` 唯一保存，同一老师对同一题重复保存时执行覆盖更新。
+- 当前版本仅支持文本讲评，不支持附件、模板讲评或公开评语。
+
+### Response
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "review_id": 81001,
+    "reviewer_user_id": 701,
+    "review_comment": "注意基础加法与审题步骤。",
+    "updated_at": "2026-04-23T16:20:00+08:00"
+  },
+  "request_id": "req_analytics_student_session_question_review_1"
+}
+```
+
+---
+
 ## 17. 审计接口（可选开放）
 
 ## 17.1 审计日志列表
@@ -1860,6 +3036,126 @@ QuestionAnswer:
 
 ### 说明
 - 建议仅系统管理员或租户管理员可访问
+
+### 当前正式实现补充
+- 当前正式接口支持 `module_name`、`resource_type`、`page`、`page_size`。
+- 返回统一分页结构，供管理端阶段六“快照历史”页面直接消费。
+
+## 17.2 管理端阶段六总览
+
+### GET `/api/v1/analytics/admin-overview`
+
+### 权限
+- 需要登录态。
+- 需要 `analytics:view` 权限。
+- `user_type` 允许 `sys_admin`、`school_admin`。
+
+### 说明
+- 返回阶段六管理端首页所需的聚合指标与最近动态。
+- 当前返回以下核心指标：
+  - 学校数
+  - 班级数
+  - 课程数
+  - 在校学生数
+  - 活跃教师数
+  - 近 7 天练题会话数
+  - 已发布考试数
+  - 已交卷次数
+  - 待批阅主观题数
+  - 近 30 天学籍变更数
+- 同时返回：
+  - `recent_transitions`：最近学籍变更
+  - `recent_audit_logs`：最近审计日志
+
+## 17.3 实体快照列表
+
+### GET `/api/v1/entity-snapshots`
+
+### 权限
+- 需要登录态。
+- 需要 `audit:view` 权限。
+
+### Query
+- `entity_type`
+- `entity_id`
+- `page`
+- `page_size`
+
+### 说明
+- 用于管理端查看快照留痕。
+- 当前阶段主要承载：
+  - 学籍变更快照
+  - 任课变更事件快照
+
+## 17.4 学籍变更列表与登记
+
+### GET `/api/v1/student-transitions`
+
+### 权限
+- 需要登录态。
+- 需要 `audit:view` 权限。
+
+### Query
+- `student_id`
+- `transition_type`
+- `page`
+- `page_size`
+
+### POST `/api/v1/student-transitions`
+
+### 权限
+- 需要登录态。
+- 需要 `org:manage` 权限。
+
+### Body
+- `student_id`
+- `transition_type`
+- `to_class_id`
+- `occurred_at`
+- `remark`
+
+### 说明
+- 服务端在保存记录的同时：
+  - 更新当前学生班级归属
+  - 写入 `student_transitions`
+  - 写入 `entity_snapshots`
+  - 写入 `audit_logs`
+
+## 17.5 任课变更历史与登记
+
+### GET `/api/v1/teacher-assignment-histories`
+
+### 权限
+- 需要登录态。
+- 需要 `audit:view` 权限。
+
+### Query
+- `teacher_id`
+- `class_id`
+- `course_id`
+- `page`
+- `page_size`
+
+### POST `/api/v1/teacher-assignment-changes`
+
+### 权限
+- 需要登录态。
+- 需要 `org:manage` 权限。
+
+### Body
+- `teacher_id`
+- `class_id`
+- `course_id`
+- `change_type`
+- `effective_at`
+
+### 说明
+- `change_type` 当前支持 `assign` / `unassign`。
+- 保存时同步维护：
+  - `teacher_class_course_assignments`
+  - `teacher_assignment_histories`
+  - `entity_snapshots`
+  - `audit_logs`
 
 ---
 

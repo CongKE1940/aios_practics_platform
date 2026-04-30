@@ -49,7 +49,7 @@ func Load() (Config, error) {
 			Env:  getenvDefault("AIOS_APP_ENV", "local"),
 		},
 		HTTP: HTTPConfig{
-			Addr: getenvDefault("AIOS_HTTP_ADDR", ":8080"),
+			Addr: getenvDefault("AIOS_HTTP_ADDR", ":18081"),
 		},
 		Database: DatabaseConfig{
 			DSN: os.Getenv("AIOS_MYSQL_DSN"),

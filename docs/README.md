@@ -29,7 +29,15 @@
 13. `docs/10_backend_code_standards.md`
 14. `docs/11_test_plan_and_acceptance.md`
 15. `docs/20_stage1_implementation_status.md`
-16. `templates/` 下的导入模板
+16. `docs/21_stage2a_implementation_status.md`
+17. `docs/22_stage2b_implementation_status.md`
+18. `docs/23_stage2c_implementation_status.md`
+19. `docs/24_stage2d_implementation_status.md`
+20. `docs/25_stage2e_implementation_status.md`
+21. `docs/26_stage2f_implementation_status.md`
+22. `docs/27_stage2g_exam_main_flow_status.md`
+23. `docs/28_stage6_admin_analytics_snapshot_status.md`
+24. `templates/` 下的导入模板
 
 ### 给你自己的阅读顺序
 1. `docs/01_prd_quiz_system.md`
@@ -59,6 +67,14 @@
 - `docs/12_milestones_and_delivery_plan.md`：里程碑与交付计划
 - `docs/13_release_and_deployment_guide.md`：环境、发布、回滚与上线检查
 - `docs/20_stage1_implementation_status.md`：阶段 1 当前实施状态、验证结果与下一步
+- `docs/21_stage2a_implementation_status.md`：阶段 2A 题库与题目管理实施状态
+- `docs/22_stage2b_implementation_status.md`：阶段 2B 模板下载与导入任务实施状态
+- `docs/23_stage2c_implementation_status.md`：阶段 2C 练题核心链路实施状态
+- `docs/24_stage2d_implementation_status.md`：阶段 2D 练题记录与复习闭环实施状态
+- `docs/25_stage2e_implementation_status.md`：阶段 2E 课程来源练题实施状态
+- `docs/26_stage2f_implementation_status.md`：阶段 2F 老师侧班级学习页实施状态
+- `docs/27_stage2g_exam_main_flow_status.md`：阶段 2G 考试主链路实施状态
+- `docs/28_stage6_admin_analytics_snapshot_status.md`：阶段 6 数据分析与快照实施状态
 - `templates/14_acceptance_checklist.csv`：验收清单
 - `templates/15_question_import_template.csv`：题目导入模板
 - `templates/16_bank_import_template.csv`：题库导入模板

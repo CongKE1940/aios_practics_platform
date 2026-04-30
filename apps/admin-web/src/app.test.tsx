@@ -10,10 +10,22 @@ afterEach(() => {
 
 describe("AdminApp", () => {
   it("renders login form before authentication", () => {
-    render(<AdminApp />);
+    render(
+      <AdminApp
+        authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
+          login: async () => {
+            throw new Error("should not login");
+          },
+          logout: async () => true,
+          menus: async () => []
+        }}
+      />
+    );
 
-    expect(screen.getByRole("heading", { name: "AIOS 管理端" })).toBeTruthy();
-    expect(screen.getByLabelText("租户编码")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "欢迎回来" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "学习端入口" })).toBeTruthy();
+    expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
     expect(screen.getByLabelText("密码")).toBeTruthy();
     expect(screen.getByRole("button", { name: "登录" })).toBeTruthy();
@@ -25,6 +37,7 @@ describe("AdminApp", () => {
       <AdminApp
         sessionStore={sessionStore}
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => ({
             access_token: "access_token",
             refresh_token: "refresh_token",
@@ -42,11 +55,19 @@ describe("AdminApp", () => {
           menus: async () => [
             {
               id: 1,
-              name: "系统管理",
-              path: "/admin",
+              name: "组织管理",
+              path: "/admin/org",
               children: [
-                { id: 11, name: "组织管理", path: "/admin/org", children: [] },
-                { id: 12, name: "公告通知", path: "/admin/notices", children: [] }
+                { id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] },
+                { id: 12, name: "年级管理", path: "/admin/org/grades", children: [] }
+              ]
+            },
+            {
+              id: 2,
+              name: "系统管理",
+              path: "/admin/system",
+              children: [
+                { id: 21, name: "公告通知", path: "/admin/notices", children: [] }
               ]
             }
           ]
@@ -54,19 +75,26 @@ describe("AdminApp", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "platform" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "平台管理（platform）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "platform" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Test@123456" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => {
-      expect(screen.getByText("系统管理员")).toBeTruthy();
+      expect(screen.getAllByText("系统管理员").length).toBeGreaterThan(0);
     });
     expect(sessionStore.savedSession?.user.display_name).toBe("系统管理员");
     expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "新增公告" })).toBeTruthy();
-    expect(screen.getByText("组织管理")).toBeTruthy();
-    expect(screen.getByText("公告通知")).toBeTruthy();
+    expect(screen.getByText("智慧教育平台")).toBeTruthy();
+    expect(screen.getByLabelText("管理菜单")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "组织管理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "学校与组织管理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "公告通知" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "工作台" })).toBeTruthy();
+    expect(screen.getByText("待处理事项")).toBeTruthy();
   });
 
   it("returns to login form after logout", async () => {
@@ -75,6 +103,7 @@ describe("AdminApp", () => {
       <AdminApp
         sessionStore={sessionStore}
         authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
           login: async () => ({
             access_token: "access_token",
             refresh_token: "refresh_token",
@@ -92,16 +121,19 @@ describe("AdminApp", () => {
           menus: async () => [
             {
               id: 1,
-              name: "系统管理",
-              path: "/admin",
-              children: [{ id: 11, name: "组织管理", path: "/admin/org", children: [] }]
+              name: "组织管理",
+              path: "/admin/org",
+              children: [{ id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] }]
             }
           ]
         }}
       />
     );
 
-    fireEvent.change(screen.getByLabelText("租户编码"), { target: { value: "platform" } });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "平台管理（platform）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "platform" } });
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Test@123456" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -128,9 +160,9 @@ describe("AdminApp", () => {
           menus: [
             {
               id: 1,
-              name: "系统管理",
-              path: "/admin",
-              children: [{ id: 11, name: "组织管理", path: "/admin/org", children: [] }]
+              name: "组织管理",
+              path: "/admin/org",
+              children: [{ id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] }]
             }
           ],
           user: {
@@ -145,21 +177,22 @@ describe("AdminApp", () => {
       />
     );
 
-    expect(screen.getByText("系统管理员")).toBeTruthy();
-    expect(screen.getByText("组织管理")).toBeTruthy();
+    expect(screen.getAllByText("系统管理员").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "组织管理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "学校与组织管理" })).toBeTruthy();
   });
 
-  it("opens organization panel after selecting organization menu", async () => {
+  it("opens school organization panel after selecting organization submenu", async () => {
     render(
       <AdminApp
         orgApi={{
           listSchools: async () => ({
-            items: [{ id: 1, tenant_id: 1, code: "school_001", name: "第一中学", status: "active" }],
+            items: [{ id: 1, tenant_id: 1, object_type: 1, code: "school_001", name: "第一中学", status: "active" }],
             page: 1,
             page_size: 20,
             total: 1
           }),
-          createSchool: async (body) => ({ id: 1, tenant_id: 1, status: "active", ...body }),
+          createSchool: async (body) => ({ id: 1, tenant_id: 1, object_type: body.object_type ?? 1, code: body.code ?? "school_001", status: "active", ...body }),
           disableSchool: async () => true,
           listGrades: async () => ({ items: [], page: 1, page_size: 20, total: 0 }),
           createGrade: async (body) => ({ id: 2, tenant_id: 1, status: "active", ...body }),
@@ -178,9 +211,9 @@ describe("AdminApp", () => {
           menus: [
             {
               id: 1,
-              name: "系统管理",
-              path: "/admin",
-              children: [{ id: 11, name: "组织管理", path: "/admin/org", children: [] }]
+              name: "组织管理",
+              path: "/admin/org",
+              children: [{ id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] }]
             }
           ],
           user: {
@@ -195,10 +228,10 @@ describe("AdminApp", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "组织管理" }));
+    fireEvent.click(screen.getByRole("button", { name: "学校与组织管理" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "组织管理" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "学校与组织管理" })).toBeTruthy();
     });
     expect(screen.getAllByText("第一中学").length).toBeGreaterThan(0);
   });
@@ -228,6 +261,25 @@ describe("AdminApp", () => {
           }),
           createNotice: async (body) => ({
             id: 1,
+            tenant_id: 1,
+            publisher_id: 1,
+            status: "draft",
+            ...body
+          }),
+          getNotice: async (id) => ({
+            id,
+            tenant_id: 1,
+            title: "系统维护通知",
+            content: "周五晚维护",
+            notice_type: "system",
+            publisher_id: 1,
+            publish_scope_type: "all",
+            publish_scope: {},
+            publish_at: "2026-04-22T09:00:00+08:00",
+            status: "draft"
+          }),
+          updateNotice: async (id, body) => ({
+            id,
             tenant_id: 1,
             publisher_id: 1,
             status: "draft",
@@ -318,6 +370,460 @@ describe("AdminApp", () => {
       expect(screen.getByRole("heading", { name: "公告通知" })).toBeTruthy();
     });
     expect(screen.getAllByText("系统维护通知").length).toBeGreaterThan(0);
+  });
+
+  it("opens question bank panel after selecting question bank menu", async () => {
+    render(
+      <AdminApp
+        questionBankApi={{
+          listQuestionBanks: async () => ({
+            items: [
+              {
+                id: 1,
+                tenant_id: 1,
+                owner_org_type: "school",
+                owner_org_id: 1,
+                creator_id: 1,
+                course_id: 10,
+                name: "高一数学基础题库",
+                description: "代数基础",
+                status: "draft",
+                source_type: "manual"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createQuestionBank: async (body) => ({
+            id: 2,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            creator_id: 1,
+            status: "draft",
+            source_type: "manual",
+            ...body
+          }),
+          publishQuestionBank: async (id) => ({
+            id,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            creator_id: 1,
+            course_id: 10,
+            name: "高一数学基础题库",
+            status: "active",
+            source_type: "manual"
+          }),
+          assignQuestionBankVisibility: async () => true
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 15, name: "题库管理", path: "/admin/question-banks", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["question_bank:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "题库管理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "题库管理" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("高一数学基础题库").length).toBeGreaterThan(0);
+  });
+
+  it("opens question panel after selecting question menu", async () => {
+    render(
+      <AdminApp
+        questionApi={{
+          listQuestions: async () => ({
+            items: [
+              {
+                id: 1001,
+                tenant_id: 1,
+                owner_org_type: "school",
+                owner_org_id: 1,
+                question_type: "single_choice",
+                difficulty: "medium",
+                current_version_id: 3001,
+                current_version_no: 1,
+                status: "active",
+                source_type: "manual",
+                creator_id: 1,
+                bank_ids: [1]
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createQuestion: async (body) => ({
+            id: 1002,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            current_version_id: 3002,
+            current_version_no: 1,
+            status: "active",
+            source_type: "manual",
+            creator_id: 1,
+            bank_ids: body.bank_ids ?? [],
+            question_type: body.question_type,
+            difficulty: body.difficulty ?? undefined
+          }),
+          updateQuestion: async (id, body) => ({
+            id,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            question_type: "single_choice",
+            difficulty: body.difficulty ?? "medium",
+            current_version_id: 3001,
+            current_version_no: 1,
+            status: body.status ?? "active",
+            source_type: "manual",
+            creator_id: 1,
+            bank_ids: [1]
+          }),
+          listQuestionVersions: async () => [],
+          createQuestionVersion: async (id, body) => ({
+            id: 3002,
+            question_id: id,
+            version_no: 2,
+            content: body.content,
+            answer: body.answer,
+            analysis: body.analysis,
+            structure_hash: "hash_2",
+            change_summary: body.change_summary,
+            is_published: true,
+            created_by: 1
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 16, name: "题目管理", path: "/admin/questions", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["question:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "题目管理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "题目管理" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("single_choice").length).toBeGreaterThan(0);
+  });
+
+  it("opens import panel after selecting import menu", async () => {
+    render(
+      <AdminApp
+        importApi={{
+          downloadImportTemplate: async () => "bank_name,course_name\n",
+          listImportJobs: async () => ({
+            items: [
+              {
+                id: 1,
+                tenant_id: 1,
+                import_type: "question_bank",
+                template_version: "v1",
+                file_url: "/api/v1/files/1/content",
+                status: "success",
+                total_rows: 1,
+                success_rows: 1,
+                failed_rows: 0,
+                operator_id: 1
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createImportJob: async (body) => ({
+            id: 2,
+            tenant_id: 1,
+            import_type: body.import_type,
+            template_version: body.template_version ?? "v1",
+            file_asset_id: body.file_asset_id,
+            file_url: body.file_url,
+            status: "success",
+            total_rows: 1,
+            success_rows: 1,
+            failed_rows: 0,
+            operator_id: 1
+          }),
+          listImportJobRows: async () => ({
+            items: [],
+            page: 1,
+            page_size: 20,
+            total: 0
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 17, name: "导入中心", path: "/admin/imports", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["import:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "导入中心" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "导入中心" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("question_bank").length).toBeGreaterThan(0);
+  });
+
+  it("opens analytics panel after selecting analytics menu", async () => {
+    render(
+      <AdminApp
+        analyticsApi={{
+          getAdminOverview: async () => ({
+            summary: {
+              school_count: 2,
+              class_count: 8,
+              course_count: 5,
+              active_student_count: 320,
+              active_teacher_count: 24,
+              practice_session_count_7d: 86,
+              published_exam_count: 6,
+              submitted_exam_attempt_count: 102,
+              pending_review_count: 4,
+              recent_transition_count_30d: 3
+            },
+            recent_transitions: [
+              {
+                transition_id: 1001,
+                student_id: 501,
+                student_name: "张三",
+                transition_type: "promote",
+                occurred_at: "2026-04-23T09:00:00+08:00",
+                operator_id: 1,
+                operator_name: "系统管理员"
+              }
+            ],
+            recent_audit_logs: [
+              {
+                id: 9001,
+                module_name: "snapshot",
+                action_name: "student_transition",
+                resource_type: "student",
+                result: "success",
+                created_at: "2026-04-23T09:30:00+08:00"
+              }
+            ]
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 18, name: "数据看板", path: "/admin/analytics", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["analytics:view"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "数据看板" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "数据看板" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("学校数").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("张三").length).toBeGreaterThan(0);
+  });
+
+  it("opens history panel after selecting history menu", async () => {
+    render(
+      <AdminApp
+        historyApi={{
+          listAuditLogs: async () => ({
+            items: [
+              {
+                id: 1,
+                tenant_id: 1,
+                module_name: "snapshot",
+                action_name: "student_transition",
+                resource_type: "student",
+                result: "success",
+                created_at: "2026-04-23T09:30:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          listEntitySnapshots: async () => ({
+            items: [
+              {
+                id: 2,
+                tenant_id: 1,
+                entity_type: "student",
+                entity_id: 501,
+                snapshot_type: "transition",
+                snapshot_json: { transition_type: "promote" },
+                version_no: 1,
+                created_at: "2026-04-23T09:00:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          listStudentTransitions: async () => ({
+            items: [
+              {
+                id: 3,
+                tenant_id: 1,
+                student_id: 501,
+                transition_type: "promote",
+                to_class_id: 302,
+                occurred_at: "2026-04-23T09:00:00+08:00",
+                operator_id: 1,
+                created_at: "2026-04-23T09:00:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createStudentTransition: async (body) => ({
+            id: 4,
+            tenant_id: 1,
+            student_id: body.student_id,
+            transition_type: body.transition_type,
+            to_class_id: body.to_class_id,
+            occurred_at: body.occurred_at,
+            operator_id: 1,
+            remark: body.remark,
+            created_at: body.occurred_at
+          }),
+          listTeacherAssignmentHistories: async () => ({
+            items: [
+              {
+                id: 5,
+                tenant_id: 1,
+                teacher_id: 701,
+                class_id: 301,
+                course_id: 10,
+                change_type: "assign",
+                effective_from: "2026-04-23T11:00:00+08:00",
+                operator_id: 1,
+                created_at: "2026-04-23T11:00:00+08:00"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createTeacherAssignmentChange: async (body) => ({
+            id: 6,
+            tenant_id: 1,
+            teacher_id: body.teacher_id,
+            class_id: body.class_id,
+            course_id: body.course_id,
+            change_type: body.change_type,
+            effective_from: body.effective_at,
+            operator_id: 1,
+            created_at: body.effective_at
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin",
+              children: [{ id: 19, name: "快照历史", path: "/admin/history", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["audit:view", "org:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "快照历史" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "快照历史" })).toBeTruthy();
+    });
+    expect(screen.getByText("学籍变更登记")).toBeTruthy();
+    expect(screen.getAllByText("snapshot").length).toBeGreaterThan(0);
   });
 
   it("opens user panel after selecting user menu", async () => {
@@ -501,6 +1007,186 @@ describe("AdminApp", () => {
     });
     expect(screen.getAllByText("学校审核员").length).toBeGreaterThan(0);
   });
+
+  it("opens exam panel after selecting exam menu", async () => {
+    render(
+      <AdminApp
+        examApi={{
+          listExams: async () => ({
+            items: [
+              {
+                id: 9,
+                name: "期中考试",
+                exam_mode: "fixed",
+                status: "draft",
+                start_time: "2026-04-25 09:00",
+                end_time: "2026-04-25 11:00",
+                duration_minutes: 120
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createExam: async (body) => ({
+            id: 10,
+            name: body.name,
+            exam_mode: body.exam_mode,
+            status: "draft",
+            start_time: body.start_time,
+            end_time: body.end_time,
+            duration_minutes: body.duration_minutes ?? 120,
+            targets: body.targets ?? [],
+            fixed_questions: body.fixed_questions ?? [],
+            paper_rules: body.paper_rules ?? []
+          }),
+          updateExam: async (id, body) => ({
+            id,
+            name: body.name,
+            exam_mode: body.exam_mode,
+            status: "draft",
+            start_time: body.start_time,
+            end_time: body.end_time,
+            duration_minutes: body.duration_minutes ?? 120,
+            targets: body.targets ?? [],
+            fixed_questions: body.fixed_questions ?? [],
+            paper_rules: body.paper_rules ?? []
+          }),
+          getExam: async (id) => ({
+            id,
+            name: "期中考试",
+            exam_mode: "fixed",
+            status: "draft",
+            start_time: "2026-04-25 09:00",
+            end_time: "2026-04-25 11:00",
+            duration_minutes: 120,
+            targets: [{ target_type: "class", target_id: 101 }],
+            fixed_questions: [{ question_id: 1, question_version_id: 11, score: 5, display_order: 1 }]
+          }),
+          publishExam: async (id) => ({
+            id,
+            name: "期中考试",
+            exam_mode: "fixed",
+            status: "published",
+            start_time: "2026-04-25 09:00",
+            end_time: "2026-04-25 11:00",
+            duration_minutes: 120,
+            targets: [{ target_type: "class", target_id: 101 }],
+            fixed_questions: [{ question_id: 1, question_version_id: 11, score: 5, display_order: 1 }]
+          }),
+          getExamOverview: async () => ({
+            summary: {
+              exam_id: 9,
+              exam_name: "期中考试",
+              exam_mode: "fixed",
+              status: "draft",
+              start_time: "2026-04-25 09:00",
+              end_time: "2026-04-25 11:00",
+              duration_minutes: 120,
+              total_score: 100,
+              student_count: 40,
+              participated_student_count: 32,
+              submitted_count: 28,
+              in_progress_count: 4,
+              absent_count: 8,
+              average_score: 83,
+              highest_score: 96,
+              lowest_score: 45
+            },
+            students: {
+              items: [
+                {
+                  attempt_id: 1,
+                  exam_id: 9,
+                  exam_name: "期中考试",
+                  student_user_id: 7,
+                  student_name: "张同学",
+                  student_no: "S001",
+                  class_id: 101,
+                  class_name: "高一1班",
+                  attempt_status: "submitted",
+                  review_status: "reviewed",
+                  objective_score: 60,
+                  subjective_score: 20,
+                  final_score: 80,
+                  start_at: "2026-04-25 09:00",
+                  submit_at: "2026-04-25 10:30"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin/system",
+              children: [{ id: 37, name: "考试管理", path: "/admin/exams", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["exam:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "考试管理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "考试管理" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("期中考试").length).toBeGreaterThan(0);
+    expect(screen.getByText("成绩概览")).toBeTruthy();
+  });
+
+  it("opens challenge panel after selecting challenge menu", async () => {
+    render(
+      <AdminApp
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 1,
+              name: "系统管理",
+              path: "/admin/system",
+              children: [{ id: 39, name: "质疑处理", path: "/admin/challenges", children: [] }]
+            }
+          ],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["question:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "质疑处理" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "质疑处理" })).toBeTruthy();
+    });
+    expect(screen.getByText("待处理质疑")).toBeTruthy();
+    expect(screen.getByText("处理意见")).toBeTruthy();
+  });
 });
 
 function createMemorySessionStore(initialSession: SessionState | null = null): SessionStore & {
@@ -522,4 +1208,22 @@ function createMemorySessionStore(initialSession: SessionState | null = null): S
       savedSession = null;
     }
   };
+}
+
+function createLoginOrganizations() {
+  return [
+    {
+      tenant_id: 1,
+      tenant_code: "platform",
+      tenant_name: "平台管理",
+      tenant_type: "platform",
+      is_default: true
+    },
+    {
+      tenant_id: 2,
+      tenant_code: "demo_school",
+      tenant_name: "演示学校",
+      tenant_type: "school"
+    }
+  ];
 }

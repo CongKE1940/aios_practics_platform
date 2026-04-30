@@ -44,6 +44,13 @@ func (service *AdminService) ListPermissions(ctx context.Context, filter Permiss
 }
 
 func (service *AdminService) AssignRolePermissions(ctx context.Context, tenantID int64, roleID int64, input RolePermissionsInput) (Role, error) {
+	if tenantID == 0 {
+		role, err := service.repo.GetRole(ctx, tenantID, roleID)
+		if err != nil {
+			return Role{}, err
+		}
+		tenantID = role.TenantID
+	}
 	return service.repo.AssignRolePermissions(ctx, tenantID, roleID, input.PermissionIDs)
 }
 

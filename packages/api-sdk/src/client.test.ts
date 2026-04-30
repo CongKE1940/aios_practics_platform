@@ -82,6 +82,48 @@ describe("createApiClient", () => {
     );
   });
 
+  it("requests login organization options without authentication", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: [
+            {
+              tenant_id: 1,
+              tenant_code: "platform",
+              tenant_name: "平台管理",
+              tenant_type: "platform",
+              is_default: true
+            },
+            {
+              tenant_id: 2,
+              tenant_code: "demo_school",
+              tenant_name: "演示学校",
+              tenant_type: "school"
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      fetch: fetchMock
+    });
+
+    const items = await client.listLoginOrganizations();
+    expect(items[0].tenant_code).toBe("platform");
+    expect(items[0].is_default).toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/auth/login-organizations");
+    expect(init?.method).toBe("GET");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBeNull();
+  });
+
   it("posts refresh token to refresh endpoint", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
@@ -278,6 +320,284 @@ describe("createApiClient", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/classes/12/disable");
     expect(init?.method).toBe("POST");
+  });
+
+  it("requests question bank list with filters and assigns visibility", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 1,
+                  tenant_id: 1,
+                  owner_org_type: "school",
+                  owner_org_id: 1,
+                  creator_id: 1,
+                  course_id: 10,
+                  name: "高一数学基础题库",
+                  description: "代数基础",
+                  status: "draft",
+                  source_type: "manual"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      })
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.listQuestionBanks({ course_id: 10, status: "draft", keyword: "高一" });
+    expect(result.items[0].name).toBe("高一数学基础题库");
+
+    await expect(
+      client.assignQuestionBankVisibility(1, {
+        grants: [
+          {
+            grant_type: "class",
+            target_type: "class",
+            target_id: 301,
+            permission_type: "practice",
+            inherit_to_children: false
+          }
+        ]
+      })
+    ).resolves.toBe(true);
+
+    const [listUrl, listInit] = fetchMock.mock.calls[0];
+    expect(String(listUrl)).toContain("/question-banks?course_id=10&status=draft&keyword=%E9%AB%98%E4%B8%80");
+    expect(listInit?.method).toBe("GET");
+
+    const [assignUrl, assignInit] = fetchMock.mock.calls[1];
+    expect(String(assignUrl)).toContain("/question-banks/1/visibility");
+    expect(assignInit?.method).toBe("POST");
+    expect(assignInit?.body).toBe(
+      JSON.stringify({
+        grants: [
+          {
+            grant_type: "class",
+            target_type: "class",
+            target_id: 301,
+            permission_type: "practice",
+            inherit_to_children: false
+          }
+        ]
+      })
+    );
+  });
+
+  it("creates question and posts new version", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1001,
+              tenant_id: 1,
+              owner_org_type: "school",
+              owner_org_id: 1,
+              question_type: "single_choice",
+              difficulty: "medium",
+              current_version_id: 3001,
+              current_version_no: 1,
+              status: "active",
+              source_type: "manual",
+              creator_id: 1,
+              bank_ids: [11]
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      })
+      .mockImplementationOnce(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 3002,
+              question_id: 1001,
+              version_no: 2,
+              content: {
+                stem: { content_type: "text", text: "1+1=？", assets: [] }
+              },
+              answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+              analysis: { text: "修正后的解析" },
+              structure_hash: "hash_2",
+              change_summary: "修复题干文案",
+              is_published: true,
+              created_by: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await client.createQuestion({
+      question_type: "single_choice",
+      difficulty: "medium",
+      content: {
+        stem: { content_type: "text", text: "1+1等于几？", assets: [] },
+        options: [
+          { key: "A", content_type: "text", text: "1", assets: [] },
+          { key: "B", content_type: "text", text: "2", assets: [] }
+        ],
+        option_order_randomizable: true,
+        ext: {}
+      },
+      answer: {
+        judge_mode: "by_option_key",
+        correct_keys: ["B"]
+      },
+      analysis: {
+        text: "基础算术"
+      },
+      bank_ids: [11]
+    });
+
+    await client.createQuestionVersion(1001, {
+      content: {
+        stem: { content_type: "text", text: "1+1=？", assets: [] }
+      },
+      answer: {
+        judge_mode: "by_option_key",
+        correct_keys: ["B"]
+      },
+      analysis: {
+        text: "修正后的解析"
+      },
+      change_summary: "修复题干文案"
+    });
+
+    const [createUrl, createInit] = fetchMock.mock.calls[0];
+    expect(String(createUrl)).toContain("/questions");
+    expect(createInit?.method).toBe("POST");
+
+    const [versionUrl, versionInit] = fetchMock.mock.calls[1];
+    expect(String(versionUrl)).toContain("/questions/1001/versions");
+    expect(versionInit?.method).toBe("POST");
+    expect(versionInit?.body).toBe(
+      JSON.stringify({
+        content: {
+          stem: { content_type: "text", text: "1+1=？", assets: [] }
+        },
+        answer: {
+          judge_mode: "by_option_key",
+          correct_keys: ["B"]
+        },
+        analysis: {
+          text: "修正后的解析"
+        },
+        change_summary: "修复题干文案"
+      })
+    );
+  });
+
+  it("posts question comment and challenge bodies", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await expect(
+      client.createQuestionComment(1001, {
+        question_version_id: 3001,
+        content: "这题可以再补一个口算方法。",
+        comment_type: "discussion",
+        is_private: false,
+        parent_comment_id: null
+      })
+    ).resolves.toBe(true);
+
+    await expect(
+      client.createQuestionChallenge(1001, {
+        question_version_id: 3001,
+        challenge_type: "wrong_answer",
+        description: "答案应为 B。",
+        attachments: [{ url: "https://cdn.example.com/proof.png", type: "image" }]
+      })
+    ).resolves.toBe(true);
+
+    const [commentUrl, commentInit] = fetchMock.mock.calls[0];
+    expect(String(commentUrl)).toContain("/questions/1001/comments");
+    expect(commentInit?.method).toBe("POST");
+    expect(commentInit?.body).toBe(
+      JSON.stringify({
+        question_version_id: 3001,
+        content: "这题可以再补一个口算方法。",
+        comment_type: "discussion",
+        is_private: false,
+        parent_comment_id: null
+      })
+    );
+
+    const [challengeUrl, challengeInit] = fetchMock.mock.calls[1];
+    expect(String(challengeUrl)).toContain("/questions/1001/challenges");
+    expect(challengeInit?.method).toBe("POST");
+    expect(challengeInit?.body).toBe(
+      JSON.stringify({
+        question_version_id: 3001,
+        challenge_type: "wrong_answer",
+        description: "答案应为 B。",
+        attachments: [{ url: "https://cdn.example.com/proof.png", type: "image" }]
+      })
+    );
   });
 
   it("requests notices with filters", async () => {
@@ -622,6 +942,1374 @@ describe("createApiClient", () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/files/30002");
   });
 
+  it("downloads import template and manages import jobs", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response("bank_name,course_name\n", { status: 200, headers: { "content-type": "text/csv" } }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1,
+              tenant_id: 1,
+              import_type: "question",
+              template_version: "v1",
+              file_url: "/api/v1/files/1/content",
+              status: "partial_success",
+              total_rows: 2,
+              success_rows: 1,
+              failed_rows: 1,
+              operator_id: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [],
+              page: 1,
+              page_size: 20,
+              total: 0
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1,
+              tenant_id: 1,
+              import_type: "question",
+              template_version: "v1",
+              file_url: "/api/v1/files/1/content",
+              status: "partial_success",
+              total_rows: 2,
+              success_rows: 1,
+              failed_rows: 1,
+              operator_id: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 11,
+                  job_id: 1,
+                  row_no: 2,
+                  raw_data: { bank_name: "阶段2题库" },
+                  status: "failed",
+                  error_code: "bank_not_found",
+                  error_message: "题库不存在"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    await expect(client.downloadImportTemplate("question")).resolves.toContain("bank_name");
+    await client.createImportJob({
+      import_type: "question",
+      template_version: "v1",
+      file_url: "/api/v1/files/1/content",
+      content: "bank_name,..."
+    });
+    await client.listImportJobs({ import_type: "question", status: "partial_success" });
+    await client.getImportJob(1);
+    const rows = await client.listImportJobRows(1, { status: "failed" });
+
+    expect(rows.items[0].error_code).toBe("bank_not_found");
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/import/templates/question");
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      JSON.stringify({
+        import_type: "question",
+        template_version: "v1",
+        file_url: "/api/v1/files/1/content",
+        content: "bank_name,..."
+      })
+    );
+    expect(String(fetchMock.mock.calls[2][0])).toContain(
+      "/import/jobs?import_type=question&status=partial_success"
+    );
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/import/jobs/1");
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/import/jobs/1/rows?status=failed");
+  });
+
+  it("manages practice sessions and question states", async () => {
+    const sessionData = {
+      id: 501,
+      tenant_id: 1,
+      user_id: 7,
+      practice_mode: "random",
+      source_mode: "course",
+      flow_mode: "fixed_count",
+      course_id: 10,
+      bank_scope: {},
+      bank_ids: [1],
+      exclude_mastered: true,
+      question_count: 10,
+      random_seed: 20260422,
+      round_no: 1,
+      status: "active",
+      questions: [
+        {
+          session_question_id: 9001,
+          session_id: 501,
+          question_id: 1001,
+          question_version_id: 3001,
+          display_order: 1,
+          question_type: "single_choice",
+          content: {
+            stem: { content_type: "text", text: "1+1等于几？", assets: [] },
+            options: [
+              { key: "A", content_type: "text", text: "1", assets: [] },
+              { key: "B", content_type: "text", text: "2", assets: [] }
+            ]
+          },
+          round_no: 1,
+          answered: false
+        }
+      ]
+    };
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: sessionData }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: sessionData }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              question: { ...sessionData.questions[0], session_question_id: 9002, display_order: 2 },
+              round_no: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              is_correct: true,
+              correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+              analysis: { text: "基础算术" },
+              state: {
+                id: 1,
+                tenant_id: 1,
+                user_id: 7,
+                question_id: 1001,
+                question_version_id: 3001,
+                practice_correct_count: 1,
+                practice_wrong_count: 0,
+                exam_wrong_count: 0,
+                is_mastered: false,
+                is_confused: false
+              }
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 501, status: "finished", answered_count: 1, correct_count: 1, wrong_count: 0 } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 1, tenant_id: 1, user_id: 7, question_id: 1001, question_version_id: 3001, practice_correct_count: 1, practice_wrong_count: 0, exam_wrong_count: 0, is_mastered: true, is_confused: false } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 1, tenant_id: 1, user_id: 7, question_id: 1001, question_version_id: 3001, practice_correct_count: 1, practice_wrong_count: 0, exam_wrong_count: 0, is_mastered: true, is_confused: true } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { items: [], page: 1, page_size: 20, total: 0 } }), { status: 200, headers: { "content-type": "application/json" } }));
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const createdSession = await client.createPracticeSession({
+      practice_mode: "random",
+      source_mode: "course",
+      flow_mode: "fixed_count",
+      course_id: 10,
+      bank_ids: [1],
+      exclude_mastered: true,
+      question_count: 10
+    });
+    expect(createdSession.course_id).toBe(10);
+    await client.getPracticeSession(501);
+    await client.nextPracticeQuestion(501);
+    await client.submitPracticeAnswer(501, {
+      session_question_id: 9001,
+      answer: { selected_keys: ["B"] }
+    });
+    await client.finishPracticeSession(501);
+    await client.markPracticeQuestionMastered(1001, { value: true });
+    await client.markPracticeQuestionConfused(1001, { value: true });
+    await client.listUserQuestionStates({ state_type: "wrong", course_id: 10 });
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/practice/sessions");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        practice_mode: "random",
+        source_mode: "course",
+        flow_mode: "fixed_count",
+        course_id: 10,
+        bank_ids: [1],
+        exclude_mastered: true,
+        question_count: 10
+      })
+    );
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/practice/sessions/501/next-question");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/practice/sessions/501/answer");
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/practice/sessions/501/finish");
+    expect(String(fetchMock.mock.calls[5][0])).toContain("/practice/questions/1001/mark-mastered");
+    expect(String(fetchMock.mock.calls[6][0])).toContain("/practice/questions/1001/mark-confused");
+    expect(String(fetchMock.mock.calls[7][0])).toContain("/user-question-states?state_type=wrong&course_id=10");
+  });
+
+  it("lists practice sessions, reads results, and creates sessions from questions", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 501,
+                  practice_mode: "random",
+                  source_mode: "question_list",
+                  flow_mode: "fixed_count",
+                  course_id: 10,
+                  bank_ids: [1, 2],
+                  status: "finished",
+                  total_count: 10,
+                  answered_count: 10,
+                  correct_count: 8,
+                  wrong_count: 2,
+                  accuracy: 0.8
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              session: {
+                id: 501,
+                practice_mode: "random",
+                source_mode: "question_list",
+                flow_mode: "fixed_count",
+                course_id: 10,
+                bank_ids: [1, 2],
+                status: "finished",
+                total_count: 10,
+                answered_count: 10,
+                correct_count: 8,
+                wrong_count: 2,
+                accuracy: 0.8
+              },
+              questions: []
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 502,
+              tenant_id: 1,
+              user_id: 7,
+              practice_mode: "random",
+              source_mode: "question_list",
+              flow_mode: "fixed_count",
+              course_id: 10,
+              bank_scope: { source_mode: "question_list" },
+              bank_ids: [1, 2],
+              exclude_mastered: false,
+              question_count: 10,
+              random_seed: 20260422,
+              round_no: 1,
+              status: "active",
+              questions: []
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const listResult = await client.listPracticeSessions({
+      status: "finished",
+      flow_mode: "fixed_count",
+      course_id: 10
+    });
+    expect(listResult.items[0].id).toBe(501);
+    expect(listResult.items[0].course_id).toBe(10);
+
+    const results = await client.getPracticeSessionResults(501);
+    expect(results.session.id).toBe(501);
+    expect(results.session.course_id).toBe(10);
+
+    const body = {
+      question_ids: [1001, 1002],
+      practice_mode: "random",
+      flow_mode: "fixed_count",
+      question_count: 10,
+      exclude_mastered: false
+    } satisfies {
+      question_ids: number[];
+      practice_mode: string;
+      flow_mode: string;
+      question_count: number;
+      exclude_mastered: boolean;
+    };
+    await client.createPracticeSessionFromQuestions(body);
+
+    const [listUrl, listInit] = fetchMock.mock.calls[0];
+    expect(String(listUrl)).toContain("/practice/sessions?status=finished&flow_mode=fixed_count&course_id=10");
+    expect(listInit?.method).toBe("GET");
+
+    const [resultsUrl, resultsInit] = fetchMock.mock.calls[1];
+    expect(String(resultsUrl)).toContain("/practice/sessions/501/results");
+    expect(resultsInit?.method).toBe("GET");
+
+    const [createUrl, createInit] = fetchMock.mock.calls[2];
+    expect(String(createUrl)).toContain("/practice/sessions/from-questions");
+    expect(createInit?.method).toBe("POST");
+    expect(createInit?.body).toBe(JSON.stringify(body));
+  });
+
+  it("calls exam draft, publish, attempt, answer, submit, and result endpoints", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测", exam_mode: "fixed", status: "draft", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测", exam_mode: "fixed", status: "draft", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测（调整）", exam_mode: "fixed", status: "draft", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { id: 9001, name: "周测", exam_mode: "fixed", status: "published", fixed_questions: [], targets: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { attempt: { id: 8001, exam_id: 9001, paper_id: 7001, tenant_id: 1, user_id: 7, status: "in_progress", objective_score: 0, subjective_score: 0, final_score: 0 }, questions: [], answers: [] } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { attempt_id: 8001, question_id: 1001, question_version_id: 3001, display_order: 1, answer: { selected_keys: ["A"] }, score: 0 } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { attempt: { id: 8001, exam_id: 9001, paper_id: 7001, tenant_id: 1, user_id: 7, status: "submitted", objective_score: 2, subjective_score: 0, final_score: 2 }, answers: [], objective_score: 2, final_score: 2 } }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, message: "ok", data: { attempt: { id: 8001, exam_id: 9001, paper_id: 7001, tenant_id: 1, user_id: 7, status: "submitted", objective_score: 2, subjective_score: 0, final_score: 2 }, answers: [], objective_score: 2, final_score: 2 } }), { status: 200, headers: { "content-type": "application/json" } }));
+    const client = createApiClient({ baseUrl: "http://example.test/api/v1", fetch: fetchMock });
+
+    await client.createExam({
+      name: "周测",
+      exam_mode: "fixed",
+      start_time: "2026-04-24T09:00:00+08:00",
+      end_time: "2026-04-24T10:00:00+08:00",
+      duration_minutes: 60,
+      targets: [{ target_type: "class", target_id: 301 }],
+      fixed_questions: [{ question_id: 1001, question_version_id: 3001, score: 2, display_order: 1 }]
+    });
+    await client.getExam(9001);
+    await client.updateExam(9001, {
+      name: "周测（调整）",
+      exam_mode: "fixed",
+      start_time: "2026-04-24T09:00:00+08:00",
+      end_time: "2026-04-24T10:00:00+08:00",
+      duration_minutes: 60,
+      targets: [{ target_type: "class", target_id: 301 }],
+      fixed_questions: [{ question_id: 1001, question_version_id: 3001, score: 2, display_order: 1 }]
+    });
+    await client.publishExam(9001);
+    await client.startExamAttempt(9001);
+    await client.saveExamAttemptAnswer(8001, { display_order: 1, answer: { selected_keys: ["A"] } });
+    await client.submitExamAttempt(8001);
+    const result = await client.getExamAttemptResult(8001);
+
+    expect(result.final_score).toBe(2);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/exams");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/exams/9001");
+    expect(fetchMock.mock.calls[1][1]?.method).toBe("GET");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/exams/9001");
+    expect(fetchMock.mock.calls[2][1]?.method).toBe("PUT");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/exams/9001/publish");
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/exams/9001/attempts");
+    expect(String(fetchMock.mock.calls[5][0])).toContain("/exam-attempts/8001/answers");
+    expect(String(fetchMock.mock.calls[6][0])).toContain("/exam-attempts/8001/submit");
+    expect(String(fetchMock.mock.calls[7][0])).toContain("/exam-attempts/8001/result");
+  });
+
+  it("queries class practice summary analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学",
+              student_count: 2,
+              participated_student_count: 1,
+              session_count: 3,
+              answered_count: 20,
+              correct_count: 16,
+              wrong_count: 4,
+              accuracy: 0.8,
+              wrong_question_count: 2,
+              confused_question_count: 1
+            },
+            students: {
+              items: [
+                {
+                  student_id: 7,
+                  student_name: "李同学",
+                  student_no: "stu_007",
+                  session_count: 2,
+                  answered_count: 12,
+                  correct_count: 9,
+                  wrong_count: 3,
+                  accuracy: 0.75,
+                  wrong_question_count: 2,
+                  confused_question_count: 1,
+                  last_practiced_at: "2026-04-22T10:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getClassPracticeSummary({
+      class_id: 301,
+      course_id: 10,
+      start_at: "2026-04-01T00:00:00+08:00",
+      end_at: "2026-04-22T23:59:59+08:00",
+      page: 1,
+      page_size: 20
+    });
+    expect(result.summary.accuracy).toBe(0.8);
+    expect(result.students.items[0].student_name).toBe("李同学");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/class-practice-summary?class_id=301&course_id=10&start_at=2026-04-01T00%3A00%3A00%2B08%3A00&end_at=2026-04-22T23%3A59%3A59%2B08%3A00&page=1&page_size=20"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+  it("queries exam overview analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              exam_id: 901,
+              exam_name: "期中测验",
+              exam_mode: "fixed",
+              status: "published",
+              duration_minutes: 60,
+              total_score: 100,
+              student_count: 2,
+              participated_student_count: 1,
+              submitted_count: 1,
+              in_progress_count: 0,
+              absent_count: 1,
+              average_score: 86,
+              highest_score: 86,
+              lowest_score: 86
+            },
+            students: {
+              items: [
+                {
+                  student_user_id: 501,
+                  student_name: "张三",
+                  student_no: "S001",
+                  class_name: "七年级一班",
+                  attempt_id: 8001,
+                  attempt_status: "submitted",
+                  review_status: "pending",
+                  final_score: 86,
+                  objective_score: 86,
+                  subjective_score: 0
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getExamOverview({
+      exam_id: 901,
+      attempt_status: "submitted",
+      review_status: "pending",
+      keyword: "张",
+      page: 1,
+      page_size: 20
+    });
+    expect(result.summary.average_score).toBe(86);
+    expect(result.students.items[0].student_name).toBe("张三");
+    expect(result.students.items[0].review_status).toBe("pending");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/exam-overview?exam_id=901&attempt_status=submitted&review_status=pending&keyword=%E5%BC%A0&page=1&page_size=20"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+  it("queries admin overview analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              school_count: 2,
+              class_count: 8,
+              course_count: 5,
+              active_student_count: 320,
+              active_teacher_count: 24,
+              practice_session_count_7d: 86,
+              published_exam_count: 6,
+              submitted_exam_attempt_count: 102,
+              pending_review_count: 4,
+              recent_transition_count_30d: 3
+            },
+            recent_transitions: [
+              {
+                transition_id: 1001,
+                student_id: 501,
+                student_name: "张三",
+                transition_type: "promote",
+                occurred_at: "2026-04-23T09:00:00+08:00",
+                operator_id: 1,
+                operator_name: "系统管理员"
+              }
+            ],
+            recent_audit_logs: [
+              {
+                id: 9001,
+                module_name: "snapshot",
+                action_name: "student_transition",
+                resource_type: "student",
+                result: "success",
+                created_at: "2026-04-23T09:30:00+08:00"
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getAdminOverview();
+    expect(result.summary.active_student_count).toBe(320);
+    expect(result.recent_transitions[0].student_name).toBe("张三");
+    expect(result.recent_audit_logs[0].module_name).toBe("snapshot");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/admin-overview");
+    expect(init?.method).toBe("GET");
+  });
+
+  it("exports filtered exam overview csv", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response("学生姓名,学号\n张三,S001\n", {
+        status: 200,
+        headers: { "content-type": "text/csv; charset=utf-8" }
+      });
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.exportExamOverviewCsv({
+      exam_id: 901,
+      attempt_status: "submitted",
+      review_status: "pending",
+      keyword: "张"
+    });
+    expect(result).toContain("学生姓名,学号");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/exam-overview-export?exam_id=901&attempt_status=submitted&review_status=pending&keyword=%E5%BC%A0"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+    it("queries exam attempt review analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            summary: {
+              attempt_id: 8001,
+              exam_id: 901,
+              exam_name: "期中测验",
+              student_user_id: 501,
+              student_name: "张三",
+              student_no: "S001",
+              class_name: "七年级一班",
+              attempt_status: "submitted",
+              objective_score: 86,
+              subjective_score: 0,
+              final_score: 86
+            },
+            questions: [
+              {
+                question_id: 1001,
+                question_version_id: 3001,
+                display_order: 1,
+                question_type: "single_choice",
+                score: 10,
+                content: {
+                  stem: { text: "1+1等于几？" }
+                },
+                correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+                student_answer: { selected_keys: ["B"] },
+                is_answered: true,
+                is_correct: true,
+                answer_score: 10
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getExamAttemptReview({ attempt_id: 8001 });
+    expect(result.summary.student_name).toBe("张三");
+    expect(result.questions[0].display_order).toBe(1);
+
+    const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain("/analytics/exam-attempt-review?attempt_id=8001");
+      expect(init?.method).toBe("GET");
+    });
+
+    it("reviews subjective exam attempt question", async () => {
+      const fetchMock = vi.fn<FetchLike>(async () => {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              summary: {
+                attempt_id: 8001,
+                exam_id: 9001,
+                exam_name: "期中测验",
+                student_user_id: 501,
+                student_name: "张三",
+                attempt_status: "submitted",
+                objective_score: 60,
+                subjective_score: 8,
+                final_score: 68
+              },
+              question: {
+                question_id: 1002,
+                question_version_id: 3002,
+                display_order: 2,
+                question_type: "short_answer",
+                score: 10,
+                content: { stem: { text: "解释勾股定理。" } },
+                correct_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+                student_answer: { text: "直角三角形两直角边平方和等于斜边平方。" },
+                is_answered: true,
+                answer_score: 8,
+                judge_source: "manual",
+                review_comment: "概念正确，但表述不够完整。",
+                reviewer_user_id: 7
+              }
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      });
+      const client = createApiClient({ baseUrl: "http://localhost:8080/api/v1", accessToken: "token", fetch: fetchMock });
+
+      const result = await client.reviewExamAttemptQuestion({
+        attempt_id: 8001,
+        display_order: 2,
+        score: 8,
+        review_comment: "概念正确，但表述不够完整。"
+      });
+
+      expect(result.summary.final_score).toBe(68);
+      expect(result.question.answer_score).toBe(8);
+      expect(result.question.review_comment).toBe("概念正确，但表述不够完整。");
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain("/analytics/exam-attempt-question-review");
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(
+        JSON.stringify({
+          attempt_id: 8001,
+          display_order: 2,
+          score: 8,
+          review_comment: "概念正确，但表述不够完整。"
+        })
+      );
+    });
+
+  it("queries student practice detail analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            student_summary: {
+              student_user_id: 501,
+              student_name: "张三",
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学",
+              session_count: 3,
+              answered_count: 18,
+              correct_count: 12,
+              wrong_count: 6,
+              accuracy: 0.67,
+              wrong_question_count: 2,
+              confused_question_count: 1
+            },
+            active_tab: "wrong",
+            sessions: {
+              items: [
+                {
+                  session_id: 9001,
+                  started_at: "2026-04-22T09:00:00+08:00",
+                  finished_at: "2026-04-22T09:20:00+08:00",
+                  status: "finished",
+                  total_count: 10,
+                  answered_count: 10,
+                  correct_count: 8,
+                  wrong_count: 2,
+                  accuracy: 0.8
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            },
+            wrong_questions: {
+              items: [
+                {
+                  question_id: 1001,
+                  question_version_id: 3001,
+                  question_type: "single_choice",
+                  stem: "1+1等于几？",
+                  practice_wrong_count: 2,
+                  last_wrong_at: "2026-04-22T09:15:00+08:00",
+                  is_confused: false,
+                  confused_at: null,
+                  last_result: "wrong"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 2
+            },
+            confused_questions: {
+              items: [
+                {
+                  question_id: 1002,
+                  question_version_id: 3002,
+                  question_type: "single_choice",
+                  stem: "2+2等于几？",
+                  practice_wrong_count: 1,
+                  last_wrong_at: null,
+                  is_confused: true,
+                  confused_at: "2026-04-22T09:16:00+08:00",
+                  last_result: "confused"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getStudentPracticeDetail({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      tab: "wrong",
+      page: 1,
+      page_size: 20
+    });
+
+    expect(result.student_summary.student_user_id).toBe(501);
+    expect(result.student_summary.student_name).toBe("张三");
+    expect(result.student_summary.class_name).toBe("七年级一班");
+    expect(result.student_summary.course_name).toBe("数学");
+    expect(result.active_tab).toBe("wrong");
+    expect(result.wrong_questions.items[0].question_id).toBe(1001);
+    expect(result.wrong_questions.items[0].practice_wrong_count).toBe(2);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/student-practice-detail?class_id=301&course_id=10&student_user_id=501&tab=wrong&page=1&page_size=20"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+  it("queries student practice session detail analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            student_summary: {
+              student_user_id: 501,
+              student_name: "张三",
+              student_no: "S2026001",
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学"
+            },
+            session: {
+              session_id: 9001,
+              started_at: "2026-04-22T09:00:00+08:00",
+              finished_at: "2026-04-22T09:20:00+08:00",
+              status: "finished",
+              practice_mode: "random",
+              source_mode: "course",
+              flow_mode: "fixed_count",
+              total_count: 2,
+              answered_count: 2,
+              correct_count: 1,
+              wrong_count: 1,
+              accuracy: 0.5
+            },
+            questions: [
+              {
+                session_question_id: 70001,
+                question_id: 1001,
+                question_version_id: 3001,
+                display_order: 1,
+                question_type: "single_choice",
+                content: {
+                  stem: { type: "text", text: "1+1等于几？" }
+                },
+                student_answer: {
+                  selected_options: ["B"]
+                },
+                correct_answer: {
+                  selected_options: ["B"]
+                },
+                is_answered: true,
+                is_correct: true,
+                answered_at: "2026-04-22T09:02:00+08:00",
+                analysis: {
+                  text: "基础加法"
+                }
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getStudentPracticeSessionDetail({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      session_id: 9001
+    });
+
+    expect(result.student_summary.student_user_id).toBe(501);
+    expect(result.session.session_id).toBe(9001);
+    expect(result.questions[0].session_question_id).toBe(70001);
+    expect(result.questions[0].is_correct).toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/student-practice-session-detail?class_id=301&course_id=10&student_user_id=501&session_id=9001"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+  it("queries class course options analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            items: [
+              {
+                class_id: 301,
+                class_name: "七年级一班",
+                courses: [
+                  {
+                    course_id: 10,
+                    course_name: "数学"
+                  }
+                ]
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.listClassCourseOptions();
+    expect(result.items[0].courses[0].course_name).toBe("数学");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/class-course-options");
+    expect(init?.method).toBe("GET");
+  });
+
+  it("queries student practice session question detail analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            student_summary: {
+              student_user_id: 501,
+              student_name: "张三",
+              student_no: "S2026001",
+              class_id: 301,
+              class_name: "七年级一班",
+              course_id: 10,
+              course_name: "数学"
+            },
+            session: {
+              session_id: 9001,
+              started_at: "2026-04-22T09:00:00+08:00",
+              finished_at: "2026-04-22T09:20:00+08:00",
+              status: "finished",
+              practice_mode: "random",
+              source_mode: "course",
+              flow_mode: "fixed_count",
+              total_count: 2,
+              answered_count: 2,
+              correct_count: 1,
+              wrong_count: 1,
+              accuracy: 0.5
+            },
+            question_detail: {
+              session_question_id: 70002,
+              question_id: 1002,
+              question_version_id: 3002,
+              display_order: 2,
+              question_type: "single_choice",
+              content: {
+                stem: { type: "text", text: "2+2等于几？" }
+              },
+              student_answer: {
+                selected_options: ["A"]
+              },
+              correct_answer: {
+                selected_options: ["B"]
+              },
+              is_answered: true,
+              is_correct: false,
+              answered_at: "2026-04-22T09:06:00+08:00",
+              analysis: {
+                text: "基础加法"
+              }
+            },
+            teacher_review: {
+              review_id: 5001,
+              reviewer_user_id: 7,
+              review_comment: "注意基础计算",
+              updated_at: "2026-04-22T09:08:00+08:00"
+            }
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.getStudentPracticeSessionQuestionDetail({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      session_id: 9001,
+      session_question_id: 70002
+    });
+
+    expect(result.student_summary.student_user_id).toBe(501);
+    expect(result.session.session_id).toBe(9001);
+    expect(result.question_detail.session_question_id).toBe(70002);
+    expect(result.question_detail.is_correct).toBe(false);
+    expect(result.teacher_review?.review_id).toBe(5001);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/analytics/student-practice-session-question-detail?class_id=301&course_id=10&student_user_id=501&session_id=9001&session_question_id=70002"
+    );
+    expect(init?.method).toBe("GET");
+  });
+
+  it("upserts student practice session question review analytics", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(
+        JSON.stringify({
+          code: 0,
+          message: "ok",
+          data: {
+            review_id: 5002,
+            reviewer_user_id: 7,
+            review_comment: "先列式再计算。",
+            updated_at: "2026-04-22T09:10:00+08:00"
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const result = await client.upsertStudentPracticeSessionQuestionReview({
+      class_id: 301,
+      course_id: 10,
+      student_user_id: 501,
+      session_id: 9001,
+      session_question_id: 70002,
+      review_comment: "先列式再计算。"
+    });
+
+    expect(result.review_id).toBe(5002);
+    expect(result.review_comment).toBe("先列式再计算。");
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/analytics/student-practice-session-question-review");
+    expect(init?.method).toBe("PUT");
+    expect(init?.body).toBe(
+      JSON.stringify({
+        class_id: 301,
+        course_id: 10,
+        student_user_id: 501,
+        session_id: 9001,
+        session_question_id: 70002,
+        review_comment: "先列式再计算。"
+      })
+    );
+  });
+
+  it("queries snapshot and history collections", async () => {
+    const fetchMock = vi
+      .fn<FetchLike>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 1,
+                  tenant_id: 1,
+                  module_name: "snapshot",
+                  action_name: "student_transition",
+                  resource_type: "student",
+                  result: "success",
+                  created_at: "2026-04-23T09:30:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 2,
+                  tenant_id: 1,
+                  entity_type: "student",
+                  entity_id: 501,
+                  snapshot_type: "transition",
+                  snapshot_json: { transition_type: "promote" },
+                  version_no: 1,
+                  created_at: "2026-04-23T09:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 3,
+                  tenant_id: 1,
+                  student_id: 501,
+                  transition_type: "promote",
+                  to_class_id: 302,
+                  occurred_at: "2026-04-23T09:00:00+08:00",
+                  operator_id: 1,
+                  created_at: "2026-04-23T09:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 4,
+              tenant_id: 1,
+              student_id: 501,
+              transition_type: "class_change",
+              to_class_id: 303,
+              occurred_at: "2026-04-23T10:00:00+08:00",
+              operator_id: 1,
+              created_at: "2026-04-23T10:00:00+08:00"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 5,
+                  tenant_id: 1,
+                  teacher_id: 701,
+                  class_id: 301,
+                  course_id: 10,
+                  change_type: "assign",
+                  effective_from: "2026-04-23T11:00:00+08:00",
+                  operator_id: 1,
+                  created_at: "2026-04-23T11:00:00+08:00"
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 6,
+              tenant_id: 1,
+              teacher_id: 701,
+              class_id: 301,
+              course_id: 10,
+              change_type: "assign",
+              effective_from: "2026-04-23T11:00:00+08:00",
+              operator_id: 1,
+              created_at: "2026-04-23T11:00:00+08:00"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      );
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      accessToken: "access_token",
+      fetch: fetchMock
+    });
+
+    const auditLogs = await client.listAuditLogs({ module_name: "snapshot", page: 1, page_size: 20 });
+    const snapshots = await client.listEntitySnapshots({ entity_type: "student", entity_id: 501 });
+    const transitions = await client.listStudentTransitions({ student_id: 501 });
+    const createdTransition = await client.createStudentTransition({
+      student_id: 501,
+      transition_type: "class_change",
+      to_class_id: 303,
+      occurred_at: "2026-04-23T10:00:00+08:00",
+      remark: "调班"
+    });
+    const assignmentHistories = await client.listTeacherAssignmentHistories({ teacher_id: 701 });
+    const createdAssignment = await client.createTeacherAssignmentChange({
+      teacher_id: 701,
+      class_id: 301,
+      course_id: 10,
+      change_type: "assign",
+      effective_at: "2026-04-23T11:00:00+08:00"
+    });
+
+    expect(auditLogs.items[0].module_name).toBe("snapshot");
+    expect(snapshots.items[0].entity_type).toBe("student");
+    expect(transitions.items[0].transition_type).toBe("promote");
+    expect(createdTransition.transition_type).toBe("class_change");
+    expect(assignmentHistories.items[0].teacher_id).toBe(701);
+    expect(createdAssignment.change_type).toBe("assign");
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/audit-logs?module_name=snapshot&page=1&page_size=20");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/entity-snapshots?entity_type=student&entity_id=501");
+    expect(String(fetchMock.mock.calls[2][0])).toContain("/student-transitions?student_id=501");
+    expect(String(fetchMock.mock.calls[3][0])).toContain("/student-transitions");
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(
+      JSON.stringify({
+        student_id: 501,
+        transition_type: "class_change",
+        to_class_id: 303,
+        occurred_at: "2026-04-23T10:00:00+08:00",
+        remark: "调班"
+      })
+    );
+    expect(String(fetchMock.mock.calls[4][0])).toContain("/teacher-assignment-histories?teacher_id=701");
+    expect(String(fetchMock.mock.calls[5][0])).toContain("/teacher-assignment-changes");
+  });
+
   it("throws ApiError for error envelopes", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
@@ -645,5 +2333,61 @@ describe("createApiClient", () => {
       requestId: "req_2",
       status: 401
     } satisfies Partial<ApiError>);
+  });
+
+  it("calls onUnauthorized when response status is 401", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:18081/api/v1",
+      accessToken: "access-1",
+      onUnauthorized,
+      fetch: async () =>
+        new Response(JSON.stringify({ code: 40101, message: "令牌无效" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" }
+        })
+    });
+
+    await expect(client.me()).rejects.toThrow("令牌无效");
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUnauthorized for 401 responses with plain text bodies", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:18081/api/v1",
+      accessToken: "access-1",
+      onUnauthorized,
+      fetch: async () =>
+        new Response("token expired", {
+          status: 401,
+          headers: { "Content-Type": "text/plain" }
+        })
+    });
+
+    await expect(client.me()).rejects.toMatchObject({
+      message: "token expired",
+      status: 401
+    } satisfies Partial<ApiError>);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUnauthorized for 401 responses with empty bodies", async () => {
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:18081/api/v1",
+      accessToken: "access-1",
+      onUnauthorized,
+      fetch: async () =>
+        new Response(null, {
+          status: 401
+        })
+    });
+
+    await expect(client.me()).rejects.toMatchObject({
+      message: "Unauthorized",
+      status: 401
+    } satisfies Partial<ApiError>);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });

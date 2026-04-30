@@ -69,6 +69,28 @@ func TestServiceLoginReturnsTokenPairAndUserContext(t *testing.T) {
 	}
 }
 
+func TestServiceListLoginOrganizationsReturnsRepositoryResults(t *testing.T) {
+	repo := &fakeUserRepository{
+		loginOrganizations: []LoginOrganization{
+			{TenantID: 1, TenantCode: "platform", TenantName: "平台管理", TenantType: "platform", IsDefault: true},
+			{TenantID: 2, TenantCode: "demo_school", TenantName: "演示学校", TenantType: "school"},
+		},
+	}
+	service := NewService(repo, BcryptPasswordVerifier{}, &fakeTokenIssuer{})
+
+	items, err := service.ListLoginOrganizations(context.Background())
+	if err != nil {
+		t.Fatalf("ListLoginOrganizations() error = %v", err)
+	}
+
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d", len(items))
+	}
+	if items[0].TenantCode != "platform" || !items[0].IsDefault {
+		t.Fatalf("items[0] = %+v", items[0])
+	}
+}
+
 func TestServiceLoginRejectsWrongPassword(t *testing.T) {
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
 	if err != nil {
@@ -170,10 +192,11 @@ func TestServiceCurrentUserUsesAccessTokenClaims(t *testing.T) {
 }
 
 type fakeUserRepository struct {
-	user            User
-	err             error
-	lastLoginUserID int64
-	lastTenantCode  string
+	user               User
+	err                error
+	lastLoginUserID    int64
+	lastTenantCode     string
+	loginOrganizations []LoginOrganization
 }
 
 func (repo *fakeUserRepository) FindByTenantCodeAndUsername(_ context.Context, tenantCode string, username string) (User, error) {
@@ -185,6 +208,13 @@ func (repo *fakeUserRepository) FindByTenantCodeAndUsername(_ context.Context, t
 		return User{}, ErrInvalidCredentials
 	}
 	return repo.user, nil
+}
+
+func (repo *fakeUserRepository) ListLoginOrganizations(_ context.Context) ([]LoginOrganization, error) {
+	if repo.err != nil {
+		return nil, repo.err
+	}
+	return repo.loginOrganizations, nil
 }
 
 func (repo *fakeUserRepository) MarkLastLogin(_ context.Context, userID int64) error {

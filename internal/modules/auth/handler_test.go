@@ -61,6 +61,49 @@ func TestHandlerLoginReturnsSuccessEnvelope(t *testing.T) {
 	}
 }
 
+func TestHandlerListLoginOrganizationsReturnsSuccessEnvelope(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	handler := NewHandler(&fakeLoginService{
+		loginOrganizations: []LoginOrganization{
+			{TenantID: 1, TenantCode: "platform", TenantName: "平台管理", TenantType: "platform", IsDefault: true},
+			{TenantID: 2, TenantCode: "demo_school", TenantName: "演示学校", TenantType: "school"},
+		},
+	})
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/login-organizations", nil)
+	req.Header.Set("X-Request-Id", "req_orgs")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	var body struct {
+		Code      int                 `json:"code"`
+		Data      []LoginOrganization `json:"data"`
+		RequestID string              `json:"request_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if body.Code != 0 {
+		t.Fatalf("Code = %d", body.Code)
+	}
+	if len(body.Data) != 2 {
+		t.Fatalf("len(Data) = %d", len(body.Data))
+	}
+	if body.Data[0].TenantCode != "platform" || !body.Data[0].IsDefault {
+		t.Fatalf("Data[0] = %+v", body.Data[0])
+	}
+	if body.RequestID != "req_orgs" {
+		t.Fatalf("RequestID = %q", body.RequestID)
+	}
+}
+
 func TestHandlerLoginMapsInvalidCredentials(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	handler := NewHandler(&fakeLoginService{err: ErrInvalidCredentials})
@@ -198,9 +241,14 @@ func TestHandlerLoginRejectsMissingTenantCode(t *testing.T) {
 }
 
 type fakeLoginService struct {
-	result LoginResult
-	user   CurrentUser
-	err    error
+	result             LoginResult
+	user               CurrentUser
+	err                error
+	loginOrganizations []LoginOrganization
+}
+
+func (service *fakeLoginService) ListLoginOrganizations(_ context.Context) ([]LoginOrganization, error) {
+	return service.loginOrganizations, service.err
 }
 
 func (service *fakeLoginService) Login(_ context.Context, command LoginCommand) (LoginResult, error) {

@@ -1,0 +1,38 @@
+/* Centered login layout: keep the auth form centered while preserving required login-page elements. */
+.ui-auth-page,
+.ui-auth-page--learner {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-template-columns: none;
+  gap: 0;
+  padding: clamp(24px, 5vw, 72px);
+  overflow: auto;
+}
+
+.ui-auth-page::before,
+.ui-auth-page::after {
+  content: none;
+}
+
+.ui-auth-page > .ui-auth-hero {
+  display: none !important;
+}
+
+.ui-auth-page > .ui-auth-card {
+  width: min(100%, 480px);
+  margin: auto;
+}
+
+@media (max-width: 640px) {
+  .ui-auth-page,
+  .ui-auth-page--learner {
+    padding: 16px;
+  }
+
+  .ui-auth-page > .ui-auth-card {
+    padding: 24px;
+    border-radius: 24px;
+  }
+}

@@ -49,11 +49,17 @@ func TestMenuHandlerReturnsFilteredAdminMenus(t *testing.T) {
 	if body.Code != 0 {
 		t.Fatalf("Code = %d", body.Code)
 	}
-	if len(body.Data) == 0 || len(body.Data[0].Children) != 3 {
+	if len(body.Data) != 3 {
 		t.Fatalf("Data = %+v", body.Data)
 	}
-	if body.Data[0].Children[0].Path != "/admin/org" {
-		t.Fatalf("First child path = %q", body.Data[0].Children[0].Path)
+	if body.Data[0].Path != "/admin/org" {
+		t.Fatalf("First menu path = %q", body.Data[0].Path)
+	}
+	if body.Data[1].Path != "/admin/courses" {
+		t.Fatalf("Second menu path = %q", body.Data[1].Path)
+	}
+	if len(body.Data[2].Children) != 2 {
+		t.Fatalf("system children = %+v", body.Data[2].Children)
 	}
 }
 

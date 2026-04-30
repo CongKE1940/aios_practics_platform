@@ -20,9 +20,13 @@ func (repo *MySQLRepository) ListNotices(ctx context.Context, tenantID int64, fi
 	query := `
 SELECT id, tenant_id, title, content, notice_type, publisher_id, publish_scope_type, publish_scope_json, publish_at, expire_at, status, created_at, updated_at
 FROM notices
-WHERE tenant_id = ?
+WHERE 1 = 1
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 4)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.Status != "" {
 		query += " AND status = ?"
 		args = append(args, filter.Status)
@@ -55,13 +59,18 @@ WHERE tenant_id = ?
 }
 
 func (repo *MySQLRepository) GetNotice(ctx context.Context, tenantID int64, id int64) (Notice, error) {
-	const query = `
+	query := `
 SELECT id, tenant_id, title, content, notice_type, publisher_id, publish_scope_type, publish_scope_json, publish_at, expire_at, status, created_at, updated_at
 FROM notices
-WHERE id = ? AND tenant_id = ?
-LIMIT 1
+WHERE id = ?
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	notice, err := scanNoticeScanner(row)
 	if err != nil {
 		return Notice{}, wrapNotFound(err)

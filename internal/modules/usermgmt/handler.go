@@ -41,7 +41,7 @@ func (handler *Handler) listUsers(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.ListUsers(ctx.Request.Context(), claims.TenantID, UserListFilter{
+	result, err := handler.service.ListUsers(ctx.Request.Context(), readTenantID(claims), UserListFilter{
 		UserType: ctx.Query("user_type"),
 		Keyword:  ctx.Query("keyword"),
 		Page:     parseInt(ctx.Query("page")),
@@ -77,7 +77,7 @@ func (handler *Handler) getUser(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.GetUser(ctx.Request.Context(), claims.TenantID, id)
+	result, err := handler.service.GetUser(ctx.Request.Context(), readTenantID(claims), id)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -95,7 +95,7 @@ func (handler *Handler) updateUser(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.UpdateUser(ctx.Request.Context(), claims.TenantID, id, input)
+	result, err := handler.service.UpdateUser(ctx.Request.Context(), readTenantID(claims), id, input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -113,7 +113,7 @@ func (handler *Handler) assignRoles(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.AssignRoles(ctx.Request.Context(), claims.TenantID, id, input)
+	result, err := handler.service.AssignRoles(ctx.Request.Context(), readTenantID(claims), id, input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -131,7 +131,7 @@ func (handler *Handler) resetPassword(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.ResetPassword(ctx.Request.Context(), claims.TenantID, id, input)
+	result, err := handler.service.ResetPassword(ctx.Request.Context(), readTenantID(claims), id, input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -144,7 +144,7 @@ func (handler *Handler) disableUser(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.DisableUser(ctx.Request.Context(), claims.TenantID, id)
+	result, err := handler.service.DisableUser(ctx.Request.Context(), readTenantID(claims), id)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -163,7 +163,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
-	if !containsPermission(claims.Permissions, "user:manage") {
+	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "user:manage") {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
@@ -196,11 +196,18 @@ func writeUserError(ctx *gin.Context, err error) {
 
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target {
+		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
 			return true
 		}
 	}
 	return false
+}
+
+func readTenantID(claims auth.AccessClaims) int64 {
+	if claims.UserType == "sys_admin" || containsPermission(claims.Permissions, "system:manage") || containsPermission(claims.Permissions, "tenant:manage") {
+		return 0
+	}
+	return claims.TenantID
 }
 
 func bearerToken(header string) string {

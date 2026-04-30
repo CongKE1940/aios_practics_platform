@@ -11,9 +11,10 @@ afterEach(() => {
 });
 
 describe("OrganizationPanel", () => {
-  it("loads and renders organization resources", async () => {
+  it("loads and renders organization resources by specific view", async () => {
     render(
       <OrganizationPanel
+        view="grades"
         api={createOrganizationApi({
           schools: [{ id: 1, tenant_id: 1, code: "school_001", name: "第一中学", status: "active" }],
           grades: [
@@ -57,15 +58,42 @@ describe("OrganizationPanel", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "组织管理" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "年级管理" })).toBeTruthy();
     });
 
-    expect(screen.getAllByText("第一中学").length).toBeGreaterThan(0);
     expect(screen.getAllByText("七年级").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("一班").length).toBeGreaterThan(0);
-    expect(screen.getByText("数学")).toBeTruthy();
-    expect(screen.getByText("2026-09-01T00:00:00+08:00")).toBeTruthy();
-    expect(screen.getByText("2027-01-31T23:59:59+08:00")).toBeTruthy();
+    expect(screen.getAllByText("第一中学").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("tab", { name: "课程管理" })).toBeNull();
+  });
+
+  it("renders course management as an independent view", async () => {
+    render(
+      <OrganizationPanel
+        view="courses"
+        api={createOrganizationApi({
+          courses: [
+            {
+              id: 4,
+              tenant_id: 1,
+              code: "math",
+              name: "数学",
+              start_at: "2026-09-01T00:00:00+08:00",
+              end_at: "2027-01-31T23:59:59+08:00",
+              status: "active",
+              description: "七年级数学"
+            }
+          ]
+        })}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "课程管理" })).toBeTruthy();
+    });
+
+    expect(screen.getAllByText("数学").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2026-09-01T00:00:00+08:00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2027-01-31T23:59:59+08:00").length).toBeGreaterThan(0);
   });
 
   it("creates school and refreshes the list", async () => {
@@ -85,6 +113,7 @@ describe("OrganizationPanel", () => {
 
     render(
       <OrganizationPanel
+        view="schools"
         api={{
           ...createOrganizationApi(),
           listSchools,
@@ -97,9 +126,10 @@ describe("OrganizationPanel", () => {
       expect(listSchools).toHaveBeenCalledTimes(1);
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "新增学校" }));
     fireEvent.change(screen.getByLabelText("学校编码"), { target: { value: "school_001" } });
     fireEvent.change(screen.getByLabelText("学校名称"), { target: { value: "第一中学" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增学校" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "新增学校" })[1]);
 
     await waitFor(() => {
       expect(createSchool).toHaveBeenCalledWith({ code: "school_001", name: "第一中学" });
@@ -120,6 +150,8 @@ function createOrganizationApi(seed?: {
     createSchool: async (body) => ({
       id: 1,
       tenant_id: 1,
+      object_type: body.object_type ?? 1,
+      code: body.code ?? "school_001",
       status: "active",
       ...body
     }),

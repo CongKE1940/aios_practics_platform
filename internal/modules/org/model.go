@@ -7,16 +7,21 @@ import (
 )
 
 const (
-	StatusActive     = "active"
-	StatusDisabled   = "disabled"
-	CodeInvalidInput = 40000
-	CodeForbidden    = 40300
-	CodeNotFound     = 40400
+	StatusActive           = "active"
+	StatusDisabled         = "disabled"
+	ObjectTypeSchool       = 1
+	ObjectTypeOrganization = 2
+	CodeInvalidInput       = 40000
+	CodeForbidden          = 40300
+	CodeNotFound           = 40400
+	CodeDeleteRestricted   = 40900
 )
 
 var (
-	ErrInvalidInput = errors.New("invalid input")
-	ErrNotFound     = errors.New("resource not found")
+	ErrInvalidInput     = errors.New("invalid input")
+	ErrForbidden        = errors.New("forbidden")
+	ErrNotFound         = errors.New("resource not found")
+	ErrDeleteRestricted = errors.New("school has related data")
 )
 
 type Scope struct {
@@ -33,13 +38,18 @@ type PageResult[T any] struct {
 }
 
 type School struct {
-	ID        int64     `json:"id"`
-	TenantID  int64     `json:"tenant_id"`
-	Code      string    `json:"code"`
-	Name      string    `json:"name"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	ID              int64     `json:"id"`
+	TenantID        int64     `json:"tenant_id"`
+	ObjectType      int       `json:"object_type"`
+	ObjectTypeLabel string    `json:"object_type_label,omitempty"`
+	Code            string    `json:"code"`
+	Name            string    `json:"name"`
+	EnglishName     string    `json:"english_name,omitempty"`
+	Address         string    `json:"address,omitempty"`
+	LogoURL         string    `json:"logo_url,omitempty"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 }
 
 type Grade struct {
@@ -81,9 +91,28 @@ type Course struct {
 	UpdatedAt   time.Time  `json:"updated_at,omitempty"`
 }
 
+type SchoolDeleteDependencies struct {
+	GradeCount   int `json:"grade_count"`
+	ClassCount   int `json:"class_count"`
+	StudentCount int `json:"student_count"`
+}
+
+func (dependencies SchoolDeleteDependencies) HasAny() bool {
+	return dependencies.GradeCount > 0 || dependencies.ClassCount > 0 || dependencies.StudentCount > 0
+}
+
 type SchoolInput struct {
-	Code string `json:"code" binding:"required"`
-	Name string `json:"name" binding:"required"`
+	ObjectType  int    `json:"object_type"`
+	Code        string `json:"code"`
+	Name        string `json:"name" binding:"required"`
+	EnglishName string `json:"english_name"`
+	Address     string `json:"address"`
+	LogoURL     string `json:"logo_url"`
+}
+
+type SchoolBatchDeleteInput struct {
+	IDs           []int64 `json:"ids" binding:"required"`
+	CascadeDelete bool    `json:"cascade_delete"`
 }
 
 type GradeInput struct {
@@ -111,10 +140,11 @@ type CourseInput struct {
 }
 
 type SchoolListFilter struct {
-	Status   string
-	Keyword  string
-	Page     int
-	PageSize int
+	ObjectType int
+	Status     string
+	Keyword    string
+	Page       int
+	PageSize   int
 }
 
 type GradeListFilter struct {

@@ -57,7 +57,7 @@ func BuildMenus(appType string, permissions []string) []MenuItem {
 	case "", "admin":
 		menus = adminMenus
 	case "user":
-		menus = userMenus
+		return buildUserMenus(permissions)
 	default:
 		return []MenuItem{}
 	}
@@ -75,14 +75,40 @@ type menuDef struct {
 
 var adminMenus = []menuDef{
 	{
-		id:   1,
-		name: "系统管理",
-		path: "/admin",
+		id:                  1,
+		name:                "组织管理",
+		path:                "/admin/org",
+		requiredPermissions: []string{"org:manage"},
 		children: []menuDef{
-			{id: 11, name: "组织管理", path: "/admin/org", requiredPermissions: []string{"org:manage"}},
-			{id: 12, name: "用户管理", path: "/admin/users", requiredPermissions: []string{"user:manage"}},
-			{id: 13, name: "角色权限", path: "/admin/roles", requiredPermissions: []string{"role:manage"}},
-			{id: 14, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
+			{id: 11, name: "学校与组织管理", path: "/admin/org/schools", requiredPermissions: []string{"org:manage"}},
+			{id: 12, name: "年级管理", path: "/admin/org/grades", requiredPermissions: []string{"org:manage"}},
+			{id: 13, name: "班级管理", path: "/admin/org/classes", requiredPermissions: []string{"org:manage"}},
+		},
+	},
+	{
+		id:                  2,
+		name:                "课程管理",
+		path:                "/admin/courses",
+		requiredPermissions: []string{"org:manage"},
+	},
+	{
+		id:   3,
+		name: "系统管理",
+		path: "/admin/system",
+		children: []menuDef{
+			{id: 31, name: "用户管理", path: "/admin/users", requiredPermissions: []string{"user:manage"}},
+			{id: 32, name: "角色权限", path: "/admin/roles", requiredPermissions: []string{"role:manage"}},
+			{id: 33, name: "字典管理", path: "/admin/dictionaries", requiredPermissions: []string{"role:manage"}},
+			{id: 34, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
+			{id: 35, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
+			{id: 36, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
+			{id: 37, name: "导入中心", path: "/admin/imports", requiredPermissions: []string{"import:manage"}},
+			{id: 38, name: "考试管理", path: "/admin/exams", requiredPermissions: []string{"exam:manage"}},
+			{id: 39, name: "试卷管理", path: "/admin/exam-papers", requiredPermissions: []string{"exam:manage"}},
+			{id: 43, name: "试卷组卷", path: "/admin/exams/assembly", requiredPermissions: []string{"exam:manage"}},
+			{id: 40, name: "质疑处理", path: "/admin/challenges", requiredPermissions: []string{"question:manage"}},
+			{id: 41, name: "数据看板", path: "/admin/analytics", requiredPermissions: []string{"analytics:view"}},
+			{id: 42, name: "快照历史", path: "/admin/history", requiredPermissions: []string{"audit:view"}},
 		},
 	},
 }
@@ -93,9 +119,46 @@ var userMenus = []menuDef{
 		name: "学习中心",
 		path: "/app",
 		children: []menuDef{
+			{id: 20, name: "工作台", path: "/app/workbench"},
 			{id: 21, name: "我的课程", path: "/app/courses", requiredPermissions: []string{"practice:use"}},
+			{id: 22, name: "练题中心", path: "/app/practice", requiredPermissions: []string{"practice:use"}},
+			{id: 23, name: "练题记录", path: "/app/practice/history", requiredPermissions: []string{"practice:use"}},
+			{id: 24, name: "错题本", path: "/app/practice/wrong", requiredPermissions: []string{"practice:use"}},
+			{id: 25, name: "熟题本", path: "/app/practice/mastered", requiredPermissions: []string{"practice:use"}},
+			{id: 26, name: "疑惑题", path: "/app/practice/confused", requiredPermissions: []string{"practice:use"}},
+			{id: 27, name: "班级学习", path: "/app/class-learning", requiredPermissions: []string{"analytics:view"}},
+			{id: 28, name: "通知中心", path: "/app/notifications"},
+			{id: 29, name: "老师题库", path: "/app/teacher-banks", requiredPermissions: []string{"question_bank:manage"}},
 		},
 	},
+}
+
+func buildUserMenus(permissions []string) []MenuItem {
+	menus := filterMenus(userMenus, permissions)
+	if len(menus) == 0 {
+		return []MenuItem{}
+	}
+
+	if containsAnyPermission(permissions, "exam:publish", "exam:manage", "tenant:manage", "system:manage") {
+		menus[0].Children = append(menus[0].Children, MenuItem{
+			ID:       30,
+			Name:     "考试管理",
+			Path:     "/app/exams",
+			Children: []MenuItem{},
+		})
+		return menus
+	}
+
+	if containsAnyPermission(permissions, "practice:use") {
+		menus[0].Children = append(menus[0].Children, MenuItem{
+			ID:       31,
+			Name:     "考试入口",
+			Path:     "/app/exams",
+			Children: []MenuItem{},
+		})
+	}
+
+	return menus
 }
 
 func filterMenus(menus []menuDef, permissions []string) []MenuItem {
@@ -127,12 +190,29 @@ func hasPermissions(permissionSet map[string]struct{}, required []string) bool {
 	if len(required) == 0 {
 		return true
 	}
+	if _, ok := permissionSet["system:manage"]; ok {
+		return true
+	}
+	if _, ok := permissionSet["tenant:manage"]; ok {
+		return true
+	}
 	for _, permission := range required {
 		if _, ok := permissionSet[permission]; !ok {
 			return false
 		}
 	}
 	return true
+}
+
+func containsAnyPermission(permissions []string, targets ...string) bool {
+	for _, permission := range permissions {
+		for _, target := range targets {
+			if permission == target {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func bearerToken(header string) string {

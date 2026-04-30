@@ -1,0 +1,86 @@
+/* Final nav polish loaded after dark-mode-final.
+   Dark mode keeps the same borderless navigation language as light mode. */
+html[data-ui-theme="dark"] .ui-nav-tree__item,
+html[data-ui-theme="dark"] .ui-nav-tree__group-trigger,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger,
+body[data-ui-theme="dark"] .ui-nav-tree__item,
+body[data-ui-theme="dark"] .ui-nav-tree__group-trigger,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="dark"] .ui-nav-tree__item:hover,
+html[data-ui-theme="dark"] .ui-nav-tree__group-trigger:hover,
+html[data-ui-theme="dark"] .ui-nav-tree__group-trigger.is-open:not(.is-active),
+html[data-ui-theme="dark"] .ui-nav-tree__item.is-active,
+html[data-ui-theme="dark"] .ui-nav-tree__item[aria-pressed="true"],
+html[data-ui-theme="dark"] .ui-nav-tree__group-trigger.is-active,
+html[data-ui-theme="dark"] .ui-nav-tree__group-trigger[aria-pressed="true"],
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item:hover,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger:hover,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger.is-open:not(.is-active),
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item.is-active,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item[aria-pressed="true"],
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger.is-active,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger[aria-pressed="true"],
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item:hover,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger:hover,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger.is-open:not(.is-active),
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item.is-active,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item[aria-pressed="true"],
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger.is-active,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger[aria-pressed="true"],
+body[data-ui-theme="dark"] .ui-nav-tree__item:hover,
+body[data-ui-theme="dark"] .ui-nav-tree__group-trigger:hover,
+body[data-ui-theme="dark"] .ui-nav-tree__group-trigger.is-open:not(.is-active),
+body[data-ui-theme="dark"] .ui-nav-tree__item.is-active,
+body[data-ui-theme="dark"] .ui-nav-tree__item[aria-pressed="true"],
+body[data-ui-theme="dark"] .ui-nav-tree__group-trigger.is-active,
+body[data-ui-theme="dark"] .ui-nav-tree__group-trigger[aria-pressed="true"],
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item:hover,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger:hover,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger.is-open:not(.is-active),
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item.is-active,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item[aria-pressed="true"],
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger.is-active,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger[aria-pressed="true"],
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item:hover,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger:hover,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger.is-open:not(.is-active),
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item.is-active,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item[aria-pressed="true"],
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger.is-active,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger[aria-pressed="true"] {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger {
+  background: rgba(17, 30, 52, 0.82) !important;
+}
+
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item:hover,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger:hover,
+html[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger.is-open:not(.is-active),
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__item:hover,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger:hover,
+body[data-ui-theme="dark"] .ui-nav-tree > ul > li > .ui-nav-tree__group-trigger.is-open:not(.is-active) {
+  background: rgba(59, 130, 246, 0.16) !important;
+}
+
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item,
+html[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__item,
+body[data-ui-theme="dark"] .ui-nav-tree__children .ui-nav-tree__group-trigger {
+  background: transparent !important;
+}

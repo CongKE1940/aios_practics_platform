@@ -61,14 +61,35 @@ func (service *Service) UpdateUser(ctx context.Context, tenantID int64, id int64
 }
 
 func (service *Service) AssignRoles(ctx context.Context, tenantID int64, userID int64, input UserRolesInput) (User, error) {
+	if tenantID == 0 {
+		user, err := service.repo.GetUser(ctx, tenantID, userID)
+		if err != nil {
+			return User{}, err
+		}
+		tenantID = user.TenantID
+	}
 	return service.repo.AssignRoles(ctx, tenantID, userID, input.RoleIDs)
 }
 
 func (service *Service) DisableUser(ctx context.Context, tenantID int64, userID int64) (User, error) {
+	if tenantID == 0 {
+		user, err := service.repo.GetUser(ctx, tenantID, userID)
+		if err != nil {
+			return User{}, err
+		}
+		tenantID = user.TenantID
+	}
 	return service.repo.DisableUser(ctx, tenantID, userID)
 }
 
 func (service *Service) ResetPassword(ctx context.Context, tenantID int64, userID int64, input ResetPasswordInput) (User, error) {
+	if tenantID == 0 {
+		user, err := service.repo.GetUser(ctx, tenantID, userID)
+		if err != nil {
+			return User{}, err
+		}
+		tenantID = user.TenantID
+	}
 	passwordHash, err := service.hasher.Hash(input.NewPassword)
 	if err != nil {
 		return User{}, err

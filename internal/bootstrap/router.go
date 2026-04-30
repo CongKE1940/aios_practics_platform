@@ -30,7 +30,9 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 	}
 
 	router := gin.New()
+	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
+	router.Use(corsMiddleware())
 
 	router.GET("/healthz", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, response.Success(gin.H{

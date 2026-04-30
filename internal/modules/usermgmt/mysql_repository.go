@@ -18,9 +18,13 @@ func (repo *MySQLRepository) ListUsers(ctx context.Context, tenantID int64, filt
 	query := `
 SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, created_at, updated_at
 FROM users
-WHERE tenant_id = ? AND deleted_at IS NULL
+WHERE deleted_at IS NULL
 `
-	args := []any{tenantID}
+	args := make([]any, 0, 5)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
 	if filter.UserType != "" {
 		query += " AND user_type = ?"
 		args = append(args, filter.UserType)
@@ -56,18 +60,23 @@ WHERE tenant_id = ? AND deleted_at IS NULL
 }
 
 func (repo *MySQLRepository) GetUser(ctx context.Context, tenantID int64, id int64) (User, error) {
-	const query = `
+	query := `
 SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, created_at, updated_at
 FROM users
-WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
-LIMIT 1
 `
-	row := repo.db.QueryRowContext(ctx, query, id, tenantID)
+	args := []any{id}
+	query += "WHERE id = ? AND deleted_at IS NULL"
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	row := repo.db.QueryRowContext(ctx, query, args...)
 	user, err := scanUserScanner(row)
 	if err != nil {
 		return User{}, wrapUserNotFound(err)
 	}
-	user.RoleIDs, err = repo.listUserRoleIDs(ctx, tenantID, user.ID)
+	user.RoleIDs, err = repo.listUserRoleIDs(ctx, user.TenantID, user.ID)
 	if err != nil {
 		return User{}, err
 	}
@@ -180,7 +189,14 @@ func (repo *MySQLRepository) ResetPassword(ctx context.Context, tenantID int64, 
 }
 
 func (repo *MySQLRepository) ListRoles(ctx context.Context, tenantID int64) ([]RoleSummary, error) {
-	rows, err := repo.db.QueryContext(ctx, "SELECT id, tenant_id, code, name, status FROM roles WHERE tenant_id = ? AND status = 'active' ORDER BY id", tenantID)
+	query := "SELECT id, tenant_id, code, name, status FROM roles WHERE status = 'active'"
+	args := make([]any, 0, 1)
+	if tenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " ORDER BY id"
+	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

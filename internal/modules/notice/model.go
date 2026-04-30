@@ -26,6 +26,7 @@ var (
 type Scope struct {
 	UserID      int64
 	TenantID    int64
+	UserType    string
 	Permissions []string
 }
 
