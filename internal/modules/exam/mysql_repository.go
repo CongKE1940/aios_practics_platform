@@ -517,11 +517,11 @@ func (repo *MySQLRepository) SaveAttemptAnswer(ctx context.Context, scope Scope,
 		return ExamAttemptAnswer{}, err
 	}
 	const query = `
-INSERT INTO exam_attempt_answers (attempt_id, question_id, question_version_id, display_order, answer_json)
-VALUES (?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id = VALUES(question_version_id), answer_json = VALUES(answer_json)
+INSERT INTO exam_attempt_answers (attempt_id, tenant_id, question_id, question_version_id, display_order, answer_json)
+VALUES (?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), question_id = VALUES(question_id), question_version_id = VALUES(question_version_id), answer_json = VALUES(answer_json)
 `
-	if _, err := repo.db.ExecContext(ctx, query, attemptID, question.QuestionID, question.QuestionVersionID, input.DisplayOrder, answerJSON); err != nil {
+	if _, err := repo.db.ExecContext(ctx, query, attemptID, attempt.TenantID, question.QuestionID, question.QuestionVersionID, input.DisplayOrder, answerJSON); err != nil {
 		return ExamAttemptAnswer{}, err
 	}
 	return ExamAttemptAnswer{

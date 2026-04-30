@@ -476,11 +476,11 @@ LIMIT 1
 		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score"}).
 			AddRow(int64(101), int64(1001), 1, "2.00"))
 	mock.ExpectExec(regexp.QuoteMeta(`
-INSERT INTO exam_attempt_answers (attempt_id, question_id, question_version_id, display_order, answer_json)
-VALUES (?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE question_id = VALUES(question_id), question_version_id = VALUES(question_version_id), answer_json = VALUES(answer_json)
+INSERT INTO exam_attempt_answers (attempt_id, tenant_id, question_id, question_version_id, display_order, answer_json)
+VALUES (?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), question_id = VALUES(question_id), question_version_id = VALUES(question_version_id), answer_json = VALUES(answer_json)
 `)).
-		WithArgs(int64(801), int64(101), int64(1001), 1, `{"selected_keys":["A"]}`).
+		WithArgs(int64(801), int64(9), int64(101), int64(1001), 1, `{"selected_keys":["A"]}`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	result, err := repo.SaveAttemptAnswer(context.Background(), Scope{TenantID: 9, UserID: 10001}, 801, SaveAttemptAnswerInput{
