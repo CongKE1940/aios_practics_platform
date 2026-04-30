@@ -21,31 +21,33 @@ func (repo *MySQLRepository) ListCandidates(ctx context.Context, scope Scope, in
 	if input.CourseID != nil {
 		query := `
 SELECT
-  qbq.question_bank_id,
+  MIN(COALESCE(qbq.question_bank_id, 0)) AS question_bank_id,
   q.id,
   q.current_version_id,
   q.question_type,
   qv.content_json,
   qv.answer_json,
   qv.analysis_json
-FROM question_bank_questions qbq
-JOIN question_banks qb ON qb.id = qbq.question_bank_id
-JOIN questions q ON q.id = qbq.question_id
+FROM questions q
 JOIN question_versions qv ON qv.id = q.current_version_id
+LEFT JOIN question_bank_questions qbq ON qbq.question_id = q.id
+LEFT JOIN question_banks qb ON qb.id = qbq.question_bank_id AND qb.tenant_id = q.tenant_id AND qb.deleted_at IS NULL
+LEFT JOIN question_course_bindings qcb ON qcb.question_id = q.id AND qcb.tenant_id = q.tenant_id AND qcb.course_id = ?
 LEFT JOIN user_question_states uqs ON uqs.tenant_id = q.tenant_id AND uqs.user_id = ? AND uqs.question_id = q.id
-WHERE qb.tenant_id = ?
-  AND qb.deleted_at IS NULL
-  AND q.tenant_id = ?
+WHERE q.tenant_id = ?
   AND q.status = 'active'
   AND q.deleted_at IS NULL
   AND q.current_version_id IS NOT NULL
-  AND qb.course_id = ?
+  AND (qb.course_id = ? OR qcb.course_id IS NOT NULL)
 `
-		args := []any{scope.UserID, scope.TenantID, scope.TenantID, *input.CourseID}
+		args := []any{*input.CourseID, scope.UserID, scope.TenantID, *input.CourseID}
 		if input.ExcludeMastered {
 			query += " AND COALESCE(uqs.is_mastered, 0) = 0"
 		}
-		query += " ORDER BY qbq.question_bank_id ASC, qbq.sort_no ASC, q.id ASC"
+		query += `
+GROUP BY q.id, q.current_version_id, q.question_type, qv.content_json, qv.answer_json, qv.analysis_json
+ORDER BY question_bank_id ASC, q.id ASC
+`
 
 		rows, err := repo.db.QueryContext(ctx, query, args...)
 		if err != nil {
@@ -548,8 +550,13 @@ WHERE tenant_id = ? AND user_id = ?
 		args = append(args, *filter.BankID, scope.TenantID)
 	}
 	if filter.CourseID != nil {
-		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = user_question_states.question_id AND qb.tenant_id = ? AND qb.deleted_at IS NULL AND qb.course_id = ?)"
-		args = append(args, scope.TenantID, *filter.CourseID)
+		query += `
+ AND (
+  EXISTS (SELECT 1 FROM question_course_bindings qcb WHERE qcb.question_id = user_question_states.question_id AND qcb.tenant_id = ? AND qcb.course_id = ?)
+  OR EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = user_question_states.question_id AND qb.tenant_id = ? AND qb.deleted_at IS NULL AND qb.course_id = ?)
+ )
+`
+		args = append(args, scope.TenantID, *filter.CourseID, scope.TenantID, *filter.CourseID)
 	}
 	query += " ORDER BY updated_at DESC"
 	rows, err := repo.db.QueryContext(ctx, query, args...)
@@ -598,8 +605,13 @@ WHERE uqs.tenant_id = ? AND uqs.user_id = ?
 		args = append(args, *filter.BankID, scope.TenantID)
 	}
 	if filter.CourseID != nil {
-		query += " AND EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = uqs.question_id AND qb.tenant_id = ? AND qb.deleted_at IS NULL AND qb.course_id = ?)"
-		args = append(args, scope.TenantID, *filter.CourseID)
+		query += `
+ AND (
+  EXISTS (SELECT 1 FROM question_course_bindings qcb WHERE qcb.question_id = uqs.question_id AND qcb.tenant_id = ? AND qcb.course_id = ?)
+  OR EXISTS (SELECT 1 FROM question_bank_questions qbq JOIN question_banks qb ON qb.id = qbq.question_bank_id WHERE qbq.question_id = uqs.question_id AND qb.tenant_id = ? AND qb.deleted_at IS NULL AND qb.course_id = ?)
+ )
+`
+		args = append(args, scope.TenantID, *filter.CourseID, scope.TenantID, *filter.CourseID)
 	}
 	query += " ORDER BY uqs.updated_at DESC"
 

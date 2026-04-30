@@ -29,7 +29,7 @@ import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
 import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
 import { type OrganizationApi } from "./organization-panel";
-import { PaperAssemblyPanel } from "./paper-assembly-panel";
+import { PaperManagementPanel, type PaperManagementApi } from "./paper-assembly-panel";
 import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
 import { QuestionEditorPanel } from "./question-editor-panel";
 import { QuestionPanel, type QuestionPanelApi } from "./question-panel";
@@ -538,7 +538,8 @@ function renderAdminView({
       {selectedPath === "/admin/questions/editor" && currentQuestionApi ? <QuestionEditorPanel api={currentQuestionApi} /> : null}
       {selectedPath === "/admin/imports" && currentImportApi ? <ImportPanel api={currentImportApi} /> : null}
       {selectedPath === "/admin/exams" && currentExamApi ? <ExamPanel api={currentExamApi} onNavigate={onNavigate} /> : null}
-      {selectedPath === "/admin/exams/assembly" ? <PaperAssemblyPanel /> : null}
+      {selectedPath === "/admin/exam-papers" && hasPaperManagementApi(currentExamApi) ? <PaperManagementPanel api={currentExamApi} /> : null}
+      {selectedPath === "/admin/exams/assembly" && hasPaperManagementApi(currentExamApi) ? <PaperManagementPanel api={currentExamApi} /> : null}
       {selectedPath === "/admin/challenges" ? <ChallengePanel /> : null}
       {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
       {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
@@ -562,11 +563,22 @@ function isKnownAdminPath(selectedPath: string): boolean {
     "/admin/questions/editor",
     "/admin/imports",
     "/admin/exams",
+    "/admin/exam-papers",
     "/admin/exams/assembly",
     "/admin/challenges",
     "/admin/analytics",
     "/admin/history"
   ].includes(selectedPath) || selectedPath.startsWith("/admin/dictionaries/");
+}
+
+function hasPaperManagementApi(api?: ExamPanelApi): api is ExamPanelApi & PaperManagementApi {
+  return Boolean(
+    api?.listExamPapers &&
+      api.createExamPaper &&
+      api.getExamPaper &&
+      api.updateExamPaper &&
+      api.publishExamPaper
+  );
 }
 
 function parseDictionaryID(path: string): number {

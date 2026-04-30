@@ -88,7 +88,7 @@ func TestBuildMenusIncludesExamAndChallengeEntries(t *testing.T) {
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 4 {
+	if len(menus[0].Children) != 5 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
 	if menus[0].Children[0].Path != "/admin/questions" {
@@ -97,11 +97,14 @@ func TestBuildMenusIncludesExamAndChallengeEntries(t *testing.T) {
 	if menus[0].Children[1].Path != "/admin/exams" {
 		t.Fatalf("child[1].Path = %q", menus[0].Children[1].Path)
 	}
-	if menus[0].Children[2].Path != "/admin/exams/assembly" {
+	if menus[0].Children[2].Path != "/admin/exam-papers" {
 		t.Fatalf("child[2].Path = %q", menus[0].Children[2].Path)
 	}
-	if menus[0].Children[3].Path != "/admin/challenges" {
+	if menus[0].Children[3].Path != "/admin/exams/assembly" {
 		t.Fatalf("child[3].Path = %q", menus[0].Children[3].Path)
+	}
+	if menus[0].Children[4].Path != "/admin/challenges" {
+		t.Fatalf("child[4].Path = %q", menus[0].Children[4].Path)
 	}
 }
 

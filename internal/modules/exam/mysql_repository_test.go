@@ -33,15 +33,15 @@ func TestMySQLRepositoryListExamsUsesTenantConditionAndScansRows(t *testing.T) {
 	endTime := startTime.Add(90 * time.Minute)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at
 FROM exams
 WHERE tenant_id = ?
 ORDER BY id DESC
 `)).
 		WithArgs(int64(7)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at"}).
-			AddRow(int64(101), int64(7), "school", int64(7), int64(9), "七年级数学周测", "fixed", "draft", startTime, endTime, 90, createdAt, updatedAt).
-			AddRow(int64(102), int64(7), "school", int64(7), int64(9), "七年级英语周测", "fixed", "draft", startTime.Add(time.Hour), endTime.Add(time.Hour), 60, createdAt.Add(time.Hour), updatedAt.Add(time.Hour)))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at"}).
+			AddRow(int64(101), int64(7), "school", int64(7), int64(9), "七年级数学周测", "fixed", "draft", startTime, endTime, 90, "0.00", nil, createdAt, updatedAt).
+			AddRow(int64(102), int64(7), "school", int64(7), int64(9), "七年级英语周测", "fixed", "draft", startTime.Add(time.Hour), endTime.Add(time.Hour), 60, "0.00", nil, createdAt.Add(time.Hour), updatedAt.Add(time.Hour)))
 
 	result, err := repo.ListExams(context.Background(), Scope{TenantID: 7, Permissions: []string{"exam:publish"}}, ExamListFilter{Page: 1, PageSize: 1})
 	if err != nil {
@@ -107,14 +107,14 @@ VALUES (?, ?, ?, ?, ?)
 		WillReturnResult(sqlmock.NewResult(2, 1))
 	mock.ExpectCommit()
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
 FROM exams
 WHERE id = ? AND tenant_id = ?
 LIMIT 1
 `)).
 		WithArgs(int64(301), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at", "assembly_rule_json"}).
-			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "期中模拟", "fixed", "draft", startTime, endTime, 90, createdAt, updatedAt, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
+			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "期中模拟", "fixed", "draft", startTime, endTime, 90, "15.00", nil, createdAt, updatedAt, nil))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT target_type, target_id, created_at
 FROM exam_targets
@@ -179,14 +179,14 @@ func TestMySQLRepositoryUpdateExamReplacesTargetsAndFixedQuestions(t *testing.T)
 	updatedAt := createdAt.Add(time.Minute)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
 FROM exams
 WHERE id = ? AND tenant_id = ?
 LIMIT 1
 `)).
 		WithArgs(int64(301), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at", "assembly_rule_json"}).
-			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "更新前考试", "fixed", "draft", startTime, endTime, 100, createdAt, updatedAt, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
+			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "更新前考试", "fixed", "draft", startTime, endTime, 100, "0.00", nil, createdAt, updatedAt, nil))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT target_type, target_id, created_at
 FROM exam_targets
@@ -206,7 +206,7 @@ ORDER BY display_order ASC, id ASC
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`
 UPDATE exams
-SET name = ?, exam_mode = ?, start_time = ?, end_time = ?, duration_minutes = ?, total_score = ?, assembly_rule_json = ?
+SET name = ?, exam_mode = ?, start_time = ?, end_time = ?, duration_minutes = ?, total_score = ?, paper_id = NULL, assembly_rule_json = ?
 WHERE id = ? AND tenant_id = ?
 `)).
 		WithArgs("更新后考试", ExamModeFixed, startTime, endTime, 100, "30.00", nil, int64(301), int64(9)).
@@ -237,14 +237,14 @@ VALUES (?, ?, ?, ?, ?)
 		WillReturnResult(sqlmock.NewResult(2, 1))
 	mock.ExpectCommit()
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
 FROM exams
 WHERE id = ? AND tenant_id = ?
 LIMIT 1
 `)).
 		WithArgs(int64(301), int64(9)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at", "assembly_rule_json"}).
-			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "更新后考试", "fixed", "draft", startTime, endTime, 100, createdAt, updatedAt, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
+			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "更新后考试", "fixed", "draft", startTime, endTime, 100, "30.00", nil, createdAt, updatedAt, nil))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT target_type, target_id, created_at
 FROM exam_targets
@@ -312,10 +312,10 @@ func TestMySQLRepositoryPublishFixedExamCreatesPaperAndMarksPublished(t *testing
 	})
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`
-INSERT INTO exam_papers (exam_id, paper_type, paper_name, total_score)
-VALUES (?, ?, ?, ?)
+INSERT INTO exam_papers (exam_id, tenant_id, creator_id, paper_type, paper_name, source_type, status, total_score)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `)).
-		WithArgs(int64(301), ExamPaperTypeFixed, "待发布考试", "30.00").
+		WithArgs(int64(301), int64(9), int64(21), ExamPaperTypeFixed, "待发布考试", SourceTypeManual, ExamPaperStatusPublished, "30.00").
 		WillReturnResult(sqlmock.NewResult(701, 1))
 	mock.ExpectExec(regexp.QuoteMeta(`
 INSERT INTO exam_paper_questions (paper_id, question_id, question_version_id, score, order_no)
@@ -329,8 +329,8 @@ VALUES (?, ?, ?, ?, ?)
 `)).
 		WithArgs(int64(701), int64(22), int64(122), "18.00", 2).
 		WillReturnResult(sqlmock.NewResult(2, 1))
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exams SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?`)).
-		WithArgs(ExamStatusPublished, int64(301), int64(9), ExamStatusDraft).
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exams SET status = ?, paper_id = ? WHERE id = ? AND tenant_id = ? AND status = ?`)).
+		WithArgs(ExamStatusPublished, int64(701), int64(301), int64(9), ExamStatusDraft).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	expectExamDetailQueries(mock, 301, 9, "待发布考试", ExamStatusPublished, startTime, endTime, 90, createdAt, updatedAt, []ExamTarget{}, []ExamFixedQuestion{
@@ -383,10 +383,10 @@ WHERE q.tenant_id = ? AND q.deleted_at IS NULL AND q.status = 'active' AND q.cur
 			AddRow(int64(102), int64(1002)))
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`
-INSERT INTO exam_papers (exam_id, paper_type, paper_name, total_score)
-VALUES (?, ?, ?, ?)
+INSERT INTO exam_papers (exam_id, tenant_id, creator_id, paper_type, paper_name, source_type, status, total_score)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `)).
-		WithArgs(int64(302), ExamPaperTypeRandomRule, "随机考试", "4.00").
+		WithArgs(int64(302), int64(9), int64(21), ExamPaperTypeRandomRule, "随机考试", SourceTypeManual, ExamPaperStatusPublished, "4.00").
 		WillReturnResult(sqlmock.NewResult(702, 1))
 	mock.ExpectExec(regexp.QuoteMeta(`
 INSERT INTO exam_paper_question_rules (paper_id, question_type, score_per_question, question_count, knowledge_tag_ids_json, bank_scope_json, course_id, difficulty_range_json, per_knowledge_count_json)
@@ -406,8 +406,8 @@ VALUES (?, ?, ?, ?, ?)
 `)).
 		WithArgs(int64(702), int64(102), int64(1002), "2.00", 2).
 		WillReturnResult(sqlmock.NewResult(2, 1))
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exams SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?`)).
-		WithArgs(ExamStatusPublished, int64(302), int64(9), ExamStatusDraft).
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exams SET status = ?, paper_id = ? WHERE id = ? AND tenant_id = ? AND status = ?`)).
+		WithArgs(ExamStatusPublished, int64(702), int64(302), int64(9), ExamStatusDraft).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	expectRandomExamDetailQueries(mock, 302, 9, "随机考试", ExamStatusPublished, startTime, endTime, 90, createdAt, updatedAt, ruleJSON)
@@ -684,7 +684,7 @@ func TestMySQLRepositoryListExamsFiltersPublishedStudentTargets(t *testing.T) {
 	repo := NewMySQLRepository(db)
 	now := time.Date(2026, 4, 24, 9, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.created_at, e.updated_at
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at
 FROM exams e
 WHERE e.tenant_id = ? AND e.status = ?
 AND (
@@ -710,8 +710,8 @@ AND (
 ORDER BY e.id DESC
 `)).
 		WithArgs(int64(9), ExamStatusPublished, int64(10001), int64(10001), int64(10001)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at"}).
-			AddRow(int64(301), int64(9), OwnerOrgTypeSchool, int64(9), int64(7), "期中测验", ExamModeFixed, ExamStatusPublished, now, now.Add(time.Hour), 60, now, now))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at"}).
+			AddRow(int64(301), int64(9), OwnerOrgTypeSchool, int64(9), int64(7), "期中测验", ExamModeFixed, ExamStatusPublished, now, now.Add(time.Hour), 60, "0.00", nil, now, now))
 
 	result, err := repo.ListExams(context.Background(), Scope{TenantID: 9, UserID: 10001, UserType: "student"}, ExamListFilter{Page: 1, PageSize: 20})
 	if err != nil {
@@ -752,14 +752,14 @@ func expectExamDetailQueries(
 	fixedQuestions []ExamFixedQuestion,
 ) {
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
 FROM exams
 WHERE id = ? AND tenant_id = ?
 LIMIT 1
 `)).
 		WithArgs(examID, tenantID).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at", "assembly_rule_json"}).
-			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "fixed", status, startTime, endTime, durationMinutes, createdAt, updatedAt, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
+			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "fixed", status, startTime, endTime, durationMinutes, formatExamScore(totalPublishedScore(fixedQuestions)), nil, createdAt, updatedAt, nil))
 	targetRows := sqlmock.NewRows([]string{"target_type", "target_id", "created_at"})
 	for _, target := range targets {
 		targetRows.AddRow(target.TargetType, target.TargetID, target.CreatedAt)
@@ -800,14 +800,14 @@ func expectRandomExamDetailQueries(
 	ruleJSON string,
 ) {
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
 FROM exams
 WHERE id = ? AND tenant_id = ?
 LIMIT 1
 `)).
 		WithArgs(examID, tenantID).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "created_at", "updated_at", "assembly_rule_json"}).
-			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "random_assembly", status, startTime, endTime, durationMinutes, createdAt, updatedAt, ruleJSON))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
+			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "random_assembly", status, startTime, endTime, durationMinutes, "0.00", nil, createdAt, updatedAt, ruleJSON))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT target_type, target_id, created_at
 FROM exam_targets

@@ -24,6 +24,9 @@ func (service *Service) CreateQuestion(ctx context.Context, scope Scope, input Q
 	if !isAllowedQuestionType(input.QuestionType) || len(input.Content) == 0 || len(input.Answer) == 0 {
 		return Question{}, ErrInvalidInput
 	}
+	if hasNonPositiveID(input.BankIDs) || hasNonPositiveID(input.CourseIDs) {
+		return Question{}, ErrInvalidInput
+	}
 
 	version := QuestionVersion{
 		VersionNo:     1,
@@ -45,7 +48,7 @@ func (service *Service) CreateQuestion(ctx context.Context, scope Scope, input Q
 		Status:       StatusActive,
 		SourceType:   SourceTypeManual,
 		CreatorID:    scope.UserID,
-	}, version, input.BankIDs)
+	}, version, normalizeIDs(input.BankIDs), normalizeIDs(input.CourseIDs))
 }
 
 func (service *Service) UpdateQuestion(ctx context.Context, scope Scope, id int64, input QuestionUpdateInput) (Question, error) {
@@ -58,7 +61,18 @@ func (service *Service) UpdateQuestion(ctx context.Context, scope Scope, id int6
 	if status := strings.TrimSpace(input.Status); status != "" {
 		current.Status = status
 	}
-	return service.repo.UpdateQuestion(ctx, current)
+	if hasNonPositiveID(input.BankIDs) || hasNonPositiveID(input.CourseIDs) {
+		return Question{}, ErrInvalidInput
+	}
+	var bankIDs []int64
+	if input.BankIDs != nil {
+		bankIDs = normalizeIDs(input.BankIDs)
+	}
+	var courseIDs []int64
+	if input.CourseIDs != nil {
+		courseIDs = normalizeIDs(input.CourseIDs)
+	}
+	return service.repo.UpdateQuestion(ctx, current, bankIDs, courseIDs)
 }
 
 func (service *Service) ListVersions(ctx context.Context, scope Scope, id int64) ([]QuestionVersion, error) {

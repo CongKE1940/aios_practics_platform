@@ -41,6 +41,7 @@ const defaultQuestionForm = {
   question_type: "single_choice",
   difficulty: "medium",
   bank_id: "",
+  course_id: "",
   stem: "",
   option_a: "",
   option_b: "",
@@ -49,7 +50,9 @@ const defaultQuestionForm = {
 
 const defaultEditForm = {
   difficulty: "",
-  status: ""
+  status: "",
+  bank_id: "",
+  course_id: ""
 };
 
 const defaultVersionForm = {
@@ -88,6 +91,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const bankNameMap = useMemo(() => new Map(banks.map((bank) => [bank.id, bank.name])), [banks]);
+  const courseNameMap = useMemo(() => new Map(courses.map((course) => [course.id, course.name])), [courses]);
   const columns = useMemo<Array<FixedActionListColumn<Question>>>(
     () => [
       {
@@ -119,6 +123,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
         render: (item) => formatBankNames(item.bank_ids, bankNameMap)
       },
       {
+        key: "course_ids",
+        title: "绑定课程",
+        render: (item) => formatCourseNames(item.course_ids, courseNameMap)
+      },
+      {
         key: "source_type",
         title: "来源",
         width: 110,
@@ -131,7 +140,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
         render: (item) => formatDateTime(item.updated_at)
       }
     ],
-    [bankNameMap]
+    [bankNameMap, courseNameMap]
   );
 
   useEffect(() => {
@@ -203,7 +212,8 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
         correct_keys: [questionForm.correct_key]
       },
       analysis: {},
-      bank_ids: questionForm.bank_id ? [Number(questionForm.bank_id)] : []
+      bank_ids: questionForm.bank_id ? [Number(questionForm.bank_id)] : [],
+      course_ids: questionForm.course_id ? [Number(questionForm.course_id)] : []
     });
     closeModal();
     await loadPage();
@@ -217,7 +227,9 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
     await api.updateQuestion(modal.item.id, {
       difficulty: editForm.difficulty || undefined,
-      status: editForm.status || undefined
+      status: editForm.status || undefined,
+      bank_ids: editForm.bank_id ? [Number(editForm.bank_id)] : [],
+      course_ids: editForm.course_id ? [Number(editForm.course_id)] : []
     });
     closeModal();
     await loadPage();
@@ -255,7 +267,9 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
   function openEditModal(item: Question) {
     setEditForm({
       difficulty: item.difficulty ?? "",
-      status: item.status
+      status: item.status,
+      bank_id: item.bank_ids?.[0] ? String(item.bank_ids[0]) : "",
+      course_id: item.course_ids?.[0] ? String(item.course_ids[0]) : ""
     });
     setModal({ type: "edit", item });
   }
@@ -286,6 +300,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
         { key: "status_label", title: "状态" },
         { key: "current_version_no", title: "当前版本" },
         { key: "bank_names", title: "所属题库" },
+        { key: "course_names", title: "绑定课程" },
         { key: "source_type_label", title: "来源" },
         { key: "updated_at_label", title: "更新时间" }
       ],
@@ -295,6 +310,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
         difficulty_label: formatDifficulty(item.difficulty),
         status_label: formatStatusLabel(item.status),
         bank_names: formatBankNames(item.bank_ids, bankNameMap),
+        course_names: formatCourseNames(item.course_ids, courseNameMap),
         source_type_label: formatSourceType(item.source_type),
         updated_at_label: formatDateTime(item.updated_at)
       }))
@@ -435,6 +451,21 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           ))}
                         </select>
                       </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="question_course_id">绑定课程</label>
+                        <select
+                          id="question_course_id"
+                          value={questionForm.course_id}
+                          onChange={(event) => setQuestionForm((current) => ({ ...current, course_id: event.target.value }))}
+                        >
+                          <option value="">不绑定课程</option>
+                          {courses.map((course) => (
+                            <option key={course.id} value={course.id}>
+                              {course.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                         <label htmlFor="question_stem">题干</label>
                         <textarea
@@ -518,6 +549,36 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           <option value="disabled">禁用</option>
                         </select>
                       </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="question_edit_bank_id">所属题库</label>
+                        <select
+                          id="question_edit_bank_id"
+                          value={editForm.bank_id}
+                          onChange={(event) => setEditForm((current) => ({ ...current, bank_id: event.target.value }))}
+                        >
+                          <option value="">不绑定题库</option>
+                          {banks.map((bank) => (
+                            <option key={bank.id} value={bank.id}>
+                              {bank.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="question_edit_course_id">绑定课程</label>
+                        <select
+                          id="question_edit_course_id"
+                          value={editForm.course_id}
+                          onChange={(event) => setEditForm((current) => ({ ...current, course_id: event.target.value }))}
+                        >
+                          <option value="">不绑定课程</option>
+                          {courses.map((course) => (
+                            <option key={course.id} value={course.id}>
+                              {course.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                   <div className="ui-admin-modal__footer">
@@ -567,6 +628,10 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                     <div>
                       <dt>所属题库</dt>
                       <dd>{formatBankNames(modal.item.bank_ids, bankNameMap)}</dd>
+                    </div>
+                    <div>
+                      <dt>绑定课程</dt>
+                      <dd>{formatCourseNames(modal.item.course_ids, courseNameMap)}</dd>
                     </div>
                   </dl>
 
@@ -756,6 +821,13 @@ function formatBankNames(bankIDs: number[] | undefined, bankNameMap: Map<number,
   return bankIDs.map((id) => bankNameMap.get(id) ?? `题库-${id}`).join("、");
 }
 
+function formatCourseNames(courseIDs: number[] | undefined, courseNameMap: Map<number, string>): string {
+  if (!courseIDs || courseIDs.length === 0) {
+    return "-";
+  }
+  return courseIDs.map((id) => courseNameMap.get(id) ?? `课程-${id}`).join("、");
+}
+
 function formatDateTime(value?: string | null): string {
   if (!value) {
     return "-";
@@ -782,7 +854,7 @@ const dataRegionStyle: CSSProperties = {
 
 const filterFormStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(180px, 260px) minmax(160px, 220px) minmax(180px, 240px) minmax(180px, 240px) minmax(140px, 190px) auto",
+  gridTemplateColumns: "minmax(160px, 240px) minmax(140px, 200px) minmax(160px, 220px) minmax(160px, 220px) minmax(120px, 170px) auto",
   alignItems: "end",
   gap: 14,
   margin: 0

@@ -58,7 +58,8 @@ func TestHandler_QuestionLifecycleAndVersions(t *testing.T) {
 		"analysis": map[string]any{
 			"text": "基础算术",
 		},
-		"bank_ids": []int64{11, 12},
+		"bank_ids":   []int64{11, 12},
+		"course_ids": []int64{10},
 	}, "token")
 	if createRec.Code != http.StatusOK {
 		t.Fatalf("create question status = %d, body = %s", createRec.Code, createRec.Body.String())
@@ -80,6 +81,9 @@ func TestHandler_QuestionLifecycleAndVersions(t *testing.T) {
 	}
 	if len(created.Data.BankIDs) != 2 {
 		t.Fatalf("bank_ids = %+v", created.Data.BankIDs)
+	}
+	if len(created.Data.CourseIDs) != 1 || created.Data.CourseIDs[0] != 10 {
+		t.Fatalf("course_ids = %+v", created.Data.CourseIDs)
 	}
 
 	listRec := performQuestionRequest(
@@ -105,6 +109,8 @@ func TestHandler_QuestionLifecycleAndVersions(t *testing.T) {
 		map[string]any{
 			"difficulty": "hard",
 			"status":     StatusDisabled,
+			"bank_ids":   []int64{12},
+			"course_ids": []int64{},
 		},
 		"token",
 	)
@@ -118,6 +124,12 @@ func TestHandler_QuestionLifecycleAndVersions(t *testing.T) {
 	}
 	if updated.Data.Status != StatusDisabled {
 		t.Fatalf("status = %q", updated.Data.Status)
+	}
+	if len(updated.Data.BankIDs) != 1 || updated.Data.BankIDs[0] != 12 {
+		t.Fatalf("updated bank_ids = %+v", updated.Data.BankIDs)
+	}
+	if len(updated.Data.CourseIDs) != 0 {
+		t.Fatalf("updated course_ids = %+v", updated.Data.CourseIDs)
 	}
 	if updated.Data.CurrentVersionID == nil || created.Data.CurrentVersionID == nil || *updated.Data.CurrentVersionID != *created.Data.CurrentVersionID {
 		t.Fatalf("current_version_id changed from %+v to %+v", created.Data.CurrentVersionID, updated.Data.CurrentVersionID)
@@ -283,7 +295,7 @@ func (repo *memoryRepository) ListQuestions(_ context.Context, tenantID int64, f
 		if filter.BankID != nil && !containsInt64(question.BankIDs, *filter.BankID) {
 			continue
 		}
-		if filter.CourseID != nil && !repo.matchesCourse(question.BankIDs, *filter.CourseID) {
+		if filter.CourseID != nil && !containsInt64(question.CourseIDs, *filter.CourseID) && !repo.matchesCourse(question.BankIDs, *filter.CourseID) {
 			continue
 		}
 		items = append(items, question)
@@ -299,7 +311,7 @@ func (repo *memoryRepository) GetQuestion(_ context.Context, tenantID int64, id 
 	return question, nil
 }
 
-func (repo *memoryRepository) CreateQuestion(_ context.Context, question Question, version QuestionVersion, bankIDs []int64) (Question, error) {
+func (repo *memoryRepository) CreateQuestion(_ context.Context, question Question, version QuestionVersion, bankIDs []int64, courseIDs []int64) (Question, error) {
 	question.ID = repo.nextQuestionID
 	repo.nextQuestionID++
 	version.ID = repo.nextVersionID
@@ -313,16 +325,27 @@ func (repo *memoryRepository) CreateQuestion(_ context.Context, question Questio
 	question.CurrentVersionID = &version.ID
 	question.CurrentVersionNo = intPtr(1)
 	question.BankIDs = append([]int64{}, bankIDs...)
+	question.CourseIDs = append([]int64{}, courseIDs...)
 	repo.questions[question.ID] = question
 	repo.versions[question.ID] = []QuestionVersion{version}
 	repo.questionBankIDs[question.ID] = append([]int64{}, bankIDs...)
 	return question, nil
 }
 
-func (repo *memoryRepository) UpdateQuestion(_ context.Context, question Question) (Question, error) {
+func (repo *memoryRepository) UpdateQuestion(_ context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error) {
 	current, ok := repo.questions[question.ID]
 	if !ok || current.TenantID != question.TenantID {
 		return Question{}, ErrNotFound
+	}
+	if bankIDs != nil {
+		question.BankIDs = append([]int64{}, bankIDs...)
+	} else {
+		question.BankIDs = append([]int64{}, current.BankIDs...)
+	}
+	if courseIDs != nil {
+		question.CourseIDs = append([]int64{}, courseIDs...)
+	} else {
+		question.CourseIDs = append([]int64{}, current.CourseIDs...)
 	}
 	question.CreatedAt = current.CreatedAt
 	question.UpdatedAt = current.CreatedAt.Add(time.Hour)

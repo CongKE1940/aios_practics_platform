@@ -77,7 +77,7 @@ export function QuestionBankPanel({ api }: { api: QuestionBankPanelApi }) {
       },
       {
         key: "course_id",
-        title: "所属课程",
+        title: "绑定课程",
         render: (item) => (item.course_id ? courseNameMap.get(item.course_id) ?? `课程-${item.course_id}` : "-")
       },
       {
@@ -252,7 +252,7 @@ export function QuestionBankPanel({ api }: { api: QuestionBankPanelApi }) {
       <section className="ui-admin-card" aria-label="题库数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
           <ClearableFilterInput id="question_bank_keyword" label="关键字" placeholder="输入题库名称或说明" value={keyword} onChange={setKeyword} />
-          <ClearableFilterSelect id="question_bank_course_id" label="所属课程" placeholder="请选择所属课程" value={courseID} onChange={setCourseID}>
+          <ClearableFilterSelect id="question_bank_course_id" label="绑定课程" placeholder="请选择绑定课程" value={courseID} onChange={setCourseID}>
               {courses.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.name}
@@ -318,7 +318,7 @@ export function QuestionBankPanel({ api }: { api: QuestionBankPanelApi }) {
                       <dd>{modal.item.name}</dd>
                     </div>
                     <div>
-                      <dt>所属课程</dt>
+                      <dt>绑定课程</dt>
                       <dd>{modal.item.course_id ? courseNameMap.get(modal.item.course_id) ?? `课程-${modal.item.course_id}` : "-"}</dd>
                     </div>
                     <div>
@@ -407,7 +407,7 @@ export function QuestionBankPanel({ api }: { api: QuestionBankPanelApi }) {
                         />
                       </div>
                       <div className="ui-admin-form__field">
-                        <label htmlFor="question_bank_form_course_id">所属课程</label>
+                        <label htmlFor="question_bank_form_course_id">绑定课程</label>
                         <select
                           id="question_bank_form_course_id"
                           value={form.course_id}

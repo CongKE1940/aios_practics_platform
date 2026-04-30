@@ -27,6 +27,11 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 }
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
+	router.GET("/exam-papers", handler.listExamPapers)
+	router.POST("/exam-papers", handler.createExamPaper)
+	router.GET("/exam-papers/:id", handler.getExamPaper)
+	router.PUT("/exam-papers/:id", handler.updateExamPaper)
+	router.POST("/exam-papers/:id/publish", handler.publishExamPaper)
 	router.GET("/exams", handler.listExams)
 	router.POST("/exams", handler.createExam)
 	router.GET("/exams/:id", handler.getExam)
@@ -37,6 +42,101 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/exam-attempts/:id/answers", handler.saveAttemptAnswer)
 	router.POST("/exam-attempts/:id/submit", handler.submitAttempt)
 	router.GET("/exam-attempts/:id/result", handler.getAttemptResult)
+}
+
+func (handler *Handler) listExamPapers(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.ListExamPapers(ctx.Request.Context(), scope, ExamPaperListFilter{
+		Status:   strings.TrimSpace(ctx.Query("status")),
+		Keyword:  strings.TrimSpace(ctx.Query("keyword")),
+		Page:     parseInt(ctx.Query("page")),
+		PageSize: parseInt(ctx.Query("page_size")),
+	})
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) createExamPaper(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	var input ExamPaperInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.CreateExamPaper(ctx.Request.Context(), scope, input)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) getExamPaper(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.GetExamPaper(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) updateExamPaper(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	var input ExamPaperInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+	result, err := handler.service.UpdateExamPaper(ctx.Request.Context(), scope, id, input)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) publishExamPaper(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.PublishExamPaper(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
 func (handler *Handler) listExams(ctx *gin.Context) {

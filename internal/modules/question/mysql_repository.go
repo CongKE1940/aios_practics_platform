@@ -54,14 +54,21 @@ WHERE q.deleted_at IS NULL
 	}
 	if filter.CourseID != nil {
 		query += `
- AND EXISTS (
-  SELECT 1
-  FROM question_bank_questions qbq
-  JOIN question_banks qb ON qb.id = qbq.question_bank_id
-  WHERE qbq.question_id = q.id AND qb.tenant_id = q.tenant_id AND qb.deleted_at IS NULL AND qb.course_id = ?
+ AND (
+  EXISTS (
+    SELECT 1
+    FROM question_course_bindings qcb
+    WHERE qcb.question_id = q.id AND qcb.tenant_id = q.tenant_id AND qcb.course_id = ?
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM question_bank_questions qbq
+    JOIN question_banks qb ON qb.id = qbq.question_bank_id
+    WHERE qbq.question_id = q.id AND qb.tenant_id = q.tenant_id AND qb.deleted_at IS NULL AND qb.course_id = ?
+  )
  )
 `
-		args = append(args, *filter.CourseID)
+		args = append(args, *filter.CourseID, *filter.CourseID)
 	}
 	if filter.Keyword != "" {
 		query += " AND JSON_UNQUOTE(JSON_EXTRACT(qv.content_json, '$.stem.text')) LIKE ?"
@@ -88,6 +95,9 @@ WHERE q.deleted_at IS NULL
 	}
 
 	if err := repo.fillBankIDs(ctx, items); err != nil {
+		return PageResult[Question]{}, err
+	}
+	if err := repo.fillCourseIDs(ctx, items); err != nil {
 		return PageResult[Question]{}, err
 	}
 	return pageOf(items, filter.Page, filter.PageSize), nil
@@ -120,17 +130,13 @@ WHERE q.id = ? AND q.deleted_at IS NULL
 	}
 	query += " LIMIT 1"
 	row := repo.db.QueryRowContext(ctx, query, args...)
-	item, err := scanQuestionScanner(row)
-	if err != nil {
+	if _, err := scanQuestionScanner(row); err != nil {
 		return Question{}, wrapNotFound(err)
-	}
-	if err := repo.fillBankIDs(ctx, []Question{item}); err != nil {
-		return Question{}, err
 	}
 	return repo.getQuestionWithBanks(ctx, tenantID, id)
 }
 
-func (repo *MySQLRepository) CreateQuestion(ctx context.Context, question Question, version QuestionVersion, bankIDs []int64) (Question, error) {
+func (repo *MySQLRepository) CreateQuestion(ctx context.Context, question Question, version QuestionVersion, bankIDs []int64, courseIDs []int64) (Question, error) {
 	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Question{}, err
@@ -173,6 +179,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	if err := repo.insertQuestionBanks(ctx, tx, questionID, bankIDs); err != nil {
 		return Question{}, err
 	}
+	if err := repo.insertQuestionCourses(ctx, tx, question.TenantID, questionID, courseIDs); err != nil {
+		return Question{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return Question{}, err
@@ -180,13 +189,46 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	return repo.GetQuestion(ctx, question.TenantID, questionID)
 }
 
-func (repo *MySQLRepository) UpdateQuestion(ctx context.Context, question Question) (Question, error) {
+func (repo *MySQLRepository) UpdateQuestion(ctx context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error) {
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Question{}, err
+	}
+	defer tx.Rollback()
+
 	const query = `
 UPDATE questions
 SET difficulty = ?, status = ?
 WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 `
-	if err := repo.execAffectingOne(ctx, query, nullString(question.Difficulty), question.Status, question.ID, question.TenantID); err != nil {
+	result, err := tx.ExecContext(ctx, query, nullString(question.Difficulty), question.Status, question.ID, question.TenantID)
+	if err != nil {
+		return Question{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return Question{}, err
+	}
+	if rowsAffected == 0 {
+		return Question{}, ErrNotFound
+	}
+	if bankIDs != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM question_bank_questions WHERE question_id = ?`, question.ID); err != nil {
+			return Question{}, err
+		}
+		if err := repo.insertQuestionBanks(ctx, tx, question.ID, bankIDs); err != nil {
+			return Question{}, err
+		}
+	}
+	if courseIDs != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM question_course_bindings WHERE question_id = ? AND tenant_id = ?`, question.ID, question.TenantID); err != nil {
+			return Question{}, err
+		}
+		if err := repo.insertQuestionCourses(ctx, tx, question.TenantID, question.ID, courseIDs); err != nil {
+			return Question{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return Question{}, err
 	}
 	return repo.GetQuestion(ctx, question.TenantID, question.ID)
@@ -317,6 +359,22 @@ VALUES (?, ?)
 	return nil
 }
 
+func (repo *MySQLRepository) insertQuestionCourses(ctx context.Context, tx *sql.Tx, tenantID int64, questionID int64, courseIDs []int64) error {
+	if len(courseIDs) == 0 {
+		return nil
+	}
+	const query = `
+INSERT INTO question_course_bindings (tenant_id, question_id, course_id)
+VALUES (?, ?, ?)
+`
+	for _, courseID := range courseIDs {
+		if _, err := tx.ExecContext(ctx, query, tenantID, questionID, courseID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (repo *MySQLRepository) getQuestionForUpdate(ctx context.Context, tx *sql.Tx, tenantID int64, questionID int64) (Question, error) {
 	const query = `
 SELECT
@@ -396,6 +454,9 @@ WHERE q.id = ? AND q.deleted_at IS NULL
 	if err := repo.fillBankIDs(ctx, items); err != nil {
 		return Question{}, err
 	}
+	if err := repo.fillCourseIDs(ctx, items); err != nil {
+		return Question{}, err
+	}
 	return items[0], nil
 }
 
@@ -437,6 +498,49 @@ ORDER BY id
 		}
 		if index, ok := indexByID[questionID]; ok {
 			items[index].BankIDs = append(items[index].BankIDs, bankID)
+		}
+	}
+	return rows.Err()
+}
+
+func (repo *MySQLRepository) fillCourseIDs(ctx context.Context, items []Question) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	questionIDs := make([]int64, 0, len(items))
+	indexByID := make(map[int64]int, len(items))
+	for index, item := range items {
+		questionIDs = append(questionIDs, item.ID)
+		indexByID[item.ID] = index
+		items[index].CourseIDs = []int64{}
+	}
+
+	query := `
+SELECT question_id, course_id
+FROM question_course_bindings
+WHERE question_id IN (` + placeholders(len(questionIDs)) + `)
+ORDER BY id
+`
+	args := make([]any, 0, len(questionIDs))
+	for _, questionID := range questionIDs {
+		args = append(args, questionID)
+	}
+
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var questionID int64
+		var courseID int64
+		if err := rows.Scan(&questionID, &courseID); err != nil {
+			return err
+		}
+		if index, ok := indexByID[questionID]; ok {
+			items[index].CourseIDs = append(items[index].CourseIDs, courseID)
 		}
 	}
 	return rows.Err()

@@ -41,6 +41,83 @@ func (service *Service) CreateExam(ctx context.Context, scope Scope, input ExamI
 	return service.repo.CreateExam(ctx, scope, normalized)
 }
 
+func (service *Service) ListExamPapers(ctx context.Context, scope Scope, filter ExamPaperListFilter) (PageResult[ExamPaper], error) {
+	if service == nil || service.repo == nil {
+		return PageResult[ExamPaper]{}, ErrRepositoryUnavailable
+	}
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+		return PageResult[ExamPaper]{}, ErrForbidden
+	}
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	return service.repo.ListExamPapers(ctx, scopeForRead(scope), filter)
+}
+
+func (service *Service) CreateExamPaper(ctx context.Context, scope Scope, input ExamPaperInput) (ExamPaperDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+		return ExamPaperDetail{}, ErrForbidden
+	}
+	normalized, err := normalizeExamPaperInput(input)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	return service.repo.CreateExamPaper(ctx, scope, normalized)
+}
+
+func (service *Service) GetExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+		return ExamPaperDetail{}, ErrForbidden
+	}
+	if id <= 0 {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	return service.repo.GetExamPaper(ctx, scopeForRead(scope), id)
+}
+
+func (service *Service) UpdateExamPaper(ctx context.Context, scope Scope, id int64, input ExamPaperInput) (ExamPaperDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+		return ExamPaperDetail{}, ErrForbidden
+	}
+	if id <= 0 {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	normalized, err := normalizeExamPaperInput(input)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	targetScope, err := service.scopeForPaperMutation(ctx, scope, id)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	return service.repo.UpdateExamPaper(ctx, targetScope, id, normalized)
+}
+
+func (service *Service) PublishExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error) {
+	if service == nil || service.repo == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+		return ExamPaperDetail{}, ErrForbidden
+	}
+	if id <= 0 {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	targetScope, err := service.scopeForPaperMutation(ctx, scope, id)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	return service.repo.PublishExamPaper(ctx, targetScope, id)
+}
+
 func (service *Service) GetExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error) {
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
@@ -148,7 +225,10 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	if input.Name == "" || input.ExamMode == "" || input.StartTime.IsZero() || input.EndTime.IsZero() {
 		return ExamInput{}, ErrInvalidInput
 	}
-	if input.ExamMode != ExamModeFixed && input.ExamMode != ExamModeRandom {
+	if input.ExamMode != ExamModeFixed && input.ExamMode != ExamModePaper && input.ExamMode != ExamModeRandom {
+		return ExamInput{}, ErrInvalidInput
+	}
+	if input.PaperID != nil && *input.PaperID <= 0 {
 		return ExamInput{}, ErrInvalidInput
 	}
 	if !input.EndTime.After(input.StartTime) || input.DurationMinutes <= 0 {
@@ -168,10 +248,19 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 		}
 	}
 
+	if input.ExamMode == ExamModePaper && input.PaperID == nil {
+		return ExamInput{}, ErrInvalidInput
+	}
+	if input.ExamMode != ExamModePaper && input.PaperID != nil {
+		return ExamInput{}, ErrInvalidInput
+	}
 	if input.ExamMode != ExamModeFixed && len(input.FixedQuestions) > 0 {
 		return ExamInput{}, ErrInvalidInput
 	}
 	if input.ExamMode != ExamModeRandom && len(input.PaperRules) > 0 {
+		return ExamInput{}, ErrInvalidInput
+	}
+	if input.ExamMode == ExamModePaper && (len(input.FixedQuestions) > 0 || len(input.PaperRules) > 0) {
 		return ExamInput{}, ErrInvalidInput
 	}
 	if input.ExamMode == ExamModeRandom && len(input.PaperRules) == 0 {
@@ -207,8 +296,67 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	return input, nil
 }
 
+func normalizeExamPaperInput(input ExamPaperInput) (ExamPaperInput, error) {
+	input.PaperName = strings.TrimSpace(input.PaperName)
+	input.PaperType = strings.TrimSpace(strings.ToLower(input.PaperType))
+	if input.PaperName == "" {
+		return ExamPaperInput{}, ErrInvalidInput
+	}
+	if input.PaperType != ExamPaperTypeFixed && input.PaperType != ExamPaperTypeRandomRule {
+		return ExamPaperInput{}, ErrInvalidInput
+	}
+	if input.PaperType != ExamPaperTypeFixed && len(input.FixedQuestions) > 0 {
+		return ExamPaperInput{}, ErrInvalidInput
+	}
+	if input.PaperType != ExamPaperTypeRandomRule && len(input.PaperRules) > 0 {
+		return ExamPaperInput{}, ErrInvalidInput
+	}
+	if input.PaperType == ExamPaperTypeFixed && len(input.FixedQuestions) == 0 {
+		return ExamPaperInput{}, ErrInvalidInput
+	}
+	if input.PaperType == ExamPaperTypeRandomRule && len(input.PaperRules) == 0 {
+		return ExamPaperInput{}, ErrInvalidInput
+	}
+	input.FixedQuestions = append([]ExamFixedQuestionInput{}, input.FixedQuestions...)
+	for index := range input.FixedQuestions {
+		item := &input.FixedQuestions[index]
+		if item.QuestionID <= 0 || item.QuestionVersionID <= 0 || item.DisplayOrder <= 0 || item.Score < 0 {
+			return ExamPaperInput{}, ErrInvalidInput
+		}
+	}
+	input.PaperRules = append([]ExamPaperRule{}, input.PaperRules...)
+	for index := range input.PaperRules {
+		item := &input.PaperRules[index]
+		item.QuestionType = strings.TrimSpace(strings.ToLower(item.QuestionType))
+		if item.QuestionType == "" || item.ScorePerQuestion <= 0 || item.QuestionCount <= 0 {
+			return ExamPaperInput{}, ErrInvalidInput
+		}
+		if item.CourseID != nil && *item.CourseID <= 0 {
+			return ExamPaperInput{}, ErrInvalidInput
+		}
+		if hasNonPositiveID(item.KnowledgeTagIDs) || hasNonPositiveID(item.BankIDs) {
+			return ExamPaperInput{}, ErrInvalidInput
+		}
+		for _, count := range item.PerKnowledgeCount {
+			if count <= 0 {
+				return ExamPaperInput{}, ErrInvalidInput
+			}
+		}
+	}
+	return input, nil
+}
+
 func (service *Service) scopeForExamMutation(ctx context.Context, scope Scope, id int64) (Scope, error) {
 	detail, err := service.repo.GetExam(ctx, scopeForRead(scope), id)
+	if err != nil {
+		return Scope{}, err
+	}
+	scope.TenantID = detail.TenantID
+	return scope, nil
+}
+
+func (service *Service) scopeForPaperMutation(ctx context.Context, scope Scope, id int64) (Scope, error) {
+	detail, err := service.repo.GetExamPaper(ctx, scopeForRead(scope), id)
 	if err != nil {
 		return Scope{}, err
 	}

@@ -25,7 +25,7 @@ func (repo *MySQLRepository) ListExams(ctx context.Context, scope Scope, filter 
 		return repo.listStudentExams(ctx, scope, filter)
 	}
 	query := `
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at
 FROM exams
 `
 	args := make([]any, 0, 1)
@@ -56,7 +56,7 @@ FROM exams
 
 func (repo *MySQLRepository) listStudentExams(ctx context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error) {
 	const query = `
-SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.created_at, e.updated_at
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at
 FROM exams e
 WHERE e.tenant_id = ? AND e.status = ?
 AND (
@@ -111,7 +111,7 @@ func (repo *MySQLRepository) CreateExam(ctx context.Context, scope Scope, input 
 	}
 	defer tx.Rollback()
 
-	const query = `
+	query := `
 INSERT INTO exams (tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, assembly_rule_json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
@@ -119,9 +119,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	if err != nil {
 		return ExamDetail{}, err
 	}
-	result, err := tx.ExecContext(
-		ctx,
-		query,
+	args := []any{
 		scope.TenantID,
 		OwnerOrgTypeSchool,
 		scope.TenantID,
@@ -134,6 +132,36 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		input.DurationMinutes,
 		formatExamScore(totalScore(input.FixedQuestions)),
 		ruleJSON,
+	}
+	if input.ExamMode == ExamModePaper {
+		paper, err := repo.getExamPaperForUse(ctx, scope, *input.PaperID)
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		query = `
+INSERT INTO exams (tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, assembly_rule_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+		args = []any{
+			scope.TenantID,
+			OwnerOrgTypeSchool,
+			scope.TenantID,
+			scope.UserID,
+			input.Name,
+			input.ExamMode,
+			ExamStatusDraft,
+			input.StartTime,
+			input.EndTime,
+			input.DurationMinutes,
+			formatExamScore(paper.TotalScore),
+			*input.PaperID,
+			nil,
+		}
+	}
+	result, err := tx.ExecContext(
+		ctx,
+		query,
+		args...,
 	)
 	if err != nil {
 		return ExamDetail{}, err
@@ -159,7 +187,7 @@ func (repo *MySQLRepository) GetExam(ctx context.Context, scope Scope, id int64)
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
 	query := `
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, created_at, updated_at, assembly_rule_json
+SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
 FROM exams
 WHERE id = ?
 `
@@ -186,11 +214,26 @@ WHERE id = ?
 	if err != nil {
 		return ExamDetail{}, err
 	}
+	var paper *ExamPaperDetail
+	if item.PaperID != nil {
+		paperDetail, err := repo.GetExamPaper(ctx, Scope{TenantID: item.TenantID, Permissions: []string{"exam:publish"}}, *item.PaperID)
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		paper = &paperDetail
+		if len(fixedQuestions) == 0 {
+			fixedQuestions = append([]ExamFixedQuestion{}, paperDetail.Questions...)
+		}
+		if len(paperRules) == 0 {
+			paperRules = append([]ExamPaperRule{}, paperDetail.PaperRules...)
+		}
+	}
 	return ExamDetail{
 		Exam:           item,
 		Targets:        targets,
 		FixedQuestions: fixedQuestions,
 		PaperRules:     paperRules,
+		Paper:          paper,
 	}, nil
 }
 
@@ -211,27 +254,54 @@ func (repo *MySQLRepository) UpdateExam(ctx context.Context, scope Scope, id int
 	}
 	defer tx.Rollback()
 
-	const query = `
+	query := `
 UPDATE exams
-SET name = ?, exam_mode = ?, start_time = ?, end_time = ?, duration_minutes = ?, total_score = ?, assembly_rule_json = ?
+SET name = ?, exam_mode = ?, start_time = ?, end_time = ?, duration_minutes = ?, total_score = ?, paper_id = NULL, assembly_rule_json = ?
 WHERE id = ? AND tenant_id = ?
 `
 	ruleJSON, err := encodePaperRules(input.PaperRules)
 	if err != nil {
 		return ExamDetail{}, err
 	}
-	result, err := tx.ExecContext(
-		ctx,
-		query,
+	total := totalScore(input.FixedQuestions)
+	args := []any{
 		input.Name,
 		input.ExamMode,
 		input.StartTime,
 		input.EndTime,
 		input.DurationMinutes,
-		formatExamScore(totalScore(input.FixedQuestions)),
+		formatExamScore(total),
 		ruleJSON,
 		id,
 		scope.TenantID,
+	}
+	if input.ExamMode == ExamModePaper {
+		paper, err := repo.getExamPaperForUse(ctx, scope, *input.PaperID)
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		query = `
+UPDATE exams
+SET name = ?, exam_mode = ?, start_time = ?, end_time = ?, duration_minutes = ?, total_score = ?, paper_id = ?, assembly_rule_json = ?
+WHERE id = ? AND tenant_id = ?
+`
+		args = []any{
+			input.Name,
+			input.ExamMode,
+			input.StartTime,
+			input.EndTime,
+			input.DurationMinutes,
+			formatExamScore(paper.TotalScore),
+			*input.PaperID,
+			nil,
+			id,
+			scope.TenantID,
+		}
+	}
+	result, err := tx.ExecContext(
+		ctx,
+		query,
+		args...,
 	)
 	if err != nil {
 		return ExamDetail{}, err
@@ -266,6 +336,39 @@ func (repo *MySQLRepository) PublishExam(ctx context.Context, scope Scope, id in
 	if current.Status != ExamStatusDraft {
 		return ExamDetail{}, ErrForbidden
 	}
+	if current.ExamMode == ExamModePaper {
+		if current.PaperID == nil {
+			return ExamDetail{}, ErrInvalidInput
+		}
+		paper, err := repo.getExamPaperForUse(ctx, Scope{TenantID: current.TenantID, Permissions: scope.Permissions}, *current.PaperID)
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		if paper.QuestionCount == 0 {
+			return ExamDetail{}, ErrInvalidInput
+		}
+		result, err := repo.db.ExecContext(
+			ctx,
+			`UPDATE exams SET status = ?, total_score = ? WHERE id = ? AND tenant_id = ? AND status = ? AND paper_id = ?`,
+			ExamStatusPublished,
+			formatExamScore(paper.TotalScore),
+			id,
+			scope.TenantID,
+			ExamStatusDraft,
+			*current.PaperID,
+		)
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		if rowsAffected == 0 {
+			return ExamDetail{}, ErrForbidden
+		}
+		return repo.GetExam(ctx, scope, id)
+	}
 	if current.ExamMode == ExamModeFixed && len(current.FixedQuestions) == 0 {
 		return ExamDetail{}, ErrInvalidInput
 	}
@@ -290,14 +393,25 @@ func (repo *MySQLRepository) PublishExam(ctx context.Context, scope Scope, id in
 	defer tx.Rollback()
 
 	const paperQuery = `
-INSERT INTO exam_papers (exam_id, paper_type, paper_name, total_score)
-VALUES (?, ?, ?, ?)
+INSERT INTO exam_papers (exam_id, tenant_id, creator_id, paper_type, paper_name, source_type, status, total_score)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 	paperType := ExamPaperTypeFixed
 	if current.ExamMode == ExamModeRandom {
 		paperType = ExamPaperTypeRandomRule
 	}
-	result, err := tx.ExecContext(ctx, paperQuery, id, paperType, current.Name, formatExamScore(current.totalPublishScore()))
+	result, err := tx.ExecContext(
+		ctx,
+		paperQuery,
+		id,
+		current.TenantID,
+		current.CreatorID,
+		paperType,
+		current.Name,
+		SourceTypeManual,
+		ExamPaperStatusPublished,
+		formatExamScore(current.totalPublishScore()),
+	)
 	if err != nil {
 		return ExamDetail{}, err
 	}
@@ -318,7 +432,7 @@ VALUES (?, ?, ?, ?)
 			return ExamDetail{}, err
 		}
 	}
-	statusResult, err := tx.ExecContext(ctx, `UPDATE exams SET status = ? WHERE id = ? AND tenant_id = ? AND status = ?`, ExamStatusPublished, id, scope.TenantID, ExamStatusDraft)
+	statusResult, err := tx.ExecContext(ctx, `UPDATE exams SET status = ?, paper_id = ? WHERE id = ? AND tenant_id = ? AND status = ?`, ExamStatusPublished, paperID, id, scope.TenantID, ExamStatusDraft)
 	if err != nil {
 		return ExamDetail{}, err
 	}
@@ -532,6 +646,266 @@ func (repo *MySQLRepository) GetAttemptResult(ctx context.Context, scope Scope, 
 	}, nil
 }
 
+func (repo *MySQLRepository) ListExamPapers(ctx context.Context, scope Scope, filter ExamPaperListFilter) (PageResult[ExamPaper], error) {
+	if repo == nil || repo.db == nil {
+		return PageResult[ExamPaper]{}, ErrRepositoryUnavailable
+	}
+	query := `
+SELECT
+  ep.id,
+  COALESCE(ep.tenant_id, e.tenant_id) AS tenant_id,
+  ep.exam_id,
+  COALESCE(ep.creator_id, e.creator_id, 0) AS creator_id,
+  ep.paper_type,
+  ep.paper_name,
+  COALESCE(ep.source_type, 'manual') AS source_type,
+  COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END) AS status,
+  ep.total_score,
+  ep.created_at,
+  ep.updated_at,
+  COUNT(epq.id) AS question_count
+FROM exam_papers ep
+LEFT JOIN exams e ON e.id = ep.exam_id
+LEFT JOIN exam_paper_questions epq ON epq.paper_id = ep.id
+WHERE 1 = 1
+`
+	args := make([]any, 0, 4)
+	if scope.TenantID > 0 {
+		query += " AND COALESCE(ep.tenant_id, e.tenant_id) = ?"
+		args = append(args, scope.TenantID)
+	}
+	if filter.Status != "" {
+		query += " AND COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END) = ?"
+		args = append(args, filter.Status)
+	}
+	if filter.Keyword != "" {
+		query += " AND ep.paper_name LIKE ?"
+		args = append(args, "%"+filter.Keyword+"%")
+	}
+	query += `
+GROUP BY
+  ep.id,
+  COALESCE(ep.tenant_id, e.tenant_id),
+  ep.exam_id,
+  COALESCE(ep.creator_id, e.creator_id, 0),
+  ep.paper_type,
+  ep.paper_name,
+  COALESCE(ep.source_type, 'manual'),
+  COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END),
+  ep.total_score,
+  ep.created_at,
+  ep.updated_at
+ORDER BY ep.id DESC
+`
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return PageResult[ExamPaper]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamPaper, 0)
+	for rows.Next() {
+		item, err := scanExamPaper(rows)
+		if err != nil {
+			return PageResult[ExamPaper]{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[ExamPaper]{}, err
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *MySQLRepository) CreateExamPaper(ctx context.Context, scope Scope, input ExamPaperInput) (ExamPaperDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	questions, err := repo.resolvePaperQuestions(ctx, scope.TenantID, input)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	defer tx.Rollback()
+
+	const paperQuery = `
+INSERT INTO exam_papers (tenant_id, creator_id, paper_type, paper_name, source_type, status, total_score)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`
+	result, err := tx.ExecContext(ctx, paperQuery, scope.TenantID, scope.UserID, input.PaperType, input.PaperName, SourceTypeManual, ExamPaperStatusDraft, formatExamScore(totalPublishedScore(questions)))
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	paperID, err := result.LastInsertId()
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if input.PaperType == ExamPaperTypeRandomRule {
+		if err := repo.insertPaperRules(ctx, tx, paperID, input.PaperRules); err != nil {
+			return ExamPaperDetail{}, err
+		}
+	}
+	if err := repo.insertPaperQuestions(ctx, tx, paperID, questions); err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ExamPaperDetail{}, err
+	}
+	return repo.GetExamPaper(ctx, scope, paperID)
+}
+
+func (repo *MySQLRepository) GetExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	query := `
+SELECT
+  ep.id,
+  COALESCE(ep.tenant_id, e.tenant_id) AS tenant_id,
+  ep.exam_id,
+  COALESCE(ep.creator_id, e.creator_id, 0) AS creator_id,
+  ep.paper_type,
+  ep.paper_name,
+  COALESCE(ep.source_type, 'manual') AS source_type,
+  COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END) AS status,
+  ep.total_score,
+  ep.created_at,
+  ep.updated_at,
+  COUNT(epq.id) AS question_count
+FROM exam_papers ep
+LEFT JOIN exams e ON e.id = ep.exam_id
+LEFT JOIN exam_paper_questions epq ON epq.paper_id = ep.id
+WHERE ep.id = ?
+`
+	args := []any{id}
+	if scope.TenantID > 0 {
+		query += " AND COALESCE(ep.tenant_id, e.tenant_id) = ?"
+		args = append(args, scope.TenantID)
+	}
+	query += `
+GROUP BY
+  ep.id,
+  COALESCE(ep.tenant_id, e.tenant_id),
+  ep.exam_id,
+  COALESCE(ep.creator_id, e.creator_id, 0),
+  ep.paper_type,
+  ep.paper_name,
+  COALESCE(ep.source_type, 'manual'),
+  COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END),
+  ep.total_score,
+  ep.created_at,
+  ep.updated_at
+LIMIT 1
+`
+	item, err := scanExamPaper(repo.db.QueryRowContext(ctx, query, args...))
+	if err != nil {
+		return ExamPaperDetail{}, wrapExamNotFound(err)
+	}
+	questions, err := repo.listPaperFixedQuestions(ctx, id)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	rules, err := repo.listPaperRules(ctx, id)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	return ExamPaperDetail{ExamPaper: item, Questions: questions, PaperRules: rules}, nil
+}
+
+func (repo *MySQLRepository) UpdateExamPaper(ctx context.Context, scope Scope, id int64, input ExamPaperInput) (ExamPaperDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	current, err := repo.GetExamPaper(ctx, scope, id)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if current.Status != ExamPaperStatusDraft {
+		return ExamPaperDetail{}, ErrForbidden
+	}
+	questions, err := repo.resolvePaperQuestions(ctx, scope.TenantID, input)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(
+		ctx,
+		`UPDATE exam_papers SET paper_type = ?, paper_name = ?, total_score = ? WHERE id = ? AND COALESCE(tenant_id, ?) = ?`,
+		input.PaperType,
+		input.PaperName,
+		formatExamScore(totalPublishedScore(questions)),
+		id,
+		scope.TenantID,
+		scope.TenantID,
+	)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if rowsAffected == 0 {
+		return ExamPaperDetail{}, ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM exam_paper_question_rules WHERE paper_id = ?`, id); err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM exam_paper_questions WHERE paper_id = ?`, id); err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if input.PaperType == ExamPaperTypeRandomRule {
+		if err := repo.insertPaperRules(ctx, tx, id, input.PaperRules); err != nil {
+			return ExamPaperDetail{}, err
+		}
+	}
+	if err := repo.insertPaperQuestions(ctx, tx, id, questions); err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ExamPaperDetail{}, err
+	}
+	return repo.GetExamPaper(ctx, scope, id)
+}
+
+func (repo *MySQLRepository) PublishExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error) {
+	if repo == nil || repo.db == nil {
+		return ExamPaperDetail{}, ErrRepositoryUnavailable
+	}
+	current, err := repo.GetExamPaper(ctx, scope, id)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if current.QuestionCount == 0 {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	if current.Status == ExamPaperStatusPublished {
+		return current, nil
+	}
+	result, err := repo.db.ExecContext(ctx, `UPDATE exam_papers SET status = ? WHERE id = ? AND tenant_id = ?`, ExamPaperStatusPublished, id, scope.TenantID)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if rowsAffected == 0 {
+		return ExamPaperDetail{}, ErrNotFound
+	}
+	return repo.GetExamPaper(ctx, scope, id)
+}
+
 func (repo *MySQLRepository) replaceTargets(ctx context.Context, tx *sql.Tx, examID int64, targets []ExamTargetInput) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM exam_targets WHERE exam_id = ?`, examID); err != nil {
 		return err
@@ -610,6 +984,130 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	return nil
 }
 
+func (repo *MySQLRepository) resolvePaperQuestions(ctx context.Context, tenantID int64, input ExamPaperInput) ([]ExamFixedQuestion, error) {
+	switch input.PaperType {
+	case ExamPaperTypeFixed:
+		items := make([]ExamFixedQuestion, 0, len(input.FixedQuestions))
+		for _, question := range input.FixedQuestions {
+			items = append(items, ExamFixedQuestion{
+				QuestionID:        question.QuestionID,
+				QuestionVersionID: question.QuestionVersionID,
+				Score:             question.Score,
+				DisplayOrder:      question.DisplayOrder,
+			})
+		}
+		return items, nil
+	case ExamPaperTypeRandomRule:
+		return repo.drawRandomQuestions(ctx, tenantID, input.PaperRules)
+	default:
+		return nil, ErrInvalidInput
+	}
+}
+
+func (repo *MySQLRepository) getExamPaperForUse(ctx context.Context, scope Scope, paperID int64) (ExamPaperDetail, error) {
+	paper, err := repo.GetExamPaper(ctx, scope, paperID)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	if paper.Status != ExamPaperStatusPublished {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	if paper.QuestionCount <= 0 {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	return paper, nil
+}
+
+func (repo *MySQLRepository) listPaperFixedQuestions(ctx context.Context, paperID int64) ([]ExamFixedQuestion, error) {
+	const query = `
+SELECT question_id, question_version_id, score, order_no, created_at
+FROM exam_paper_questions
+WHERE paper_id = ?
+ORDER BY order_no ASC, id ASC
+`
+	rows, err := repo.db.QueryContext(ctx, query, paperID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamFixedQuestion, 0)
+	for rows.Next() {
+		var item ExamFixedQuestion
+		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.Score, &item.DisplayOrder, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (repo *MySQLRepository) listPaperRules(ctx context.Context, paperID int64) ([]ExamPaperRule, error) {
+	const query = `
+SELECT question_type, score_per_question, question_count, knowledge_tag_ids_json, bank_scope_json, course_id, difficulty_range_json, per_knowledge_count_json
+FROM exam_paper_question_rules
+WHERE paper_id = ?
+ORDER BY id ASC
+`
+	rows, err := repo.db.QueryContext(ctx, query, paperID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamPaperRule, 0)
+	for rows.Next() {
+		var item ExamPaperRule
+		var knowledgeTagJSON sql.NullString
+		var bankScopeJSONValue sql.NullString
+		var courseID sql.NullInt64
+		var difficultyJSON sql.NullString
+		var perKnowledgeJSON sql.NullString
+		if err := rows.Scan(
+			&item.QuestionType,
+			&item.ScorePerQuestion,
+			&item.QuestionCount,
+			&knowledgeTagJSON,
+			&bankScopeJSONValue,
+			&courseID,
+			&difficultyJSON,
+			&perKnowledgeJSON,
+		); err != nil {
+			return nil, err
+		}
+		if knowledgeTagJSON.Valid {
+			_ = json.Unmarshal([]byte(knowledgeTagJSON.String), &item.KnowledgeTagIDs)
+		}
+		if bankScopeJSONValue.Valid {
+			var scope struct {
+				BankIDs []int64 `json:"bank_ids"`
+			}
+			if err := json.Unmarshal([]byte(bankScopeJSONValue.String), &scope); err != nil {
+				return nil, err
+			}
+			item.BankIDs = scope.BankIDs
+		}
+		if courseID.Valid {
+			value := courseID.Int64
+			item.CourseID = &value
+		}
+		if difficultyJSON.Valid {
+			_ = json.Unmarshal([]byte(difficultyJSON.String), &item.DifficultyRange)
+		}
+		if perKnowledgeJSON.Valid {
+			_ = json.Unmarshal([]byte(perKnowledgeJSON.String), &item.PerKnowledgeCount)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (repo *MySQLRepository) drawRandomQuestions(ctx context.Context, tenantID int64, rules []ExamPaperRule) ([]ExamFixedQuestion, error) {
 	items := make([]ExamFixedQuestion, 0)
 	for _, rule := range rules {
@@ -679,14 +1177,21 @@ WHERE q.tenant_id = ? AND q.deleted_at IS NULL AND q.status = 'active' AND q.cur
 	}
 	if rule.CourseID != nil {
 		query += `
- AND EXISTS (
-  SELECT 1
-  FROM question_bank_questions qbq
-  JOIN question_banks qb ON qb.id = qbq.question_bank_id
-  WHERE qbq.question_id = q.id AND qb.tenant_id = q.tenant_id AND qb.deleted_at IS NULL AND qb.course_id = ?
+ AND (
+  EXISTS (
+    SELECT 1
+    FROM question_course_bindings qcb
+    WHERE qcb.question_id = q.id AND qcb.tenant_id = q.tenant_id AND qcb.course_id = ?
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM question_bank_questions qbq
+    JOIN question_banks qb ON qb.id = qbq.question_bank_id
+    WHERE qbq.question_id = q.id AND qb.tenant_id = q.tenant_id AND qb.deleted_at IS NULL AND qb.course_id = ?
+  )
  )
 `
-		args = append(args, *rule.CourseID)
+		args = append(args, *rule.CourseID, *rule.CourseID)
 	}
 	if len(rule.KnowledgeTagIDs) > 0 {
 		query += " AND EXISTS (SELECT 1 FROM question_tags qt WHERE qt.question_id = q.id AND qt.tag_id IN (" + placeholders(len(rule.KnowledgeTagIDs)) + "))"
@@ -807,10 +1312,10 @@ LIMIT 1
 
 func (repo *MySQLRepository) getPublishedPaperID(ctx context.Context, scope Scope, examID int64) (int64, error) {
 	const query = `
-SELECT ep.id
+SELECT COALESCE(e.paper_id, ep.id)
 FROM exams e
-JOIN exam_papers ep ON ep.exam_id = e.id
-WHERE e.id = ? AND e.tenant_id = ? AND e.status = ?
+LEFT JOIN exam_papers ep ON ep.exam_id = e.id
+WHERE e.id = ? AND e.tenant_id = ? AND e.status = ? AND COALESCE(e.paper_id, ep.id) IS NOT NULL
 AND (
   EXISTS (
     SELECT 1
@@ -1028,6 +1533,7 @@ func scanExam(rows *sql.Rows) (Exam, error) {
 
 func scanExamScanner(scanner interface{ Scan(dest ...any) error }) (Exam, error) {
 	var item Exam
+	var paperID sql.NullInt64
 	err := scanner.Scan(
 		&item.ID,
 		&item.TenantID,
@@ -1040,11 +1546,17 @@ func scanExamScanner(scanner interface{ Scan(dest ...any) error }) (Exam, error)
 		&item.StartTime,
 		&item.EndTime,
 		&item.DurationMinutes,
+		&item.TotalScore,
+		&paperID,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
 	if err != nil {
 		return Exam{}, err
+	}
+	if paperID.Valid {
+		value := paperID.Int64
+		item.PaperID = &value
 	}
 	return item, nil
 }
@@ -1052,6 +1564,7 @@ func scanExamScanner(scanner interface{ Scan(dest ...any) error }) (Exam, error)
 func scanExamDetailScanner(scanner interface{ Scan(dest ...any) error }) (Exam, sql.NullString, error) {
 	var item Exam
 	var ruleJSON sql.NullString
+	var paperID sql.NullInt64
 	err := scanner.Scan(
 		&item.ID,
 		&item.TenantID,
@@ -1064,6 +1577,8 @@ func scanExamDetailScanner(scanner interface{ Scan(dest ...any) error }) (Exam, 
 		&item.StartTime,
 		&item.EndTime,
 		&item.DurationMinutes,
+		&item.TotalScore,
+		&paperID,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 		&ruleJSON,
@@ -1071,7 +1586,43 @@ func scanExamDetailScanner(scanner interface{ Scan(dest ...any) error }) (Exam, 
 	if err != nil {
 		return Exam{}, sql.NullString{}, err
 	}
+	if paperID.Valid {
+		value := paperID.Int64
+		item.PaperID = &value
+	}
 	return item, ruleJSON, nil
+}
+
+func scanExamPaper(scanner interface{ Scan(dest ...any) error }) (ExamPaper, error) {
+	var item ExamPaper
+	var examID sql.NullInt64
+	var updatedAt sql.NullTime
+	err := scanner.Scan(
+		&item.ID,
+		&item.TenantID,
+		&examID,
+		&item.CreatorID,
+		&item.PaperType,
+		&item.PaperName,
+		&item.SourceType,
+		&item.Status,
+		&item.TotalScore,
+		&item.CreatedAt,
+		&updatedAt,
+		&item.QuestionCount,
+	)
+	if err != nil {
+		return ExamPaper{}, err
+	}
+	if examID.Valid {
+		value := examID.Int64
+		item.ExamID = &value
+	}
+	if updatedAt.Valid {
+		value := updatedAt.Time
+		item.UpdatedAt = &value
+	}
+	return item, nil
 }
 
 func scanAttempt(scanner interface{ Scan(dest ...any) error }) (ExamAttempt, error) {

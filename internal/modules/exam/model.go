@@ -13,15 +13,20 @@ const (
 	CodeNotFound     = 40400
 
 	OwnerOrgTypeSchool = "school"
+	SourceTypeManual   = "manual"
 
 	ExamStatusDraft     = "draft"
 	ExamStatusPublished = "published"
+
+	ExamPaperStatusDraft     = "draft"
+	ExamPaperStatusPublished = "published"
 
 	ExamAttemptStatusInProgress = "in_progress"
 	ExamAttemptStatusSubmitted  = "submitted"
 	ExamAttemptStatusTimeout    = "timeout_submitted"
 
 	ExamModeFixed  = "fixed"
+	ExamModePaper  = "paper"
 	ExamModeRandom = "random_assembly"
 
 	ExamPaperTypeFixed      = "fixed"
@@ -59,6 +64,8 @@ type Exam struct {
 	StartTime       time.Time `json:"start_time"`
 	EndTime         time.Time `json:"end_time"`
 	DurationMinutes int       `json:"duration_minutes"`
+	TotalScore      float64   `json:"total_score"`
+	PaperID         *int64    `json:"paper_id,omitempty"`
 	CreatedAt       time.Time `json:"created_at,omitempty"`
 	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 }
@@ -88,11 +95,33 @@ type ExamPaperRule struct {
 	PerKnowledgeCount map[string]int `json:"per_knowledge_count,omitempty"`
 }
 
+type ExamPaper struct {
+	ID            int64      `json:"id"`
+	TenantID      int64      `json:"tenant_id"`
+	ExamID        *int64     `json:"exam_id,omitempty"`
+	CreatorID     int64      `json:"creator_id"`
+	PaperType     string     `json:"paper_type"`
+	PaperName     string     `json:"paper_name"`
+	SourceType    string     `json:"source_type"`
+	Status        string     `json:"status"`
+	TotalScore    float64    `json:"total_score"`
+	QuestionCount int        `json:"question_count"`
+	CreatedAt     time.Time  `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+type ExamPaperDetail struct {
+	ExamPaper
+	Questions  []ExamFixedQuestion `json:"questions"`
+	PaperRules []ExamPaperRule     `json:"paper_rules"`
+}
+
 type ExamDetail struct {
 	Exam
 	Targets        []ExamTarget        `json:"targets"`
 	FixedQuestions []ExamFixedQuestion `json:"fixed_questions"`
 	PaperRules     []ExamPaperRule     `json:"paper_rules"`
+	Paper          *ExamPaperDetail    `json:"paper,omitempty"`
 }
 
 type ExamTargetInput struct {
@@ -110,12 +139,27 @@ type ExamFixedQuestionInput struct {
 type ExamInput struct {
 	Name            string                   `json:"name"`
 	ExamMode        string                   `json:"exam_mode"`
+	PaperID         *int64                   `json:"paper_id,omitempty"`
 	StartTime       time.Time                `json:"start_time"`
 	EndTime         time.Time                `json:"end_time"`
 	DurationMinutes int                      `json:"duration_minutes"`
 	Targets         []ExamTargetInput        `json:"targets"`
 	FixedQuestions  []ExamFixedQuestionInput `json:"fixed_questions"`
 	PaperRules      []ExamPaperRule          `json:"paper_rules"`
+}
+
+type ExamPaperInput struct {
+	PaperName      string                   `json:"paper_name"`
+	PaperType      string                   `json:"paper_type"`
+	FixedQuestions []ExamFixedQuestionInput `json:"fixed_questions"`
+	PaperRules     []ExamPaperRule          `json:"paper_rules"`
+}
+
+type ExamPaperListFilter struct {
+	Status   string
+	Keyword  string
+	Page     int
+	PageSize int
 }
 
 type ExamAttempt struct {
@@ -189,6 +233,11 @@ type Repository interface {
 	GetExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
 	UpdateExam(ctx context.Context, scope Scope, id int64, input ExamInput) (ExamDetail, error)
 	PublishExam(ctx context.Context, scope Scope, id int64) (ExamDetail, error)
+	ListExamPapers(ctx context.Context, scope Scope, filter ExamPaperListFilter) (PageResult[ExamPaper], error)
+	CreateExamPaper(ctx context.Context, scope Scope, input ExamPaperInput) (ExamPaperDetail, error)
+	GetExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error)
+	UpdateExamPaper(ctx context.Context, scope Scope, id int64, input ExamPaperInput) (ExamPaperDetail, error)
+	PublishExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error)
 	StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error)
 	GetAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error)
 	SaveAttemptAnswer(ctx context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error)

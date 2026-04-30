@@ -8,6 +8,10 @@ import type {
   ExamListQuery,
   ExamOverviewResult,
   ExamOverviewSummary,
+  ExamPaper,
+  ExamPaperDetail,
+  ExamPaperInput,
+  ExamPaperListQuery,
   ExamPaperRule,
   ExamTarget,
   PageResult
@@ -29,6 +33,11 @@ export interface ExamPanelApi {
   getExam(id: number): Promise<ExamDetail>;
   updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
+  listExamPapers?(query?: ExamPaperListQuery): Promise<PageResult<ExamPaper>>;
+  createExamPaper?(body: ExamPaperInput): Promise<ExamPaperDetail>;
+  getExamPaper?(id: number): Promise<ExamPaperDetail>;
+  updateExamPaper?(id: number, body: ExamPaperInput): Promise<ExamPaperDetail>;
+  publishExamPaper?(id: number): Promise<ExamPaperDetail>;
   getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
 }
 
@@ -42,6 +51,7 @@ const defaultPageSize = 10;
 const defaultExamForm = {
   name: "",
   exam_mode: "fixed",
+  paper_id: "",
   start_time: "",
   end_time: "",
   duration_minutes: "60",
@@ -105,6 +115,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
   const [targetType, setTargetType] = useState("");
   const [targetID, setTargetID] = useState("");
   const [exams, setExams] = useState<Exam[]>([]);
+  const [papers, setPapers] = useState<ExamPaper[]>([]);
   const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [detail, setDetail] = useState<ExamDetail | null>(null);
   const [overview, setOverview] = useState<ExamOverviewResult | null>(null);
@@ -133,8 +144,14 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
     setLoading(true);
     setErrorMessage("");
     try {
-      const result = await api.listExams(query);
+      const [result, paperResult] = await Promise.all([
+        api.listExams(query),
+        api.listExamPapers
+          ? api.listExamPapers({ status: "published", page: 1, page_size: 100 })
+          : Promise.resolve<PageResult<ExamPaper>>({ items: [], page: 1, page_size: 100, total: 0 })
+      ]);
       setExams(result.items);
+      setPapers(paperResult.items);
       setTotal(result.total);
       setPage(result.page || query.page || 1);
       setPageSize(result.page_size || query.page_size || defaultPageSize);
@@ -381,6 +398,10 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                       ) : null}
 
                       <div className="ui-admin-mini-list">
+                      <article className="ui-admin-mini-item">
+                          <strong>选用试卷</strong>
+                          <p>{detail.paper?.paper_name ?? formatPaperName(detail.paper_id, papers)}</p>
+                        </article>
                         <article className="ui-admin-mini-item">
                           <strong>固定题目</strong>
                           <p>{formatFixedQuestions(detail.fixed_questions)}</p>
@@ -397,7 +418,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                 <div className="ui-admin-modal__footer">
                   <div className="ui-admin-actions-bar__group">
                     <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate("/admin/exams/assembly")}>
-                      进入随机组卷
+                      进入试卷管理
                     </button>
                     {detail?.status === "draft" ? (
                       <button type="button" className="ui-button ui-button--ghost" onClick={() => void handlePublish(detail.id)}>
@@ -441,10 +462,28 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                           value={form.exam_mode}
                           onChange={(event) => setForm((current) => ({ ...current, exam_mode: event.target.value }))}
                         >
+                          <option value="paper">选择已有试卷</option>
                           <option value="fixed">固定试卷</option>
-                          <option value="random_assembly">随机组卷</option>
+                          <option value="random_assembly">现场随机组卷</option>
                         </select>
                       </div>
+                      {form.exam_mode === "paper" ? (
+                        <div className="ui-admin-form__field">
+                          <label htmlFor="exam_paper_id">选择试卷</label>
+                          <select
+                            id="exam_paper_id"
+                            value={form.paper_id}
+                            onChange={(event) => setForm((current) => ({ ...current, paper_id: event.target.value }))}
+                          >
+                            <option value="">请选择已发布试卷</option>
+                            {papers.map((paper) => (
+                              <option key={paper.id} value={paper.id}>
+                                {paper.paper_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
                       <div className="ui-admin-form__field">
                         <label htmlFor="exam_duration">考试时长</label>
                         <input
@@ -481,7 +520,12 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                           onChange={(event) => setForm((current) => ({ ...current, targets_text: event.target.value }))}
                         />
                       </div>
-                      {form.exam_mode === "fixed" ? (
+                      {form.exam_mode === "paper" ? (
+                        <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                          <label htmlFor="exam_selected_paper">试卷说明</label>
+                          <input id="exam_selected_paper" value={formatSelectedPaperSummary(form.paper_id, papers)} readOnly />
+                        </div>
+                      ) : form.exam_mode === "fixed" ? (
                         <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                           <label htmlFor="exam_fixed_questions">固定题目</label>
                           <textarea
@@ -561,11 +605,23 @@ function buildExamPayload(form: ExamFormState): ExamInput | string {
   const base = {
     name,
     exam_mode: form.exam_mode,
+    paper_id: form.exam_mode === "paper" && form.paper_id ? Number(form.paper_id) : undefined,
     start_time: toApiDateTime(form.start_time),
     end_time: toApiDateTime(form.end_time),
     duration_minutes: durationMinutes,
     targets
   };
+
+  if (form.exam_mode === "paper") {
+    if (!form.paper_id) {
+      return "请选择已存在的试卷。";
+    }
+    return {
+      ...base,
+      fixed_questions: [],
+      paper_rules: []
+    };
+  }
 
   if (form.exam_mode === "fixed") {
     const fixedQuestions = parseFixedQuestions(form.fixed_questions_text);
@@ -594,6 +650,7 @@ function buildFormFromDetail(detail: ExamDetail): ExamFormState {
   return {
     name: detail.name,
     exam_mode: detail.exam_mode,
+    paper_id: detail.paper_id ? String(detail.paper_id) : "",
     start_time: toDateTimeLocalValue(detail.start_time),
     end_time: toDateTimeLocalValue(detail.end_time),
     duration_minutes: String(detail.duration_minutes ?? 60),
@@ -750,10 +807,31 @@ function formatDateTime(value?: string | null): string {
 }
 
 function formatExamMode(value: string): string {
+  if (value === "paper") {
+    return "已有试卷";
+  }
   if (value === "random_assembly") {
-    return "随机组卷";
+    return "现场随机组卷";
   }
   return "固定试卷";
+}
+
+function formatPaperName(paperID: number | null | undefined, papers: ExamPaper[]): string {
+  if (!paperID) {
+    return "未选择试卷";
+  }
+  return papers.find((paper) => paper.id === paperID)?.paper_name ?? `试卷-${paperID}`;
+}
+
+function formatSelectedPaperSummary(paperID: string, papers: ExamPaper[]): string {
+  if (!paperID) {
+    return "未选择试卷";
+  }
+  const paper = papers.find((item) => item.id === Number(paperID));
+  if (!paper) {
+    return `试卷-${paperID}`;
+  }
+  return `${paper.paper_name} / ${paper.question_count} 题 / ${formatScore(paper.total_score)} 分`;
 }
 
 function formatExamStatus(value: string): string {

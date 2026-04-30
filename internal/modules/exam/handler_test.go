@@ -122,6 +122,70 @@ func TestHandler_CreateRandomAssemblyExamSuccess(t *testing.T) {
 	}
 }
 
+func TestHandler_CreateExamFromExistingPaperSuccess(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      7,
+			UserType:    "teacher",
+			Permissions: []string{"exam:publish"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	paperRec := performExamJSONRequest(router, http.MethodPost, "/api/v1/exam-papers", map[string]any{
+		"paper_name": "单元测试卷",
+		"paper_type": "fixed",
+		"fixed_questions": []map[string]any{
+			{"question_id": 11, "question_version_id": 111, "score": 5, "display_order": 1},
+		},
+	})
+	if paperRec.Code != http.StatusOK {
+		t.Fatalf("paper status = %d, body = %s", paperRec.Code, paperRec.Body.String())
+	}
+	var paperPayload examEnvelope[ExamPaperDetail]
+	decodeExamBody(t, paperRec, &paperPayload)
+	if paperPayload.Data.ID == 0 || paperPayload.Data.QuestionCount != 1 {
+		t.Fatalf("paper = %+v", paperPayload.Data)
+	}
+
+	publishPaperRec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exam-papers/"+strconv.FormatInt(paperPayload.Data.ID, 10)+"/publish", nil, "token")
+	if publishPaperRec.Code != http.StatusOK {
+		t.Fatalf("publish paper status = %d, body = %s", publishPaperRec.Code, publishPaperRec.Body.String())
+	}
+
+	examRec := performExamJSONRequest(router, http.MethodPost, "/api/v1/exams", map[string]any{
+		"name":             "使用已有试卷的考试",
+		"exam_mode":        "paper",
+		"paper_id":         paperPayload.Data.ID,
+		"start_time":       "2026-04-23T09:00:00+08:00",
+		"end_time":         "2026-04-23T11:00:00+08:00",
+		"duration_minutes": 90,
+		"targets": []map[string]any{
+			{"target_type": "class", "target_id": 101},
+		},
+	})
+	if examRec.Code != http.StatusOK {
+		t.Fatalf("exam status = %d, body = %s", examRec.Code, examRec.Body.String())
+	}
+	var examPayload examEnvelope[ExamDetail]
+	decodeExamBody(t, examRec, &examPayload)
+	if examPayload.Data.PaperID == nil || *examPayload.Data.PaperID != paperPayload.Data.ID {
+		t.Fatalf("paper_id = %+v", examPayload.Data.PaperID)
+	}
+
+	publishExamRec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(examPayload.Data.ID, 10)+"/publish", nil, "token")
+	if publishExamRec.Code != http.StatusOK {
+		t.Fatalf("publish exam status = %d, body = %s", publishExamRec.Code, publishExamRec.Body.String())
+	}
+}
+
 func TestHandler_ExamEndpointsRequirePublishPermission(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -682,8 +746,10 @@ func (parser fakeExamTokenParser) ParseToken(_ context.Context, token string, to
 
 type memoryExamRepository struct {
 	nextID         int64
+	nextPaperID    int64
 	nextAttemptID  int64
 	items          map[int64]ExamDetail
+	papers         map[int64]ExamPaperDetail
 	attempts       map[int64]ExamAttemptDetail
 	examAttempts   map[int64]int64
 	correctAnswers map[int64]map[string]any
@@ -694,8 +760,10 @@ type memoryExamRepository struct {
 func newMemoryExamRepository() *memoryExamRepository {
 	return &memoryExamRepository{
 		nextID:         1,
+		nextPaperID:    1,
 		nextAttemptID:  1,
 		items:          map[int64]ExamDetail{},
+		papers:         map[int64]ExamPaperDetail{},
 		attempts:       map[int64]ExamAttemptDetail{},
 		examAttempts:   map[int64]int64{},
 		correctAnswers: map[int64]map[string]any{},
@@ -732,6 +800,8 @@ func (repo *memoryExamRepository) CreateExam(_ context.Context, scope Scope, inp
 			StartTime:       input.StartTime,
 			EndTime:         input.EndTime,
 			DurationMinutes: input.DurationMinutes,
+			TotalScore:      totalScore(input.FixedQuestions),
+			PaperID:         input.PaperID,
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		},
@@ -784,6 +854,8 @@ func (repo *memoryExamRepository) UpdateExam(_ context.Context, scope Scope, id 
 	current.StartTime = input.StartTime
 	current.EndTime = input.EndTime
 	current.DurationMinutes = input.DurationMinutes
+	current.PaperID = input.PaperID
+	current.TotalScore = totalScore(input.FixedQuestions)
 	current.Targets = current.Targets[:0]
 	current.FixedQuestions = current.FixedQuestions[:0]
 	current.PaperRules = current.PaperRules[:0]
@@ -807,6 +879,93 @@ func (repo *memoryExamRepository) UpdateExam(_ context.Context, scope Scope, id 
 	return current, nil
 }
 
+func (repo *memoryExamRepository) ListExamPapers(_ context.Context, scope Scope, filter ExamPaperListFilter) (PageResult[ExamPaper], error) {
+	items := make([]ExamPaper, 0, len(repo.papers))
+	for _, item := range repo.papers {
+		if item.TenantID != scope.TenantID {
+			continue
+		}
+		if filter.Status != "" && item.Status != filter.Status {
+			continue
+		}
+		items = append(items, item.ExamPaper)
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *memoryExamRepository) CreateExamPaper(_ context.Context, scope Scope, input ExamPaperInput) (ExamPaperDetail, error) {
+	now := time.Date(2026, 4, 23, 8, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	questions := make([]ExamFixedQuestion, 0, len(input.FixedQuestions))
+	for _, question := range input.FixedQuestions {
+		questions = append(questions, ExamFixedQuestion{
+			QuestionID:        question.QuestionID,
+			QuestionVersionID: question.QuestionVersionID,
+			Score:             question.Score,
+			DisplayOrder:      question.DisplayOrder,
+			CreatedAt:         now,
+		})
+	}
+	item := ExamPaperDetail{
+		ExamPaper: ExamPaper{
+			ID:            repo.nextPaperID,
+			TenantID:      scope.TenantID,
+			CreatorID:     scope.UserID,
+			PaperType:     input.PaperType,
+			PaperName:     input.PaperName,
+			SourceType:    SourceTypeManual,
+			Status:        ExamPaperStatusDraft,
+			TotalScore:    totalPublishedScore(questions),
+			QuestionCount: len(questions),
+			CreatedAt:     now,
+			UpdatedAt:     &now,
+		},
+		Questions:  questions,
+		PaperRules: append([]ExamPaperRule{}, input.PaperRules...),
+	}
+	repo.papers[item.ID] = item
+	repo.nextPaperID++
+	return item, nil
+}
+
+func (repo *memoryExamRepository) GetExamPaper(_ context.Context, scope Scope, id int64) (ExamPaperDetail, error) {
+	item, ok := repo.papers[id]
+	if !ok || item.TenantID != scope.TenantID {
+		return ExamPaperDetail{}, ErrNotFound
+	}
+	return item, nil
+}
+
+func (repo *memoryExamRepository) UpdateExamPaper(_ context.Context, scope Scope, id int64, input ExamPaperInput) (ExamPaperDetail, error) {
+	current, ok := repo.papers[id]
+	if !ok || current.TenantID != scope.TenantID {
+		return ExamPaperDetail{}, ErrNotFound
+	}
+	if current.Status != ExamPaperStatusDraft {
+		return ExamPaperDetail{}, ErrForbidden
+	}
+	created, err := repo.CreateExamPaper(context.Background(), scope, input)
+	if err != nil {
+		return ExamPaperDetail{}, err
+	}
+	created.ID = id
+	created.CreatedAt = current.CreatedAt
+	repo.papers[id] = created
+	return created, nil
+}
+
+func (repo *memoryExamRepository) PublishExamPaper(_ context.Context, scope Scope, id int64) (ExamPaperDetail, error) {
+	current, ok := repo.papers[id]
+	if !ok || current.TenantID != scope.TenantID {
+		return ExamPaperDetail{}, ErrNotFound
+	}
+	if current.QuestionCount == 0 {
+		return ExamPaperDetail{}, ErrInvalidInput
+	}
+	current.Status = ExamPaperStatusPublished
+	repo.papers[id] = current
+	return current, nil
+}
+
 func (repo *memoryExamRepository) PublishExam(_ context.Context, scope Scope, id int64) (ExamDetail, error) {
 	current, ok := repo.items[id]
 	if !ok || current.TenantID != scope.TenantID {
@@ -814,6 +973,20 @@ func (repo *memoryExamRepository) PublishExam(_ context.Context, scope Scope, id
 	}
 	if current.Status != ExamStatusDraft {
 		return ExamDetail{}, ErrForbidden
+	}
+	if current.ExamMode == ExamModePaper {
+		if current.PaperID == nil {
+			return ExamDetail{}, ErrInvalidInput
+		}
+		paper, ok := repo.papers[*current.PaperID]
+		if !ok || paper.TenantID != scope.TenantID || paper.QuestionCount == 0 {
+			return ExamDetail{}, ErrInvalidInput
+		}
+		current.Status = ExamStatusPublished
+		current.TotalScore = paper.TotalScore
+		current.Paper = &paper
+		repo.items[id] = current
+		return current, nil
 	}
 	if current.ExamMode != ExamModeFixed || len(current.FixedQuestions) == 0 {
 		return ExamDetail{}, ErrInvalidInput
@@ -846,7 +1019,13 @@ func (repo *memoryExamRepository) StartAttempt(_ context.Context, scope Scope, e
 		},
 		Questions: make([]ExamAttemptQuestion, 0, len(exam.FixedQuestions)),
 	}
-	for _, question := range exam.FixedQuestions {
+	questions := exam.FixedQuestions
+	if exam.PaperID != nil {
+		if paper, ok := repo.papers[*exam.PaperID]; ok {
+			questions = paper.Questions
+		}
+	}
+	for _, question := range questions {
 		detail.Questions = append(detail.Questions, ExamAttemptQuestion{
 			QuestionID:        question.QuestionID,
 			QuestionVersionID: question.QuestionVersionID,

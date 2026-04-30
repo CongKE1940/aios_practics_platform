@@ -9,6 +9,8 @@ import type {
   ExamFixedQuestion,
   ExamInput,
   ExamOverviewResult,
+  ExamPaper,
+  ExamPaperListQuery,
   ExamPaperRule,
   ExamTarget,
   PageResult
@@ -21,6 +23,7 @@ export interface TeacherExamApi {
   getExam(id: number): Promise<ExamDetail>;
   updateExam(id: number, body: ExamInput): Promise<ExamDetail>;
   publishExam(id: number): Promise<ExamDetail>;
+  listExamPapers?(query?: ExamPaperListQuery): Promise<PageResult<ExamPaper>>;
   getExamOverview(query: {
     exam_id: number;
     attempt_status?: string;
@@ -48,6 +51,7 @@ interface TeacherExamPageProps {
 const defaultForm = {
   name: "",
   examMode: "fixed",
+  paperId: "",
   startTime: "",
   endTime: "",
   durationMinutes: "60",
@@ -65,6 +69,7 @@ const defaultOverviewFilter = {
 export function TeacherExamPage({ api }: TeacherExamPageProps) {
   const [form, setForm] = useState(defaultForm);
   const [exams, setExams] = useState<Exam[]>([]);
+  const [papers, setPapers] = useState<ExamPaper[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<number | null>(null);
   const [selectedExamDetail, setSelectedExamDetail] = useState<ExamDetail | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -105,8 +110,14 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
   async function loadExams(successMessage?: string) {
     setLoading(true);
     try {
-      const data = await api.listExams({ page: 1, page_size: 20 });
+      const [data, paperData] = await Promise.all([
+        api.listExams({ page: 1, page_size: 20 }),
+        api.listExamPapers
+          ? api.listExamPapers({ status: "published", page: 1, page_size: 100 })
+          : Promise.resolve<PageResult<ExamPaper>>({ items: [], page: 1, page_size: 100, total: 0 })
+      ]);
       setExams(data.items ?? []);
+      setPapers(paperData.items ?? []);
       setMessage(successMessage ?? (data.items.length > 0 ? "" : "暂无考试。"));
     } catch {
       setExams([]);
@@ -372,10 +383,29 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
               value={form.examMode}
               onChange={(event) => setForm((current) => ({ ...current, examMode: event.target.value }))}
             >
+              <option value="paper">选择已有试卷</option>
               <option value="fixed">固定试卷</option>
-              <option value="random_assembly">随机组卷</option>
+              <option value="random_assembly">现场随机组卷</option>
             </select>
           </div>
+
+          {form.examMode === "paper" ? (
+            <div className="ui-admin-form__field">
+              <label htmlFor="teacher_exam_paper_id">选择试卷</label>
+              <select
+                id="teacher_exam_paper_id"
+                value={form.paperId}
+                onChange={(event) => setForm((current) => ({ ...current, paperId: event.target.value }))}
+              >
+                <option value="">请选择已发布试卷</option>
+                {papers.map((paper) => (
+                  <option key={paper.id} value={paper.id}>
+                    {paper.paper_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div className="ui-admin-form__field">
             <label htmlFor="teacher_exam_start_time">开始时间</label>
@@ -416,7 +446,12 @@ export function TeacherExamPage({ api }: TeacherExamPageProps) {
             />
           </div>
 
-          {form.examMode === "fixed" ? (
+          {form.examMode === "paper" ? (
+            <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="teacher_exam_paper_summary">试卷说明</label>
+              <input id="teacher_exam_paper_summary" value={formatSelectedPaperSummary(form.paperId, papers)} readOnly />
+            </div>
+          ) : form.examMode === "fixed" ? (
             <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
               <label htmlFor="teacher_exam_fixed_questions">固定题目</label>
               <textarea
@@ -818,6 +853,7 @@ function buildFormFromDetail(detail: ExamDetail): typeof defaultForm {
   return {
     name: detail.name,
     examMode: detail.exam_mode,
+    paperId: detail.paper_id ? String(detail.paper_id) : "",
     startTime: detail.start_time ? toLocalDateTime(detail.start_time) : "",
     endTime: detail.end_time ? toLocalDateTime(detail.end_time) : "",
     durationMinutes: String(detail.duration_minutes),
@@ -853,6 +889,23 @@ function buildExamPayload(form: typeof defaultForm): ExamInput | string {
   }
   if (targets.length === 0) {
     return "请填写发布范围。";
+  }
+
+  if (form.examMode === "paper") {
+    if (!form.paperId) {
+      return "请选择已存在的试卷。";
+    }
+    return {
+      name,
+      exam_mode: form.examMode,
+      paper_id: Number(form.paperId),
+      start_time: toApiDateTime(form.startTime),
+      end_time: toApiDateTime(form.endTime),
+      duration_minutes: durationMinutes,
+      targets,
+      fixed_questions: [],
+      paper_rules: []
+    };
   }
 
   if (form.examMode === "fixed") {
@@ -1071,13 +1124,27 @@ function toApiDateTime(value: string): string {
 }
 
 function formatMode(value: string): string {
+  if (value === "paper") {
+    return "已有试卷";
+  }
   if (value === "fixed") {
     return "固定试卷";
   }
   if (value === "random_assembly") {
-    return "随机组卷";
+    return "现场随机组卷";
   }
   return value;
+}
+
+function formatSelectedPaperSummary(paperID: string, papers: ExamPaper[]): string {
+  if (!paperID) {
+    return "未选择试卷";
+  }
+  const paper = papers.find((item) => item.id === Number(paperID));
+  if (!paper) {
+    return `试卷-${paperID}`;
+  }
+  return `${paper.paper_name} / ${paper.question_count} 题 / ${formatScore(paper.total_score)} 分`;
 }
 
 function formatStatus(value: string): string {

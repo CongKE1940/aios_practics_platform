@@ -170,7 +170,8 @@ export function normalizeAdminNavigationMenus(menus: MenuItem[], permissions: st
     ["/admin/questions/editor", "题目编辑器", 20_004],
     ["/admin/imports", "导入中心", 20_005],
     ["/admin/exams", "考试管理", 20_006],
-    ["/admin/exams/assembly", "随机组卷", 20_007],
+    ["/admin/exam-papers", "试卷管理", 20_007],
+    ["/admin/exams/assembly", "试卷组卷", 20_010],
     ["/admin/challenges", "质疑处理", 20_008],
     ["/admin/notices", "公告通知", 20_009]
   ] as const;
@@ -178,7 +179,7 @@ export function normalizeAdminNavigationMenus(menus: MenuItem[], permissions: st
   for (const [path, name, id] of topLevelPaths) {
     const exists = entriesByPath.has(path);
     const permissionFallback =
-      (path.startsWith("/admin/exams") && permissions.includes("exam:manage")) ||
+      ((path.startsWith("/admin/exams") || path === "/admin/exam-papers") && permissions.includes("exam:manage")) ||
       (path === "/admin/challenges" && permissions.includes("question:manage"));
     if (exists || permissionFallback) {
       result.push(menu(path, name, id));
@@ -261,8 +262,10 @@ export function resolveAdminPageTitle(selectedPath: string): string {
       return "导入中心";
     case "/admin/exams":
       return "考试管理";
+    case "/admin/exam-papers":
+      return "试卷管理";
     case "/admin/exams/assembly":
-      return "随机组卷";
+      return "试卷组卷";
     case "/admin/challenges":
       return "质疑处理";
     case "/admin/analytics":

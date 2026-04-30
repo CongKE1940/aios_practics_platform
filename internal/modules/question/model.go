@@ -48,6 +48,7 @@ type Question struct {
 	SourceType       string    `json:"source_type"`
 	CreatorID        int64     `json:"creator_id"`
 	BankIDs          []int64   `json:"bank_ids"`
+	CourseIDs        []int64   `json:"course_ids"`
 	CreatedAt        time.Time `json:"created_at,omitempty"`
 	UpdatedAt        time.Time `json:"updated_at,omitempty"`
 }
@@ -73,11 +74,14 @@ type QuestionInput struct {
 	Answer       map[string]any `json:"answer" binding:"required"`
 	Analysis     map[string]any `json:"analysis"`
 	BankIDs      []int64        `json:"bank_ids"`
+	CourseIDs    []int64        `json:"course_ids"`
 }
 
 type QuestionUpdateInput struct {
-	Difficulty string `json:"difficulty"`
-	Status     string `json:"status"`
+	Difficulty string  `json:"difficulty"`
+	Status     string  `json:"status"`
+	BankIDs    []int64 `json:"bank_ids"`
+	CourseIDs  []int64 `json:"course_ids"`
 }
 
 type QuestionVersionInput struct {
@@ -100,8 +104,8 @@ type QuestionListFilter struct {
 type Repository interface {
 	ListQuestions(ctx context.Context, tenantID int64, filter QuestionListFilter) (PageResult[Question], error)
 	GetQuestion(ctx context.Context, tenantID int64, id int64) (Question, error)
-	CreateQuestion(ctx context.Context, question Question, version QuestionVersion, bankIDs []int64) (Question, error)
-	UpdateQuestion(ctx context.Context, question Question) (Question, error)
+	CreateQuestion(ctx context.Context, question Question, version QuestionVersion, bankIDs []int64, courseIDs []int64) (Question, error)
+	UpdateQuestion(ctx context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error)
 	ListVersions(ctx context.Context, tenantID int64, questionID int64) ([]QuestionVersion, error)
 	CreateVersion(ctx context.Context, tenantID int64, questionID int64, version QuestionVersion) (QuestionVersion, Question, error)
 }
@@ -154,6 +158,31 @@ func containsInt64(values []int64, target int64) bool {
 		}
 	}
 	return false
+}
+
+func hasNonPositiveID(values []int64) bool {
+	for _, value := range values {
+		if value <= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeIDs(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func intPtr(value int) *int {
