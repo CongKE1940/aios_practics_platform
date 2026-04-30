@@ -36,21 +36,22 @@ type PageResult[T any] struct {
 }
 
 type Question struct {
-	ID               int64     `json:"id"`
-	TenantID         int64     `json:"tenant_id"`
-	OwnerOrgType     string    `json:"owner_org_type"`
-	OwnerOrgID       int64     `json:"owner_org_id"`
-	QuestionType     string    `json:"question_type"`
-	Difficulty       string    `json:"difficulty,omitempty"`
-	CurrentVersionID *int64    `json:"current_version_id"`
-	CurrentVersionNo *int      `json:"current_version_no"`
-	Status           string    `json:"status"`
-	SourceType       string    `json:"source_type"`
-	CreatorID        int64     `json:"creator_id"`
-	BankIDs          []int64   `json:"bank_ids"`
-	CourseIDs        []int64   `json:"course_ids"`
-	CreatedAt        time.Time `json:"created_at,omitempty"`
-	UpdatedAt        time.Time `json:"updated_at,omitempty"`
+	ID               int64          `json:"id"`
+	TenantID         int64          `json:"tenant_id"`
+	OwnerOrgType     string         `json:"owner_org_type"`
+	OwnerOrgID       int64          `json:"owner_org_id"`
+	QuestionType     string         `json:"question_type"`
+	Difficulty       string         `json:"difficulty,omitempty"`
+	CurrentVersionID *int64         `json:"current_version_id"`
+	CurrentVersionNo *int           `json:"current_version_no"`
+	CurrentContent   map[string]any `json:"current_content,omitempty"`
+	Status           string         `json:"status"`
+	SourceType       string         `json:"source_type"`
+	CreatorID        int64          `json:"creator_id"`
+	BankIDs          []int64        `json:"bank_ids"`
+	CourseIDs        []int64        `json:"course_ids"`
+	CreatedAt        time.Time      `json:"created_at,omitempty"`
+	UpdatedAt        time.Time      `json:"updated_at,omitempty"`
 }
 
 type QuestionVersion struct {

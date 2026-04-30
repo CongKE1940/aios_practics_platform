@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type {
+  Course,
+  CourseListQuery,
   Exam,
   ExamDetail,
   ExamFixedQuestion,
@@ -14,7 +16,11 @@ import type {
   ExamPaperListQuery,
   ExamPaperRule,
   ExamTarget,
-  PageResult
+  PageResult,
+  Question,
+  QuestionBank,
+  QuestionBankListQuery,
+  QuestionListQuery
 } from "@aios/api-sdk";
 import {
   ClearableFilterInput,
@@ -38,6 +44,9 @@ export interface ExamPanelApi {
   getExamPaper?(id: number): Promise<ExamPaperDetail>;
   updateExamPaper?(id: number, body: ExamPaperInput): Promise<ExamPaperDetail>;
   publishExamPaper?(id: number): Promise<ExamPaperDetail>;
+  listQuestions?(query?: QuestionListQuery): Promise<PageResult<Question>>;
+  listQuestionBanks?(query?: QuestionBankListQuery): Promise<PageResult<QuestionBank>>;
+  listCourses?(query?: CourseListQuery): Promise<PageResult<Course>>;
   getExamOverview(query: { exam_id: number; page?: number; page_size?: number }): Promise<ExamOverviewResult>;
 }
 

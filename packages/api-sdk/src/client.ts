@@ -298,6 +298,7 @@ export interface Question {
   difficulty?: string | null;
   current_version_id?: number | null;
   current_version_no?: number | null;
+  current_content?: QuestionContentInput | Record<string, unknown>;
   status: string;
   source_type: string;
   creator_id: number;

@@ -577,7 +577,10 @@ function hasPaperManagementApi(api?: ExamPanelApi): api is ExamPanelApi & PaperM
       api.createExamPaper &&
       api.getExamPaper &&
       api.updateExamPaper &&
-      api.publishExamPaper
+      api.publishExamPaper &&
+      api.listQuestions &&
+      api.listQuestionBanks &&
+      api.listCourses
   );
 }
 

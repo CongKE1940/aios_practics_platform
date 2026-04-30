@@ -30,7 +30,8 @@ SELECT
   q.creator_id,
   q.created_at,
   q.updated_at,
-  qv.version_no
+  qv.version_no,
+  qv.content_json
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
 WHERE q.deleted_at IS NULL
@@ -118,7 +119,8 @@ SELECT
   q.creator_id,
   q.created_at,
   q.updated_at,
-  qv.version_no
+  qv.version_no,
+  qv.content_json
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
 WHERE q.id = ? AND q.deleted_at IS NULL
@@ -390,7 +392,8 @@ SELECT
   q.creator_id,
   q.created_at,
   q.updated_at,
-  qv.version_no
+  qv.version_no,
+  qv.content_json
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
 WHERE q.id = ? AND q.tenant_id = ? AND q.deleted_at IS NULL
@@ -434,7 +437,8 @@ SELECT
   q.creator_id,
   q.created_at,
   q.updated_at,
-  qv.version_no
+  qv.version_no,
+  qv.content_json
 FROM questions q
 LEFT JOIN question_versions qv ON q.current_version_id = qv.id
 WHERE q.id = ? AND q.deleted_at IS NULL
@@ -570,6 +574,7 @@ func scanQuestionScanner(scanner interface{ Scan(dest ...any) error }) (Question
 	var difficulty sql.NullString
 	var currentVersionID sql.NullInt64
 	var currentVersionNo sql.NullInt64
+	var currentContentJSON sql.NullString
 	err := scanner.Scan(
 		&item.ID,
 		&item.TenantID,
@@ -584,6 +589,7 @@ func scanQuestionScanner(scanner interface{ Scan(dest ...any) error }) (Question
 		&item.CreatedAt,
 		&item.UpdatedAt,
 		&currentVersionNo,
+		&currentContentJSON,
 	)
 	if err != nil {
 		return Question{}, err
@@ -598,6 +604,11 @@ func scanQuestionScanner(scanner interface{ Scan(dest ...any) error }) (Question
 	if currentVersionNo.Valid {
 		value := int(currentVersionNo.Int64)
 		item.CurrentVersionNo = &value
+	}
+	if currentContentJSON.Valid && currentContentJSON.String != "" {
+		if err := json.Unmarshal([]byte(currentContentJSON.String), &item.CurrentContent); err != nil {
+			return Question{}, err
+		}
 	}
 	return item, nil
 }
