@@ -16,6 +16,7 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO permissions (code, module, action_name, resource_type, name, description)
 VALUES
   ('auth:login', 'auth', 'login', 'auth', '登录', '账号密码登录'),
+  ('system:manage', 'system', 'manage', 'system', '系统配置', '管理平台级系统配置与全局权限'),
   ('tenant:manage', 'tenant', 'manage', 'tenant', '租户管理', '管理学校或组织租户'),
   ('user:manage', 'user', 'manage', 'user', '用户管理', '管理用户与账号状态'),
   ('role:manage', 'role', 'manage', 'role', '角色管理', '管理角色、权限、菜单和数据范围'),

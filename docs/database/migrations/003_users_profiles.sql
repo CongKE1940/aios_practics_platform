@@ -8,6 +8,7 @@ CREATE TABLE users (
   display_name VARCHAR(128) NOT NULL,
   user_type VARCHAR(32) NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'active',
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
   last_login_at DATETIME(3) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -16,6 +17,7 @@ CREATE TABLE users (
   UNIQUE KEY uk_users_tenant_phone (tenant_id, phone),
   UNIQUE KEY uk_users_tenant_email (tenant_id, email),
   KEY idx_users_tenant_status (tenant_id, status),
+  KEY idx_users_must_change_password (must_change_password),
   KEY idx_users_type (user_type),
   CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -57,4 +59,3 @@ CREATE TABLE teacher_profiles (
   CONSTRAINT fk_teacher_profiles_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   CONSTRAINT fk_teacher_profiles_school FOREIGN KEY (school_id) REFERENCES schools(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-

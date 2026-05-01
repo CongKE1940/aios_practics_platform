@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS `tenants`;
 DROP TABLE IF EXISTS `teacher_profiles`;
 DROP TABLE IF EXISTS `teacher_class_course_assignments`;
 DROP TABLE IF EXISTS `teacher_assignment_histories`;
+DROP TABLE IF EXISTS `class_head_teacher_assignments`;
 DROP TABLE IF EXISTS `tags`;
 DROP TABLE IF EXISTS `student_transitions`;
 DROP TABLE IF EXISTS `student_profiles`;
@@ -856,7 +857,8 @@ CREATE TABLE `teacher_assignment_histories` (
   `tenant_id` bigint NOT NULL,
   `teacher_id` bigint NOT NULL,
   `class_id` bigint NOT NULL,
-  `course_id` bigint NOT NULL,
+  `course_id` bigint DEFAULT NULL,
+  `assignment_type` varchar(32) NOT NULL DEFAULT 'course_teacher',
   `change_type` varchar(32) NOT NULL,
   `effective_from` datetime(3) NOT NULL,
   `effective_to` datetime(3) DEFAULT NULL,
@@ -865,9 +867,31 @@ CREATE TABLE `teacher_assignment_histories` (
   PRIMARY KEY (`id`),
   KEY `idx_teacher_assignment_histories_teacher_from` (`teacher_id`,`effective_from`),
   KEY `idx_teacher_assignment_histories_class_course` (`class_id`,`course_id`),
+  KEY `idx_teacher_assignment_histories_type` (`assignment_type`),
   KEY `fk_tah_tenant` (`tenant_id`),
   KEY `fk_tah_course` (`course_id`),
   KEY `fk_tah_operator` (`operator_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `class_head_teacher_assignments` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `tenant_id` bigint NOT NULL,
+  `teacher_id` bigint NOT NULL,
+  `school_id` bigint NOT NULL,
+  `grade_id` bigint NOT NULL,
+  `class_id` bigint NOT NULL,
+  `is_current` tinyint(1) NOT NULL DEFAULT '1',
+  `status` varchar(32) NOT NULL DEFAULT 'active',
+  `effective_from` datetime(3) NOT NULL,
+  `effective_to` datetime(3) DEFAULT NULL,
+  `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_chta_teacher_current` (`teacher_id`,`is_current`,`status`),
+  KEY `idx_chta_class_current` (`class_id`,`is_current`,`status`),
+  KEY `fk_chta_tenant` (`tenant_id`),
+  KEY `fk_chta_school` (`school_id`),
+  KEY `fk_chta_grade` (`grade_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `teacher_class_course_assignments` (
@@ -999,6 +1023,7 @@ CREATE TABLE `users` (
   `display_name` varchar(128) NOT NULL,
   `user_type` varchar(32) NOT NULL,
   `status` varchar(32) NOT NULL DEFAULT 'active',
+  `must_change_password` tinyint(1) NOT NULL DEFAULT '0',
   `last_login_at` datetime(3) DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -1008,6 +1033,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `uk_users_tenant_phone` (`tenant_id`,`phone`),
   UNIQUE KEY `uk_users_tenant_email` (`tenant_id`,`email`),
   KEY `idx_users_tenant_status` (`tenant_id`,`status`),
+  KEY `idx_users_must_change_password` (`must_change_password`),
   KEY `idx_users_type` (`user_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1138,6 +1164,11 @@ ALTER TABLE `teacher_assignment_histories` ADD CONSTRAINT `fk_tah_course` FOREIG
 ALTER TABLE `teacher_assignment_histories` ADD CONSTRAINT `fk_tah_operator` FOREIGN KEY (`operator_id`) REFERENCES `users` (`id`);
 ALTER TABLE `teacher_assignment_histories` ADD CONSTRAINT `fk_tah_teacher` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`id`);
 ALTER TABLE `teacher_assignment_histories` ADD CONSTRAINT `fk_tah_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`);
+ALTER TABLE `class_head_teacher_assignments` ADD CONSTRAINT `fk_chta_class` FOREIGN KEY (`class_id`) REFERENCES `classes` (`id`);
+ALTER TABLE `class_head_teacher_assignments` ADD CONSTRAINT `fk_chta_grade` FOREIGN KEY (`grade_id`) REFERENCES `grades` (`id`);
+ALTER TABLE `class_head_teacher_assignments` ADD CONSTRAINT `fk_chta_school` FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`);
+ALTER TABLE `class_head_teacher_assignments` ADD CONSTRAINT `fk_chta_teacher` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`id`);
+ALTER TABLE `class_head_teacher_assignments` ADD CONSTRAINT `fk_chta_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`);
 ALTER TABLE `teacher_class_course_assignments` ADD CONSTRAINT `fk_tcca_class` FOREIGN KEY (`class_id`) REFERENCES `classes` (`id`);
 ALTER TABLE `teacher_class_course_assignments` ADD CONSTRAINT `fk_tcca_course` FOREIGN KEY (`course_id`) REFERENCES `courses` (`id`);
 ALTER TABLE `teacher_class_course_assignments` ADD CONSTRAINT `fk_tcca_grade` FOREIGN KEY (`grade_id`) REFERENCES `grades` (`id`);
