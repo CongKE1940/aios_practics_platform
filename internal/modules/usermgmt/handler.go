@@ -27,6 +27,9 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 }
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
+	router.GET("/users/me", handler.myProfile)
+	router.PUT("/users/me", handler.updateMyProfile)
+	router.PUT("/users/me/password", handler.changeMyPassword)
 	router.GET("/users", handler.listUsers)
 	router.POST("/users", handler.createUser)
 	router.GET("/users/:id", handler.getUser)
@@ -34,6 +37,55 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.PUT("/users/:id/roles", handler.assignRoles)
 	router.POST("/users/:id/reset-password", handler.resetPassword)
 	router.POST("/users/:id/disable", handler.disableUser)
+}
+
+func (handler *Handler) myProfile(ctx *gin.Context) {
+	claims, ok := handler.authorizeAuthenticated(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.GetCurrentUser(ctx.Request.Context(), claims.TenantID, claims.UserID)
+	if err != nil {
+		writeUserError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) updateMyProfile(ctx *gin.Context) {
+	claims, ok := handler.authorizeAuthenticated(ctx)
+	if !ok {
+		return
+	}
+	var input ProfileInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	result, err := handler.service.UpdateCurrentUserProfile(ctx.Request.Context(), claims.TenantID, claims.UserID, input)
+	if err != nil {
+		writeUserError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) changeMyPassword(ctx *gin.Context) {
+	claims, ok := handler.authorizeAuthenticated(ctx)
+	if !ok {
+		return
+	}
+	var input ChangePasswordInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	result, err := handler.service.ChangeCurrentPassword(ctx.Request.Context(), claims.TenantID, claims.UserID, input)
+	if err != nil {
+		writeUserError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
 }
 
 func (handler *Handler) listUsers(ctx *gin.Context) {
@@ -64,7 +116,7 @@ func (handler *Handler) createUser(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.CreateUser(ctx.Request.Context(), claims.TenantID, input)
+	result, err := handler.service.CreateUser(ctx.Request.Context(), userScopeFromClaims(claims), input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -95,7 +147,7 @@ func (handler *Handler) updateUser(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.UpdateUser(ctx.Request.Context(), readTenantID(claims), id, input)
+	result, err := handler.service.UpdateUserWithScope(ctx.Request.Context(), userScopeFromClaims(claims), id, input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -113,7 +165,7 @@ func (handler *Handler) assignRoles(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.AssignRoles(ctx.Request.Context(), readTenantID(claims), id, input)
+	result, err := handler.service.AssignRolesWithScope(ctx.Request.Context(), userScopeFromClaims(claims), id, input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -127,11 +179,17 @@ func (handler *Handler) resetPassword(ctx *gin.Context) {
 		return
 	}
 	var input ResetPasswordInput
-	if err := ctx.ShouldBindJSON(&input); err != nil {
+	if ctx.Request.ContentLength != 0 {
+		if err := ctx.ShouldBindJSON(&input); err != nil {
+			ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+			return
+		}
+	}
+	if input.NewPassword != "" {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.ResetPassword(ctx.Request.Context(), readTenantID(claims), id, input)
+	result, err := handler.service.ResetPasswordWithScope(ctx.Request.Context(), userScopeFromClaims(claims), id, input)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -144,7 +202,7 @@ func (handler *Handler) disableUser(ctx *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := handler.service.DisableUser(ctx.Request.Context(), readTenantID(claims), id)
+	result, err := handler.service.DisableUserWithScope(ctx.Request.Context(), userScopeFromClaims(claims), id)
 	if err != nil {
 		writeUserError(ctx, err)
 		return
@@ -152,7 +210,7 @@ func (handler *Handler) disableUser(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
 }
 
-func (handler *Handler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {
+func (handler *Handler) authorizeAuthenticated(ctx *gin.Context) (auth.AccessClaims, bool) {
 	token := bearerToken(ctx.GetHeader("Authorization"))
 	if token == "" {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
@@ -161,6 +219,14 @@ func (handler *Handler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {
 	claims, err := handler.parser.ParseToken(ctx.Request.Context(), token, auth.TokenTypeAccess)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
+		return auth.AccessClaims{}, false
+	}
+	return claims, true
+}
+
+func (handler *Handler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {
+	claims, ok := handler.authorizeAuthenticated(ctx)
+	if !ok {
 		return auth.AccessClaims{}, false
 	}
 	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "user:manage") {
@@ -185,6 +251,8 @@ func (handler *Handler) authorizeWithID(ctx *gin.Context) (auth.AccessClaims, in
 
 func writeUserError(ctx *gin.Context, err error) {
 	switch {
+	case errors.Is(err, ErrForbidden):
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 	case errors.Is(err, ErrInvalidInput):
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 	case errors.Is(err, ErrNotFound):
@@ -208,6 +276,14 @@ func readTenantID(claims auth.AccessClaims) int64 {
 		return 0
 	}
 	return claims.TenantID
+}
+
+func userScopeFromClaims(claims auth.AccessClaims) Scope {
+	return Scope{
+		TenantID:    claims.TenantID,
+		UserType:    claims.UserType,
+		Permissions: append([]string{}, claims.Permissions...),
+	}
 }
 
 func bearerToken(header string) string {

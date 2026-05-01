@@ -132,6 +132,60 @@ func TestHandlerLoginMapsInvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestHandlerLoginMapsPasswordChangeRequired(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	handler := NewHandler(&fakeLoginService{err: ErrPasswordChangeRequired})
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"tenant_code":"demo_school","username":"admin","password":"Init@123456"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusPreconditionRequired {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	var body struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if body.Code != CodePasswordChangeRequired {
+		t.Fatalf("Code = %d", body.Code)
+	}
+}
+
+func TestHandlerChangeInitialPasswordReturnsTrue(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	handler := NewHandler(&fakeLoginService{})
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/change-initial-password", bytes.NewBufferString(`{"tenant_code":"demo_school","username":"admin","old_password":"Init@123456","new_password":"Safe@123456"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	var body struct {
+		Data bool `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if !body.Data {
+		t.Fatal("Data = false")
+	}
+}
+
 func TestHandlerRefreshReturnsNewTokenPair(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	handler := NewHandler(&fakeLoginService{
@@ -256,6 +310,13 @@ func (service *fakeLoginService) Login(_ context.Context, command LoginCommand) 
 		return LoginResult{}, errors.New("missing command")
 	}
 	return service.result, service.err
+}
+
+func (service *fakeLoginService) ChangeInitialPassword(_ context.Context, command ChangeInitialPasswordCommand) error {
+	if command.TenantCode == "" || command.Username == "" || command.OldPassword == "" || command.NewPassword == "" {
+		return errors.New("missing command")
+	}
+	return service.err
 }
 
 func (service *fakeLoginService) Refresh(_ context.Context, command RefreshCommand) (LoginResult, error) {

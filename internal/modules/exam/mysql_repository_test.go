@@ -33,12 +33,13 @@ func TestMySQLRepositoryListExamsUsesTenantConditionAndScansRows(t *testing.T) {
 	endTime := startTime.Add(90 * time.Minute)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at
-FROM exams
-WHERE tenant_id = ?
-ORDER BY id DESC
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at
+FROM exams e
+WHERE e.tenant_id = ?
+ AND e.owner_org_type <> ?
+ORDER BY e.id DESC
 `)).
-		WithArgs(int64(7)).
+		WithArgs(int64(7), OwnerOrgTypeUser).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at"}).
 			AddRow(int64(101), int64(7), "school", int64(7), int64(9), "七年级数学周测", "fixed", "draft", startTime, endTime, 90, "0.00", nil, createdAt, updatedAt).
 			AddRow(int64(102), int64(7), "school", int64(7), int64(9), "七年级英语周测", "fixed", "draft", startTime.Add(time.Hour), endTime.Add(time.Hour), 60, "0.00", nil, createdAt.Add(time.Hour), updatedAt.Add(time.Hour)))
@@ -107,12 +108,13 @@ VALUES (?, ?, ?, ?, ?)
 		WillReturnResult(sqlmock.NewResult(2, 1))
 	mock.ExpectCommit()
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
-FROM exams
-WHERE id = ? AND tenant_id = ?
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at, e.assembly_rule_json
+FROM exams e
+WHERE e.id = ? AND e.tenant_id = ?
+ AND e.owner_org_type <> ?
 LIMIT 1
 `)).
-		WithArgs(int64(301), int64(9)).
+		WithArgs(int64(301), int64(9), OwnerOrgTypeUser).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
 			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "期中模拟", "fixed", "draft", startTime, endTime, 90, "15.00", nil, createdAt, updatedAt, nil))
 	mock.ExpectQuery(regexp.QuoteMeta(`
@@ -179,12 +181,13 @@ func TestMySQLRepositoryUpdateExamReplacesTargetsAndFixedQuestions(t *testing.T)
 	updatedAt := createdAt.Add(time.Minute)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
-FROM exams
-WHERE id = ? AND tenant_id = ?
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at, e.assembly_rule_json
+FROM exams e
+WHERE e.id = ? AND e.tenant_id = ?
+ AND e.owner_org_type <> ?
 LIMIT 1
 `)).
-		WithArgs(int64(301), int64(9)).
+		WithArgs(int64(301), int64(9), OwnerOrgTypeUser).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
 			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "更新前考试", "fixed", "draft", startTime, endTime, 100, "0.00", nil, createdAt, updatedAt, nil))
 	mock.ExpectQuery(regexp.QuoteMeta(`
@@ -237,12 +240,13 @@ VALUES (?, ?, ?, ?, ?)
 		WillReturnResult(sqlmock.NewResult(2, 1))
 	mock.ExpectCommit()
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
-FROM exams
-WHERE id = ? AND tenant_id = ?
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at, e.assembly_rule_json
+FROM exams e
+WHERE e.id = ? AND e.tenant_id = ?
+ AND e.owner_org_type <> ?
 LIMIT 1
 `)).
-		WithArgs(int64(301), int64(9)).
+		WithArgs(int64(301), int64(9), OwnerOrgTypeUser).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
 			AddRow(int64(301), int64(9), "school", int64(9), int64(21), "更新后考试", "fixed", "draft", startTime, endTime, 100, "30.00", nil, createdAt, updatedAt, nil))
 	mock.ExpectQuery(regexp.QuoteMeta(`
@@ -752,12 +756,13 @@ func expectExamDetailQueries(
 	fixedQuestions []ExamFixedQuestion,
 ) {
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
-FROM exams
-WHERE id = ? AND tenant_id = ?
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at, e.assembly_rule_json
+FROM exams e
+WHERE e.id = ? AND e.tenant_id = ?
+ AND e.owner_org_type <> ?
 LIMIT 1
 `)).
-		WithArgs(examID, tenantID).
+		WithArgs(examID, tenantID, OwnerOrgTypeUser).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
 			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "fixed", status, startTime, endTime, durationMinutes, formatExamScore(totalPublishedScore(fixedQuestions)), nil, createdAt, updatedAt, nil))
 	targetRows := sqlmock.NewRows([]string{"target_type", "target_id", "created_at"})
@@ -800,12 +805,13 @@ func expectRandomExamDetailQueries(
 	ruleJSON string,
 ) {
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
-FROM exams
-WHERE id = ? AND tenant_id = ?
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at, e.assembly_rule_json
+FROM exams e
+WHERE e.id = ? AND e.tenant_id = ?
+ AND e.owner_org_type <> ?
 LIMIT 1
 `)).
-		WithArgs(examID, tenantID).
+		WithArgs(examID, tenantID, OwnerOrgTypeUser).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at", "assembly_rule_json"}).
 			AddRow(examID, tenantID, "school", tenantID, int64(21), name, "random_assembly", status, startTime, endTime, durationMinutes, "0.00", nil, createdAt, updatedAt, ruleJSON))
 	mock.ExpectQuery(regexp.QuoteMeta(`

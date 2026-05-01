@@ -93,6 +93,75 @@ func TestHandler_SchoolLifecycleWithinTenantScope(t *testing.T) {
 	}
 }
 
+func TestHandler_ListSchoolsWithoutObjectTypeReturnsSchoolsAndOrganizations(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserType:  "sys_admin",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	createSchoolRec := performJSONRequest(router, http.MethodPost, "/api/v1/schools", map[string]any{
+		"object_type": ObjectTypeSchool,
+		"name":        "示例学校",
+	})
+	if createSchoolRec.Code != http.StatusOK {
+		t.Fatalf("create school status = %d, body = %s", createSchoolRec.Code, createSchoolRec.Body.String())
+	}
+
+	createOrgRec := performJSONRequest(router, http.MethodPost, "/api/v1/schools", map[string]any{
+		"object_type": ObjectTypeOrganization,
+		"name":        "示例组织",
+	})
+	if createOrgRec.Code != http.StatusOK {
+		t.Fatalf("create organization status = %d, body = %s", createOrgRec.Code, createOrgRec.Body.String())
+	}
+
+	listAllRec := performAuthorizedRequest(router, http.MethodGet, "/api/v1/schools", nil, "token")
+	if listAllRec.Code != http.StatusOK {
+		t.Fatalf("list all status = %d, body = %s", listAllRec.Code, listAllRec.Body.String())
+	}
+	var allSchools envelope[PageResult[School]]
+	decodeBody(t, listAllRec, &allSchools)
+	if allSchools.Data.Total != 2 {
+		t.Fatalf("list all total = %d, want 2", allSchools.Data.Total)
+	}
+	if countSchoolsByObjectType(allSchools.Data.Items, ObjectTypeSchool) != 1 {
+		t.Fatalf("list all school count = %d", countSchoolsByObjectType(allSchools.Data.Items, ObjectTypeSchool))
+	}
+	if countSchoolsByObjectType(allSchools.Data.Items, ObjectTypeOrganization) != 1 {
+		t.Fatalf("list all organization count = %d", countSchoolsByObjectType(allSchools.Data.Items, ObjectTypeOrganization))
+	}
+
+	listOrganizationsRec := performAuthorizedRequest(router, http.MethodGet, "/api/v1/schools?object_type=organization", nil, "token")
+	if listOrganizationsRec.Code != http.StatusOK {
+		t.Fatalf("list organization status = %d, body = %s", listOrganizationsRec.Code, listOrganizationsRec.Body.String())
+	}
+	var organizations envelope[PageResult[School]]
+	decodeBody(t, listOrganizationsRec, &organizations)
+	if organizations.Data.Total != 1 || organizations.Data.Items[0].ObjectType != ObjectTypeOrganization {
+		t.Fatalf("organization filter result = %+v", organizations.Data)
+	}
+
+	listSchoolsRec := performAuthorizedRequest(router, http.MethodGet, "/api/v1/schools?object_type=school", nil, "token")
+	if listSchoolsRec.Code != http.StatusOK {
+		t.Fatalf("list school status = %d, body = %s", listSchoolsRec.Code, listSchoolsRec.Body.String())
+	}
+	var schools envelope[PageResult[School]]
+	decodeBody(t, listSchoolsRec, &schools)
+	if schools.Data.Total != 1 || schools.Data.Items[0].ObjectType != ObjectTypeSchool {
+		t.Fatalf("school filter result = %+v", schools.Data)
+	}
+}
+
 func TestHandler_GradeClassAndCourseFilters(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -212,7 +281,7 @@ func TestHandler_RejectsCrossTenantAccess(t *testing.T) {
 	repo := newMemoryRepository()
 	createService := NewService(repo)
 
-	if _, err := createService.CreateSchool(context.Background(), Scope{TenantID: 1, UserType: "sys_admin"}, SchoolInput{
+	if _, err := createService.CreateSchool(context.Background(), Scope{TenantID: 1, Permissions: []string{"org:manage"}}, SchoolInput{
 		Code:       "school_001",
 		Name:       "第一中学",
 		ObjectType: ObjectTypeSchool,
@@ -235,6 +304,58 @@ func TestHandler_RejectsCrossTenantAccess(t *testing.T) {
 	rec := performAuthorizedRequest(router, http.MethodGet, "/api/v1/schools/1", nil, "token")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestHandler_SystemAdminCreatesDefaultOrganizationAdmin(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserType:  "sys_admin",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	createRec := performJSONRequest(router, http.MethodPost, "/api/v1/schools", map[string]any{
+		"object_type": ObjectTypeOrganization,
+		"name":        "示例组织",
+	})
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create organization status = %d, body = %s", createRec.Code, createRec.Body.String())
+	}
+
+	var created envelope[School]
+	decodeBody(t, createRec, &created)
+	if created.Data.TenantID == 1 {
+		t.Fatalf("created tenant_id should use new tenant, got %d", created.Data.TenantID)
+	}
+	if created.Data.DefaultAdmin == nil {
+		t.Fatal("default admin should be returned")
+	}
+	if created.Data.DefaultAdmin.Username != "admin" {
+		t.Fatalf("default admin username = %q", created.Data.DefaultAdmin.Username)
+	}
+	if created.Data.DefaultAdmin.UserType != UserTypeSchoolAdmin {
+		t.Fatalf("default admin user_type = %q", created.Data.DefaultAdmin.UserType)
+	}
+	if created.Data.DefaultAdmin.InitialPassword == "" {
+		t.Fatal("default admin initial password should be returned once")
+	}
+	if _, ok := repo.users[created.Data.DefaultAdmin.UserID]; !ok {
+		t.Fatalf("default admin user %d not created", created.Data.DefaultAdmin.UserID)
+	}
+	if len(repo.userRoles[created.Data.DefaultAdmin.UserID]) != 1 {
+		t.Fatalf("default admin role count = %d", len(repo.userRoles[created.Data.DefaultAdmin.UserID]))
+	}
+	if !repo.hasRoleCode("org_operator") {
+		t.Fatal("default low-privilege organization operator role should be created")
 	}
 }
 
@@ -264,10 +385,17 @@ type memoryRepository struct {
 	nextGradeID  int64
 	nextClassID  int64
 	nextCourseID int64
+	nextTenantID int64
+	nextRoleID   int64
+	nextUserID   int64
 	schools      map[int64]School
 	grades       map[int64]Grade
 	classes      map[int64]Class
 	courses      map[int64]Course
+	tenants      map[int64]string
+	roles        map[int64]string
+	users        map[int64]DefaultOrganizationAdmin
+	userRoles    map[int64][]int64
 }
 
 func newMemoryRepository() *memoryRepository {
@@ -276,10 +404,17 @@ func newMemoryRepository() *memoryRepository {
 		nextGradeID:  1,
 		nextClassID:  1,
 		nextCourseID: 1,
+		nextTenantID: 100,
+		nextRoleID:   1,
+		nextUserID:   1,
 		schools:      map[int64]School{},
 		grades:       map[int64]Grade{},
 		classes:      map[int64]Class{},
 		courses:      map[int64]Course{},
+		tenants:      map[int64]string{},
+		roles:        map[int64]string{},
+		users:        map[int64]DefaultOrganizationAdmin{},
+		userRoles:    map[int64][]int64{},
 	}
 }
 
@@ -323,6 +458,58 @@ func (repo *memoryRepository) CreateSchool(_ context.Context, school School) (Sc
 	school.Status = defaultStatus(school.Status)
 	repo.schools[school.ID] = school
 	return school, nil
+}
+
+func (repo *memoryRepository) CreateSchoolWithDefaultAdmin(_ context.Context, school School, admin DefaultAdminSeed) (School, error) {
+	tenantID := repo.nextTenantID
+	repo.nextTenantID++
+	tenantCode := defaultTenantCode(school.Code)
+	repo.tenants[tenantID] = tenantCode
+
+	school.TenantID = tenantID
+	school.ID = repo.nextSchoolID
+	repo.nextSchoolID++
+	if school.ObjectType == 0 {
+		school.ObjectType = ObjectTypeSchool
+	}
+	if school.ObjectTypeLabel == "" {
+		school.ObjectTypeLabel = formatObjectTypeLabel(school.ObjectType)
+	}
+	school.Status = defaultStatus(school.Status)
+	repo.schools[school.ID] = school
+
+	roleID := repo.nextRoleID
+	repo.nextRoleID++
+	repo.roles[roleID] = "school_admin"
+	operatorRoleID := repo.nextRoleID
+	repo.nextRoleID++
+	repo.roles[operatorRoleID] = "org_operator"
+
+	userID := repo.nextUserID
+	repo.nextUserID++
+	defaultAdmin := DefaultOrganizationAdmin{
+		TenantID:        tenantID,
+		TenantCode:      tenantCode,
+		UserID:          userID,
+		Username:        admin.Username,
+		DisplayName:     admin.DisplayName,
+		UserType:        admin.UserType,
+		RoleID:          roleID,
+		InitialPassword: admin.InitialPassword,
+	}
+	repo.users[userID] = defaultAdmin
+	repo.userRoles[userID] = []int64{roleID}
+	school.DefaultAdmin = &defaultAdmin
+	return school, nil
+}
+
+func (repo *memoryRepository) hasRoleCode(code string) bool {
+	for _, roleCode := range repo.roles {
+		if roleCode == code {
+			return true
+		}
+	}
+	return false
 }
 
 func (repo *memoryRepository) UpdateSchool(_ context.Context, school School) (School, error) {
@@ -606,6 +793,16 @@ func containsAny(values ...string) bool {
 		}
 	}
 	return false
+}
+
+func countSchoolsByObjectType(items []School, objectType int) int {
+	count := 0
+	for _, item := range items {
+		if item.ObjectType == objectType {
+			count++
+		}
+	}
+	return count
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

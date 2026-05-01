@@ -116,15 +116,16 @@ func TestHandler_RecordTeacherAssignmentChangeReturnsCreatedItem(t *testing.T) {
 	effectiveAt := time.Date(2026, 4, 23, 11, 0, 0, 0, time.UTC)
 	repo := &memorySnapshotRepository{
 		teacherAssignmentHistory: TeacherAssignmentHistory{
-			ID:            20,
-			TenantID:      1,
-			TeacherID:     701,
-			ClassID:       301,
-			CourseID:      10,
-			ChangeType:    TeacherAssignmentChangeAssign,
-			EffectiveFrom: effectiveAt,
-			OperatorID:    1,
-			CreatedAt:     effectiveAt,
+			ID:             20,
+			TenantID:       1,
+			TeacherID:      701,
+			ClassID:        301,
+			CourseID:       int64Ptr(10),
+			AssignmentType: TeacherAssignmentTypeCourseTeacher,
+			ChangeType:     TeacherAssignmentChangeAssign,
+			EffectiveFrom:  effectiveAt,
+			OperatorID:     1,
+			CreatedAt:      effectiveAt,
 		},
 	}
 	router := newSnapshotTestRouter(repo, fakeSnapshotParser{
@@ -154,6 +155,57 @@ func TestHandler_RecordTeacherAssignmentChangeReturnsCreatedItem(t *testing.T) {
 		t.Fatalf("body = %+v", body.Data)
 	}
 	if repo.lastTeacherAssignmentInput.TeacherID != 701 {
+		t.Fatalf("input = %+v", repo.lastTeacherAssignmentInput)
+	}
+	if repo.lastTeacherAssignmentInput.AssignmentType != TeacherAssignmentTypeCourseTeacher {
+		t.Fatalf("assignment_type = %q", repo.lastTeacherAssignmentInput.AssignmentType)
+	}
+}
+
+func TestHandler_RecordHeadTeacherAssignmentChangeAllowsNoCourse(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	effectiveAt := time.Date(2026, 4, 23, 11, 0, 0, 0, time.UTC)
+	repo := &memorySnapshotRepository{
+		teacherAssignmentHistory: TeacherAssignmentHistory{
+			ID:             21,
+			TenantID:       1,
+			TeacherID:      702,
+			ClassID:        302,
+			AssignmentType: TeacherAssignmentTypeHeadTeacher,
+			ChangeType:     TeacherAssignmentChangeAssign,
+			EffectiveFrom:  effectiveAt,
+			OperatorID:     1,
+			CreatedAt:      effectiveAt,
+		},
+	}
+	router := newSnapshotTestRouter(repo, fakeSnapshotParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      1,
+			UserType:    "sys_admin",
+			Permissions: []string{"org:manage"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performSnapshotRequest(router, http.MethodPost, "/api/v1/teacher-assignment-changes", map[string]any{
+		"teacher_id":      702,
+		"class_id":        302,
+		"assignment_type": "head_teacher",
+		"change_type":     "assign",
+		"effective_at":    effectiveAt.Format(time.RFC3339),
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body snapshotEnvelope[TeacherAssignmentHistory]
+	decodeSnapshotBody(t, rec, &body)
+	if body.Data.AssignmentType != TeacherAssignmentTypeHeadTeacher || body.Data.CourseID != nil {
+		t.Fatalf("body = %+v", body.Data)
+	}
+	if repo.lastTeacherAssignmentInput.CourseID != 0 || repo.lastTeacherAssignmentInput.AssignmentType != TeacherAssignmentTypeHeadTeacher {
 		t.Fatalf("input = %+v", repo.lastTeacherAssignmentInput)
 	}
 }

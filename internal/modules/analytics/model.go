@@ -41,6 +41,7 @@ const ExamAttemptStatusNotStarted = "not_started"
 type ExamOverviewQuery struct {
 	TenantID      int64
 	ExamID        int64
+	TeacherID     int64
 	AttemptStatus string
 	ReviewStatus  string
 	Keyword       string
@@ -419,6 +420,8 @@ type Repository interface {
 	UpsertExamAttemptQuestionReview(ctx context.Context, command UpsertExamAttemptQuestionReviewCommand) (ExamAttemptQuestionReviewResult, error)
 	ClassCourseExists(ctx context.Context, tenantID int64, classID int64, courseID int64) (bool, error)
 	TeacherCanViewClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
+	TeacherCanViewExam(ctx context.Context, tenantID int64, teacherID int64, examID int64) (bool, error)
+	TeacherCanReviewExamAttempt(ctx context.Context, tenantID int64, teacherID int64, attemptID int64) (bool, error)
 	GetClassPracticeSummary(ctx context.Context, query ClassPracticeSummaryQuery) (ClassPracticeSummary, error)
 	ListClassPracticeStudents(ctx context.Context, query ClassPracticeSummaryQuery) (PageResult[ClassPracticeStudentItem], error)
 	ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error)

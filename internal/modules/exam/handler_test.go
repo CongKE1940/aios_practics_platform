@@ -74,6 +74,40 @@ func TestHandler_CreateExamSuccess(t *testing.T) {
 	}
 }
 
+func TestHandler_TeacherCanCreateExamWithoutPublishPermission(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:  1,
+			UserID:    7,
+			UserType:  "teacher",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performExamJSONRequest(router, http.MethodPost, "/api/v1/exams", map[string]any{
+		"name":             "教师自建考试",
+		"exam_mode":        "fixed",
+		"start_time":       "2026-04-23T09:00:00+08:00",
+		"end_time":         "2026-04-23T11:00:00+08:00",
+		"duration_minutes": 90,
+		"targets": []map[string]any{
+			{"target_type": "class", "target_id": 101},
+		},
+		"fixed_questions": []map[string]any{
+			{"question_id": 11, "question_version_id": 111, "score": 5, "display_order": 1},
+		},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandler_CreateRandomAssemblyExamSuccess(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -186,26 +220,145 @@ func TestHandler_CreateExamFromExistingPaperSuccess(t *testing.T) {
 	}
 }
 
-func TestHandler_ExamEndpointsRequirePublishPermission(t *testing.T) {
+func TestHandler_StudentCanCreatePrivateSelfTestExam(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
 	repo := newMemoryExamRepository()
 	handler := NewHandler(NewService(repo), fakeExamTokenParser{
 		claims: auth.AccessClaims{
-			TenantID:    1,
-			UserID:      7,
-			UserType:    "teacher",
-			Permissions: []string{"org:manage"},
-			TokenType:   auth.TokenTypeAccess,
+			TenantID:  1,
+			UserID:    10001,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
 		},
 	})
 
 	router := gin.New()
 	handler.RegisterRoutes(router.Group("/api/v1"))
 
-	rec := performExamAuthorizedRequest(router, http.MethodGet, "/api/v1/exams", nil, "token")
-	if rec.Code != http.StatusForbidden {
+	rec := performExamJSONRequest(router, http.MethodPost, "/api/v1/exams", map[string]any{
+		"name":             "学生自测考试",
+		"exam_mode":        "fixed",
+		"start_time":       "2026-04-23T09:00:00+08:00",
+		"end_time":         "2026-04-23T11:00:00+08:00",
+		"duration_minutes": 90,
+		"targets": []map[string]any{
+			{"target_type": "class", "target_id": 101},
+		},
+		"fixed_questions": []map[string]any{
+			{"question_id": 11, "question_version_id": 111, "score": 5, "display_order": 1},
+		},
+	})
+	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var payload examEnvelope[ExamDetail]
+	decodeExamBody(t, rec, &payload)
+	if payload.Data.OwnerOrgType != OwnerOrgTypeUser || payload.Data.OwnerOrgID != 10001 {
+		t.Fatalf("owner = %s:%d", payload.Data.OwnerOrgType, payload.Data.OwnerOrgID)
+	}
+	if len(payload.Data.Targets) != 1 || payload.Data.Targets[0].TargetType != TargetTypeUser || payload.Data.Targets[0].TargetID != 10001 {
+		t.Fatalf("targets = %+v", payload.Data.Targets)
+	}
+
+	publishRec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(payload.Data.ID, 10)+"/publish", nil, "token")
+	if publishRec.Code != http.StatusOK {
+		t.Fatalf("publish status = %d, body = %s", publishRec.Code, publishRec.Body.String())
+	}
+}
+
+func TestService_TeacherCanCreateCourseExamForOwnCourse(t *testing.T) {
+	repo := newTeacherScopedExamRepository()
+	repo.teachCourses[10] = true
+	service := NewService(repo)
+
+	created, err := service.CreateExam(context.Background(), teacherExamScope(), ExamInput{
+		Name:            "课程考试",
+		ExamMode:        ExamModeFixed,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeCourse, TargetID: 10},
+		},
+		FixedQuestions: []ExamFixedQuestionInput{
+			{QuestionID: 11, QuestionVersionID: 111, Score: 5, DisplayOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
+	}
+	if len(created.Targets) != 1 || created.Targets[0].TargetType != TargetTypeCourse || created.Targets[0].TargetID != 10 {
+		t.Fatalf("targets = %+v", created.Targets)
+	}
+}
+
+func TestService_TeacherCanCreateClassExamForOwnCourse(t *testing.T) {
+	repo := newTeacherScopedExamRepository()
+	repo.teachClassCourses[[2]int64{301, 10}] = true
+	service := NewService(repo)
+
+	_, err := service.CreateExam(context.Background(), teacherExamScope(), ExamInput{
+		Name:            "班级课程考试",
+		ExamMode:        ExamModeRandom,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 301},
+		},
+		PaperRules: []ExamPaperRule{
+			{QuestionType: "single_choice", ScorePerQuestion: 5, QuestionCount: 2, CourseID: int64Ptr(10)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
+	}
+}
+
+func TestService_TeacherCannotCreateNoCourseClassExamUnlessHeadTeacher(t *testing.T) {
+	repo := newTeacherScopedExamRepository()
+	service := NewService(repo)
+
+	_, err := service.CreateExam(context.Background(), teacherExamScope(), ExamInput{
+		Name:            "无课程班级考试",
+		ExamMode:        ExamModeRandom,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 301},
+		},
+		PaperRules: []ExamPaperRule{
+			{QuestionType: "single_choice", ScorePerQuestion: 5, QuestionCount: 2},
+		},
+	})
+	if err != ErrForbidden {
+		t.Fatalf("CreateExam() error = %v, want %v", err, ErrForbidden)
+	}
+}
+
+func TestService_HeadTeacherCanCreateMixedOrNoCourseClassExam(t *testing.T) {
+	repo := newTeacherScopedExamRepository()
+	repo.manageClasses[301] = true
+	service := NewService(repo)
+
+	_, err := service.CreateExam(context.Background(), teacherExamScope(), ExamInput{
+		Name:            "班主任综合考试",
+		ExamMode:        ExamModeRandom,
+		StartTime:       mustParseExamTime(t, "2026-04-23T09:00:00+08:00"),
+		EndTime:         mustParseExamTime(t, "2026-04-23T10:00:00+08:00"),
+		DurationMinutes: 60,
+		Targets: []ExamTargetInput{
+			{TargetType: TargetTypeClass, TargetID: 301},
+		},
+		PaperRules: []ExamPaperRule{
+			{QuestionType: "single_choice", ScorePerQuestion: 5, QuestionCount: 2, CourseID: int64Ptr(10)},
+			{QuestionType: "judge", ScorePerQuestion: 5, QuestionCount: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExam() error = %v", err)
 	}
 }
 
@@ -771,10 +924,65 @@ func newMemoryExamRepository() *memoryExamRepository {
 	}
 }
 
+type teacherScopedExamRepository struct {
+	*memoryExamRepository
+	manageClasses       map[int64]bool
+	teachClassCourses   map[[2]int64]bool
+	teachCourses        map[int64]bool
+	manageStudents      map[int64]bool
+	teachStudentCourses map[[2]int64]bool
+}
+
+func newTeacherScopedExamRepository() *teacherScopedExamRepository {
+	return &teacherScopedExamRepository{
+		memoryExamRepository: newMemoryExamRepository(),
+		manageClasses:        map[int64]bool{},
+		teachClassCourses:    map[[2]int64]bool{},
+		teachCourses:         map[int64]bool{},
+		manageStudents:       map[int64]bool{},
+		teachStudentCourses:  map[[2]int64]bool{},
+	}
+}
+
+func teacherExamScope() Scope {
+	return Scope{
+		TenantID:    1,
+		UserID:      7,
+		UserType:    "teacher",
+		Permissions: []string{"exam:publish"},
+	}
+}
+
+func (repo *teacherScopedExamRepository) TeacherCanManageClass(_ context.Context, _ int64, _ int64, classID int64) (bool, error) {
+	return repo.manageClasses[classID], nil
+}
+
+func (repo *teacherScopedExamRepository) TeacherCanTeachClassCourse(_ context.Context, _ int64, _ int64, classID int64, courseID int64) (bool, error) {
+	return repo.teachClassCourses[[2]int64{classID, courseID}], nil
+}
+
+func (repo *teacherScopedExamRepository) TeacherCanTeachCourse(_ context.Context, _ int64, _ int64, courseID int64) (bool, error) {
+	return repo.teachCourses[courseID], nil
+}
+
+func (repo *teacherScopedExamRepository) TeacherCanManageStudent(_ context.Context, _ int64, _ int64, studentID int64) (bool, error) {
+	return repo.manageStudents[studentID], nil
+}
+
+func (repo *teacherScopedExamRepository) TeacherCanTeachStudentCourse(_ context.Context, _ int64, _ int64, studentID int64, courseID int64) (bool, error) {
+	return repo.teachStudentCourses[[2]int64{studentID, courseID}], nil
+}
+
 func (repo *memoryExamRepository) ListExams(_ context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error) {
 	items := make([]Exam, 0, len(repo.items))
 	for _, item := range repo.items {
 		if item.TenantID != scope.TenantID {
+			continue
+		}
+		if item.OwnerOrgType == OwnerOrgTypeUser && item.CreatorID != scope.UserID {
+			continue
+		}
+		if scope.UserType == "student" && item.OwnerOrgType == OwnerOrgTypeUser && !examTargetsUser(item.Targets, scope.UserID) {
 			continue
 		}
 		if !containsPermission(scope.Permissions, "exam:publish") && item.Status != ExamStatusPublished {
@@ -787,12 +995,18 @@ func (repo *memoryExamRepository) ListExams(_ context.Context, scope Scope, filt
 
 func (repo *memoryExamRepository) CreateExam(_ context.Context, scope Scope, input ExamInput) (ExamDetail, error) {
 	now := time.Date(2026, 4, 23, 8, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	ownerOrgType := OwnerOrgTypeSchool
+	ownerOrgID := scope.TenantID
+	if scope.UserType == "student" {
+		ownerOrgType = OwnerOrgTypeUser
+		ownerOrgID = scope.UserID
+	}
 	item := ExamDetail{
 		Exam: Exam{
 			ID:              repo.nextID,
 			TenantID:        scope.TenantID,
-			OwnerOrgType:    OwnerOrgTypeSchool,
-			OwnerOrgID:      scope.TenantID,
+			OwnerOrgType:    ownerOrgType,
+			OwnerOrgID:      ownerOrgID,
 			CreatorID:       scope.UserID,
 			Name:            input.Name,
 			ExamMode:        input.ExamMode,
@@ -836,6 +1050,13 @@ func (repo *memoryExamRepository) CreateExam(_ context.Context, scope Scope, inp
 func (repo *memoryExamRepository) GetExam(_ context.Context, scope Scope, id int64) (ExamDetail, error) {
 	item, ok := repo.items[id]
 	if !ok || item.TenantID != scope.TenantID {
+		return ExamDetail{}, ErrNotFound
+	}
+	if scope.UserType == "student" {
+		if item.OwnerOrgType != OwnerOrgTypeUser || item.CreatorID != scope.UserID {
+			return ExamDetail{}, ErrNotFound
+		}
+	} else if item.OwnerOrgType == OwnerOrgTypeUser && item.CreatorID != scope.UserID {
 		return ExamDetail{}, ErrNotFound
 	}
 	return item, nil
@@ -1181,4 +1402,17 @@ func mustParseExamTime(t *testing.T, value string) time.Time {
 		t.Fatalf("time.Parse() error = %v", err)
 	}
 	return parsed
+}
+
+func int64Ptr(value int64) *int64 {
+	return &value
+}
+
+func examTargetsUser(targets []ExamTarget, userID int64) bool {
+	for _, target := range targets {
+		if target.TargetType == TargetTypeUser && target.TargetID == userID {
+			return true
+		}
+	}
+	return false
 }

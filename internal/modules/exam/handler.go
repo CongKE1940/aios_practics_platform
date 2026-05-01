@@ -162,7 +162,7 @@ func (handler *Handler) createExam(ctx *gin.Context) {
 	if !handler.ready(ctx) {
 		return
 	}
-	scope, ok := handler.authorize(ctx)
+	scope, ok := handler.authorizeNoPermission(ctx)
 	if !ok {
 		return
 	}
@@ -220,7 +220,7 @@ func (handler *Handler) publishExam(ctx *gin.Context) {
 	if !handler.ready(ctx) {
 		return
 	}
-	scope, id, ok := handler.authorizeWithID(ctx)
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
 	if !ok {
 		return
 	}
@@ -330,7 +330,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 	if !ok {
 		return Scope{}, false
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 		return Scope{}, false
 	}
@@ -386,6 +386,8 @@ func writeExamError(ctx *gin.Context, err error) {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, response.Failure(CodeNotFound, "资源不存在", requestID(ctx)))
+	case errors.Is(err, ErrQuestionPoolInsufficient):
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "题库题量不足", requestID(ctx)))
 	default:
 		ctx.JSON(http.StatusInternalServerError, response.Failure(50000, "服务异常", requestID(ctx)))
 	}

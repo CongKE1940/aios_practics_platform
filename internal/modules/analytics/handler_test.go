@@ -1974,6 +1974,8 @@ type memoryAnalyticsRepository struct {
 	examOverviewStudents                            []ExamOverviewStudentItem
 	examOverviewExportStudents                      []ExamOverviewStudentItem
 	lastExamOverviewQuery                           ExamOverviewQuery
+	teacherExamAllowed                              bool
+	teacherAttemptAllowed                           bool
 	examAttemptReviewResult                         ExamAttemptReviewResult
 	lastExamAttemptReviewQuery                      ExamAttemptReviewQuery
 	examAttemptQuestionReviewResult                 ExamAttemptQuestionReviewResult
@@ -1981,7 +1983,10 @@ type memoryAnalyticsRepository struct {
 }
 
 func newMemoryAnalyticsRepository() *memoryAnalyticsRepository {
-	return &memoryAnalyticsRepository{}
+	return &memoryAnalyticsRepository{
+		teacherExamAllowed:    true,
+		teacherAttemptAllowed: true,
+	}
 }
 
 func (repo *memoryAnalyticsRepository) GetAdminOverview(_ context.Context, _ int64) (AdminOverviewResult, error) {
@@ -2085,6 +2090,14 @@ func (repo *memoryAnalyticsRepository) ListExamOverviewStudents(_ context.Contex
 func (repo *memoryAnalyticsRepository) ListExamOverviewExportStudents(_ context.Context, query ExamOverviewQuery) ([]ExamOverviewStudentItem, error) {
 	repo.lastExamOverviewQuery = query
 	return append([]ExamOverviewStudentItem{}, repo.examOverviewExportStudents...), nil
+}
+
+func (repo *memoryAnalyticsRepository) TeacherCanViewExam(_ context.Context, _ int64, _ int64, _ int64) (bool, error) {
+	return repo.teacherExamAllowed, nil
+}
+
+func (repo *memoryAnalyticsRepository) TeacherCanReviewExamAttempt(_ context.Context, _ int64, _ int64, _ int64) (bool, error) {
+	return repo.teacherAttemptAllowed, nil
 }
 
 func (repo *memoryAnalyticsRepository) GetExamAttemptReview(_ context.Context, query ExamAttemptReviewQuery) (ExamAttemptReviewResult, error) {

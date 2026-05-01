@@ -34,7 +34,7 @@ func (handler *AdminHandler) RegisterAdminRoutes(router gin.IRouter) {
 }
 
 func (handler *AdminHandler) listRoles(ctx *gin.Context) {
-	claims, ok := handler.authorize(ctx)
+	claims, ok := handler.authorizeAny(ctx, "tenant:manage", "user:manage")
 	if !ok {
 		return
 	}
@@ -51,7 +51,7 @@ func (handler *AdminHandler) listRoles(ctx *gin.Context) {
 }
 
 func (handler *AdminHandler) createRole(ctx *gin.Context) {
-	claims, ok := handler.authorize(ctx)
+	claims, ok := handler.authorizeAny(ctx, "tenant:manage")
 	if !ok {
 		return
 	}
@@ -60,7 +60,7 @@ func (handler *AdminHandler) createRole(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.CreateRole(ctx.Request.Context(), claims.TenantID, input)
+	result, err := handler.service.CreateRoleWithScope(ctx.Request.Context(), rbacScopeFromClaims(claims), input)
 	if err != nil {
 		writeRBACError(ctx, err)
 		return
@@ -69,7 +69,7 @@ func (handler *AdminHandler) createRole(ctx *gin.Context) {
 }
 
 func (handler *AdminHandler) updateRole(ctx *gin.Context) {
-	claims, id, ok := handler.authorizeWithID(ctx)
+	claims, id, ok := handler.authorizeWithID(ctx, "tenant:manage")
 	if !ok {
 		return
 	}
@@ -78,7 +78,7 @@ func (handler *AdminHandler) updateRole(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.UpdateRole(ctx.Request.Context(), readTenantID(claims), id, input)
+	result, err := handler.service.UpdateRoleWithScope(ctx.Request.Context(), rbacScopeFromClaims(claims), id, input)
 	if err != nil {
 		writeRBACError(ctx, err)
 		return
@@ -87,7 +87,7 @@ func (handler *AdminHandler) updateRole(ctx *gin.Context) {
 }
 
 func (handler *AdminHandler) listPermissions(ctx *gin.Context) {
-	_, ok := handler.authorize(ctx)
+	_, ok := handler.authorizeAny(ctx, "tenant:manage")
 	if !ok {
 		return
 	}
@@ -104,7 +104,7 @@ func (handler *AdminHandler) listPermissions(ctx *gin.Context) {
 }
 
 func (handler *AdminHandler) assignRolePermissions(ctx *gin.Context) {
-	claims, id, ok := handler.authorizeWithID(ctx)
+	claims, id, ok := handler.authorizeWithID(ctx, "tenant:manage")
 	if !ok {
 		return
 	}
@@ -113,7 +113,7 @@ func (handler *AdminHandler) assignRolePermissions(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 		return
 	}
-	result, err := handler.service.AssignRolePermissions(ctx.Request.Context(), readTenantID(claims), id, input)
+	result, err := handler.service.AssignRolePermissionsWithScope(ctx.Request.Context(), rbacScopeFromClaims(claims), id, input)
 	if err != nil {
 		writeRBACError(ctx, err)
 		return
@@ -121,7 +121,7 @@ func (handler *AdminHandler) assignRolePermissions(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
 }
 
-func (handler *AdminHandler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {
+func (handler *AdminHandler) authorizeAny(ctx *gin.Context, targets ...string) (auth.AccessClaims, bool) {
 	token := bearerToken(ctx.GetHeader("Authorization"))
 	if token == "" {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
@@ -132,15 +132,15 @@ func (handler *AdminHandler) authorize(ctx *gin.Context) (auth.AccessClaims, boo
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
-	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "role:manage") {
+	if claims.UserType != "sys_admin" && !containsAnyManagedPermission(claims.Permissions, targets...) {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
 	return claims, true
 }
 
-func (handler *AdminHandler) authorizeWithID(ctx *gin.Context) (auth.AccessClaims, int64, bool) {
-	claims, ok := handler.authorize(ctx)
+func (handler *AdminHandler) authorizeWithID(ctx *gin.Context, targets ...string) (auth.AccessClaims, int64, bool) {
+	claims, ok := handler.authorizeAny(ctx, targets...)
 	if !ok {
 		return auth.AccessClaims{}, 0, false
 	}
@@ -154,6 +154,8 @@ func (handler *AdminHandler) authorizeWithID(ctx *gin.Context) (auth.AccessClaim
 
 func writeRBACError(ctx *gin.Context, err error) {
 	switch {
+	case errors.Is(err, ErrForbidden):
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 	case errors.Is(err, ErrInvalidInput):
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
 	case errors.Is(err, ErrNotFound):
@@ -165,7 +167,19 @@ func writeRBACError(ctx *gin.Context, err error) {
 
 func containsPermission(permissions []string, target string) bool {
 	for _, permission := range permissions {
-		if permission == target || permission == "system:manage" || permission == "tenant:manage" {
+		if permission == target || permission == "system:manage" {
+			return true
+		}
+		if permission == "tenant:manage" && target != "system:manage" {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyManagedPermission(permissions []string, targets ...string) bool {
+	for _, target := range targets {
+		if containsPermission(permissions, target) {
 			return true
 		}
 	}
@@ -173,10 +187,27 @@ func containsPermission(permissions []string, target string) bool {
 }
 
 func readTenantID(claims auth.AccessClaims) int64 {
-	if claims.UserType == "sys_admin" || containsPermission(claims.Permissions, "system:manage") || containsPermission(claims.Permissions, "tenant:manage") {
+	if claims.UserType == "sys_admin" || containsExactPermission(claims.Permissions, "system:manage") {
 		return 0
 	}
 	return claims.TenantID
+}
+
+func containsExactPermission(permissions []string, target string) bool {
+	for _, permission := range permissions {
+		if permission == target {
+			return true
+		}
+	}
+	return false
+}
+
+func rbacScopeFromClaims(claims auth.AccessClaims) Scope {
+	return Scope{
+		TenantID:    claims.TenantID,
+		UserType:    claims.UserType,
+		Permissions: append([]string{}, claims.Permissions...),
+	}
 }
 
 func parseInt(value string) int {

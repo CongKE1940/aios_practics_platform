@@ -99,6 +99,10 @@ func (service *Service) ListTeacherAssignmentHistories(
 	}
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
+	filter.AssignmentType = strings.TrimSpace(strings.ToLower(filter.AssignmentType))
+	if filter.AssignmentType != "" && !isSupportedTeacherAssignmentType(filter.AssignmentType) {
+		return PageResult[TeacherAssignmentHistory]{}, ErrInvalidInput
+	}
 	return service.repo.ListTeacherAssignmentHistories(ctx, readTenantID(scope), filter)
 }
 
@@ -128,14 +132,36 @@ func (service *Service) RecordTeacherAssignmentChange(
 	if !canManageOrg(scope) {
 		return TeacherAssignmentHistory{}, ErrForbidden
 	}
+	input.AssignmentType = strings.TrimSpace(strings.ToLower(input.AssignmentType))
+	if input.AssignmentType == "" {
+		input.AssignmentType = TeacherAssignmentTypeCourseTeacher
+	}
 	input.ChangeType = strings.TrimSpace(strings.ToLower(input.ChangeType))
-	if scope.UserID <= 0 || input.TeacherID <= 0 || input.ClassID <= 0 || input.CourseID <= 0 || input.EffectiveAt.IsZero() {
+	if scope.UserID <= 0 || input.TeacherID <= 0 || input.ClassID <= 0 || input.EffectiveAt.IsZero() {
 		return TeacherAssignmentHistory{}, ErrInvalidInput
+	}
+	if !isSupportedTeacherAssignmentType(input.AssignmentType) {
+		return TeacherAssignmentHistory{}, ErrInvalidInput
+	}
+	if input.AssignmentType == TeacherAssignmentTypeCourseTeacher && input.CourseID <= 0 {
+		return TeacherAssignmentHistory{}, ErrInvalidInput
+	}
+	if input.AssignmentType == TeacherAssignmentTypeHeadTeacher {
+		input.CourseID = 0
 	}
 	if input.ChangeType != TeacherAssignmentChangeAssign && input.ChangeType != TeacherAssignmentChangeUnassign {
 		return TeacherAssignmentHistory{}, ErrInvalidInput
 	}
 	return service.repo.ApplyTeacherAssignmentChange(ctx, scope.TenantID, scope.UserID, input)
+}
+
+func isSupportedTeacherAssignmentType(value string) bool {
+	switch value {
+	case TeacherAssignmentTypeCourseTeacher, TeacherAssignmentTypeHeadTeacher:
+		return true
+	default:
+		return false
+	}
 }
 
 func isSupportedStudentTransitionType(value string) bool {

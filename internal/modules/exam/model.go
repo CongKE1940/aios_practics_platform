@@ -13,6 +13,7 @@ const (
 	CodeNotFound     = 40400
 
 	OwnerOrgTypeSchool = "school"
+	OwnerOrgTypeUser   = "user"
 	SourceTypeManual   = "manual"
 
 	ExamStatusDraft     = "draft"

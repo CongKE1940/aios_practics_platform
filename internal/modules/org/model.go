@@ -9,6 +9,7 @@ import (
 const (
 	StatusActive           = "active"
 	StatusDisabled         = "disabled"
+	UserTypeSchoolAdmin    = "school_admin"
 	ObjectTypeSchool       = 1
 	ObjectTypeOrganization = 2
 	CodeInvalidInput       = 40000
@@ -38,18 +39,38 @@ type PageResult[T any] struct {
 }
 
 type School struct {
-	ID              int64     `json:"id"`
-	TenantID        int64     `json:"tenant_id"`
-	ObjectType      int       `json:"object_type"`
-	ObjectTypeLabel string    `json:"object_type_label,omitempty"`
-	Code            string    `json:"code"`
-	Name            string    `json:"name"`
-	EnglishName     string    `json:"english_name,omitempty"`
-	Address         string    `json:"address,omitempty"`
-	LogoURL         string    `json:"logo_url,omitempty"`
-	Status          string    `json:"status"`
-	CreatedAt       time.Time `json:"created_at,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	ID              int64                     `json:"id"`
+	TenantID        int64                     `json:"tenant_id"`
+	ObjectType      int                       `json:"object_type"`
+	ObjectTypeLabel string                    `json:"object_type_label,omitempty"`
+	Code            string                    `json:"code"`
+	Name            string                    `json:"name"`
+	EnglishName     string                    `json:"english_name,omitempty"`
+	Address         string                    `json:"address,omitempty"`
+	LogoURL         string                    `json:"logo_url,omitempty"`
+	Status          string                    `json:"status"`
+	CreatedAt       time.Time                 `json:"created_at,omitempty"`
+	UpdatedAt       time.Time                 `json:"updated_at,omitempty"`
+	DefaultAdmin    *DefaultOrganizationAdmin `json:"default_admin,omitempty"`
+}
+
+type DefaultOrganizationAdmin struct {
+	TenantID        int64  `json:"tenant_id"`
+	TenantCode      string `json:"tenant_code"`
+	UserID          int64  `json:"user_id"`
+	Username        string `json:"username"`
+	DisplayName     string `json:"display_name"`
+	UserType        string `json:"user_type"`
+	RoleID          int64  `json:"role_id,omitempty"`
+	InitialPassword string `json:"initial_password,omitempty"`
+}
+
+type DefaultAdminSeed struct {
+	Username        string
+	DisplayName     string
+	UserType        string
+	PasswordHash    string
+	InitialPassword string
 }
 
 type Grade struct {
@@ -174,6 +195,7 @@ type Repository interface {
 	ListSchools(ctx context.Context, tenantID int64, filter SchoolListFilter) (PageResult[School], error)
 	GetSchool(ctx context.Context, tenantID int64, id int64) (School, error)
 	CreateSchool(ctx context.Context, school School) (School, error)
+	CreateSchoolWithDefaultAdmin(ctx context.Context, school School, admin DefaultAdminSeed) (School, error)
 	UpdateSchool(ctx context.Context, school School) (School, error)
 	DisableSchool(ctx context.Context, tenantID int64, id int64) error
 	ListGrades(ctx context.Context, tenantID int64, filter GradeListFilter) (PageResult[Grade], error)

@@ -3,6 +3,7 @@ package org
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -101,6 +102,114 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		return School{}, err
 	}
 	return repo.GetSchool(ctx, school.TenantID, id)
+}
+
+func (repo *MySQLRepository) CreateSchoolWithDefaultAdmin(ctx context.Context, school School, admin DefaultAdminSeed) (School, error) {
+	tx, err := repo.beginTx(ctx)
+	if err != nil {
+		return School{}, err
+	}
+	defer tx.Rollback()
+
+	tenantCode := defaultTenantCode(school.Code)
+	tenantType := tenantTypeForObjectType(school.ObjectType)
+	tenantResult, err := execTxContext(
+		ctx,
+		tx,
+		`INSERT INTO tenants (code, name, tenant_type, status, remark) VALUES (?, ?, ?, ?, ?)`,
+		tenantCode,
+		school.Name,
+		tenantType,
+		StatusActive,
+		"系统管理员创建学校或组织时自动生成",
+	)
+	if err != nil {
+		return School{}, err
+	}
+	tenantID, err := tenantResult.LastInsertId()
+	if err != nil {
+		return School{}, err
+	}
+
+	school.TenantID = tenantID
+	schoolResult, err := execTxContext(
+		ctx,
+		tx,
+		`INSERT INTO schools (tenant_id, object_type, code, name, english_name, address, logo_url, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		school.TenantID,
+		school.ObjectType,
+		school.Code,
+		school.Name,
+		nullString(school.EnglishName),
+		nullString(school.Address),
+		nullString(school.LogoURL),
+		school.Status,
+	)
+	if err != nil {
+		return School{}, err
+	}
+	schoolID, err := schoolResult.LastInsertId()
+	if err != nil {
+		return School{}, err
+	}
+
+	roleID, err := createDefaultAdminRole(ctx, tx, tenantID)
+	if err != nil {
+		return School{}, err
+	}
+	if err := assignDefaultAdminPermissions(ctx, tx, roleID); err != nil {
+		return School{}, err
+	}
+	if operatorRoleID, err := createDefaultOperatorRole(ctx, tx, tenantID); err != nil {
+		return School{}, err
+	} else if err := assignDefaultOperatorPermissions(ctx, tx, operatorRoleID); err != nil {
+		return School{}, err
+	}
+
+	userResult, err := execTxContext(
+		ctx,
+		tx,
+		`INSERT INTO users (tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tenantID,
+		admin.Username,
+		nil,
+		nil,
+		admin.PasswordHash,
+		admin.DisplayName,
+		admin.UserType,
+		StatusActive,
+		true,
+	)
+	if err != nil {
+		return School{}, err
+	}
+	userID, err := userResult.LastInsertId()
+	if err != nil {
+		return School{}, err
+	}
+	if _, err := execTxContext(ctx, tx, `INSERT INTO user_roles (tenant_id, user_id, role_id) VALUES (?, ?, ?)`, tenantID, userID, roleID); err != nil {
+		return School{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return School{}, err
+	}
+
+	created, err := repo.GetSchool(ctx, tenantID, schoolID)
+	if err != nil {
+		return School{}, err
+	}
+	created.DefaultAdmin = &DefaultOrganizationAdmin{
+		TenantID:        tenantID,
+		TenantCode:      tenantCode,
+		UserID:          userID,
+		Username:        admin.Username,
+		DisplayName:     admin.DisplayName,
+		UserType:        admin.UserType,
+		RoleID:          roleID,
+		InitialPassword: admin.InitialPassword,
+	}
+	return created, nil
 }
 
 func (repo *MySQLRepository) UpdateSchool(ctx context.Context, school School) (School, error) {
@@ -570,6 +679,104 @@ func nullInt(value *int) any {
 	}
 	return *value
 }
+
+func defaultTenantCode(schoolCode string) string {
+	return strings.ToLower(strings.TrimSpace(schoolCode))
+}
+
+func tenantTypeForObjectType(objectType int) string {
+	if objectType == ObjectTypeOrganization {
+		return "organization"
+	}
+	return "school"
+}
+
+func createDefaultAdminRole(ctx context.Context, tx *sql.Tx, tenantID int64) (int64, error) {
+	result, err := execTxContext(
+		ctx,
+		tx,
+		`INSERT INTO roles (tenant_id, code, name, role_type, data_scope_type, status, remark) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		tenantID,
+		"school_admin",
+		"学校/组织管理员",
+		"builtin",
+		"tenant",
+		StatusActive,
+		"系统自动创建的默认组织管理员角色",
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func assignDefaultAdminPermissions(ctx context.Context, tx *sql.Tx, roleID int64) error {
+	return assignRolePermissionsByCodes(ctx, tx, roleID, defaultAdminPermissionCodes)
+}
+
+func createDefaultOperatorRole(ctx context.Context, tx *sql.Tx, tenantID int64) (int64, error) {
+	result, err := execTxContext(
+		ctx,
+		tx,
+		`INSERT INTO roles (tenant_id, code, name, role_type, data_scope_type, status, remark) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		tenantID,
+		"org_operator",
+		"学校/组织协管员",
+		"builtin",
+		"tenant",
+		StatusActive,
+		"系统自动创建的低权限组织管理员角色",
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func assignDefaultOperatorPermissions(ctx context.Context, tx *sql.Tx, roleID int64) error {
+	return assignRolePermissionsByCodes(ctx, tx, roleID, defaultOperatorPermissionCodes)
+}
+
+func assignRolePermissionsByCodes(ctx context.Context, tx *sql.Tx, roleID int64, permissionCodes []string) error {
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(permissionCodes)), ",")
+	query := fmt.Sprintf(
+		`INSERT IGNORE INTO role_permissions (role_id, permission_id) SELECT ?, id FROM permissions WHERE code IN (%s)`,
+		placeholders,
+	)
+	args := make([]any, 0, len(permissionCodes)+1)
+	args = append(args, roleID)
+	for _, code := range permissionCodes {
+		args = append(args, code)
+	}
+	_, err := execTxContext(ctx, tx, query, args...)
+	return err
+}
+
+var defaultAdminPermissionCodes = []string{
+	"auth:login",
+	"user:manage",
+	"role:manage",
+	"org:manage",
+	"question_bank:manage",
+	"question:manage",
+	"practice:use",
+	"exam:manage",
+	"notice:manage",
+	"import:manage",
+	"file:upload",
+	"analytics:view",
+	"audit:view",
+}
+
+var defaultOperatorPermissionCodes = []string{
+	"auth:login",
+	"user:manage",
+	"practice:use",
+	"notice:manage",
+	"file:upload",
+	"analytics:view",
+}
+
 func wrapNotFound(err error) error {
 	if err == nil {
 		return nil

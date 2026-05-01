@@ -14,6 +14,7 @@ import (
 type AuthService interface {
 	ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error)
 	Login(ctx context.Context, command LoginCommand) (LoginResult, error)
+	ChangeInitialPassword(ctx context.Context, command ChangeInitialPasswordCommand) error
 	Refresh(ctx context.Context, command RefreshCommand) (LoginResult, error)
 	CurrentUser(ctx context.Context, accessToken string) (CurrentUser, error)
 	Logout(ctx context.Context, accessToken string) error
@@ -30,6 +31,7 @@ func NewHandler(service AuthService) *Handler {
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/auth/login-organizations", handler.listLoginOrganizations)
 	router.POST("/auth/login", handler.login)
+	router.POST("/auth/change-initial-password", handler.changeInitialPassword)
 	router.POST("/auth/refresh", handler.refresh)
 	router.GET("/auth/me", handler.me)
 	router.POST("/auth/logout", handler.logout)
@@ -53,6 +55,10 @@ func (handler *Handler) login(ctx *gin.Context) {
 
 	result, err := handler.service.Login(ctx.Request.Context(), command)
 	if err != nil {
+		if errors.Is(err, ErrPasswordChangeRequired) {
+			ctx.JSON(http.StatusPreconditionRequired, response.Failure(CodePasswordChangeRequired, "需要修改初始密码", requestID(ctx)))
+			return
+		}
 		if errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrUserDisabled) {
 			ctx.JSON(http.StatusUnauthorized, response.Failure(CodeInvalidCredentials, "用户名或密码错误", requestID(ctx)))
 			return
@@ -62,6 +68,28 @@ func (handler *Handler) login(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) changeInitialPassword(ctx *gin.Context) {
+	var command ChangeInitialPasswordCommand
+	if err := ctx.ShouldBindJSON(&command); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidRequest, "请求参数错误", requestID(ctx)))
+		return
+	}
+
+	if err := handler.service.ChangeInitialPassword(ctx.Request.Context(), command); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPassword):
+			ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidRequest, "新密码至少 8 位且不能与初始密码相同", requestID(ctx)))
+		case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrUserDisabled):
+			ctx.JSON(http.StatusUnauthorized, response.Failure(CodeInvalidCredentials, "用户名或密码错误", requestID(ctx)))
+		default:
+			ctx.JSON(http.StatusInternalServerError, response.Failure(50000, "服务异常", requestID(ctx)))
+		}
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.Success(true, requestID(ctx)))
 }
 
 func (handler *Handler) refresh(ctx *gin.Context) {

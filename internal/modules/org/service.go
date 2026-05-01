@@ -2,9 +2,13 @@ package org
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Service struct {
@@ -49,7 +53,7 @@ func (service *Service) CreateSchool(ctx context.Context, scope Scope, input Sch
 		return School{}, ErrInvalidInput
 	}
 
-	return service.repo.CreateSchool(ctx, School{
+	school := School{
 		TenantID:    scope.TenantID,
 		ObjectType:  objectType,
 		Code:        generateSchoolCode(objectType),
@@ -58,7 +62,17 @@ func (service *Service) CreateSchool(ctx context.Context, scope Scope, input Sch
 		Address:     strings.TrimSpace(input.Address),
 		LogoURL:     strings.TrimSpace(input.LogoURL),
 		Status:      StatusActive,
-	})
+	}
+
+	if shouldCreateDefaultOrganizationAdmin(scope) {
+		admin, err := newDefaultAdminSeed(objectType)
+		if err != nil {
+			return School{}, err
+		}
+		return service.repo.CreateSchoolWithDefaultAdmin(ctx, school, admin)
+	}
+
+	return service.repo.CreateSchool(ctx, school)
 }
 
 func (service *Service) UpdateSchool(ctx context.Context, scope Scope, id int64, input SchoolInput) (School, error) {
@@ -343,7 +357,7 @@ func (service *Service) DisableCourse(ctx context.Context, scope Scope, id int64
 }
 
 func normalizeSchoolListFilter(filter SchoolListFilter) SchoolListFilter {
-	filter.ObjectType = normalizeObjectType(filter.ObjectType)
+	filter.ObjectType = normalizeObjectTypeFilter(filter.ObjectType)
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
@@ -378,12 +392,78 @@ func normalizeObjectType(value int) int {
 	}
 }
 
+func normalizeObjectTypeFilter(value int) int {
+	switch value {
+	case 0:
+		return 0
+	case ObjectTypeSchool:
+		return ObjectTypeSchool
+	case ObjectTypeOrganization:
+		return ObjectTypeOrganization
+	default:
+		return 0
+	}
+}
+
 func generateSchoolCode(objectType int) string {
 	prefix := "SCH"
 	if objectType == ObjectTypeOrganization {
 		prefix = "ORG"
 	}
 	return fmt.Sprintf("%s%d", prefix, time.Now().UnixNano())
+}
+
+func shouldCreateDefaultOrganizationAdmin(scope Scope) bool {
+	if scope.UserType == "sys_admin" {
+		return true
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" {
+			return true
+		}
+	}
+	return false
+}
+
+func newDefaultAdminSeed(objectType int) (DefaultAdminSeed, error) {
+	password, err := generateInitialPassword()
+	if err != nil {
+		return DefaultAdminSeed{}, err
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return DefaultAdminSeed{}, err
+	}
+	return DefaultAdminSeed{
+		Username:        "admin",
+		DisplayName:     defaultAdminDisplayName(objectType),
+		UserType:        UserTypeSchoolAdmin,
+		PasswordHash:    string(passwordHash),
+		InitialPassword: password,
+	}, nil
+}
+
+func defaultAdminDisplayName(objectType int) string {
+	if objectType == ObjectTypeOrganization {
+		return "组织管理员"
+	}
+	return "学校管理员"
+}
+
+func generateInitialPassword() (string, error) {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#%+-_"
+	const length = 18
+
+	result := make([]byte, length)
+	max := big.NewInt(int64(len(alphabet)))
+	for index := range result {
+		value, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		result[index] = alphabet[value.Int64()]
+	}
+	return string(result), nil
 }
 
 func readTenantID(scope Scope) int64 {

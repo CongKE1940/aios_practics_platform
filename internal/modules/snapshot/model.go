@@ -24,6 +24,9 @@ const (
 	TeacherAssignmentChangeAssign   = "assign"
 	TeacherAssignmentChangeUnassign = "unassign"
 
+	TeacherAssignmentTypeCourseTeacher = "course_teacher"
+	TeacherAssignmentTypeHeadTeacher   = "head_teacher"
+
 	StudentEnrollmentActive         = "active"
 	StudentEnrollmentGraduated      = "graduated"
 	StudentEnrollmentLeftSchool     = "left_school"
@@ -81,33 +84,34 @@ type EntitySnapshot struct {
 }
 
 type StudentTransition struct {
-	ID           int64      `json:"id"`
-	TenantID     int64      `json:"tenant_id"`
-	StudentID    int64      `json:"student_id"`
-	TransitionType string   `json:"transition_type"`
-	FromSchoolID *int64     `json:"from_school_id,omitempty"`
-	FromGradeID  *int64     `json:"from_grade_id,omitempty"`
-	FromClassID  *int64     `json:"from_class_id,omitempty"`
-	ToSchoolID   *int64     `json:"to_school_id,omitempty"`
-	ToGradeID    *int64     `json:"to_grade_id,omitempty"`
-	ToClassID    *int64     `json:"to_class_id,omitempty"`
-	OccurredAt   time.Time  `json:"occurred_at"`
-	OperatorID   int64      `json:"operator_id"`
-	Remark       string     `json:"remark,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID             int64     `json:"id"`
+	TenantID       int64     `json:"tenant_id"`
+	StudentID      int64     `json:"student_id"`
+	TransitionType string    `json:"transition_type"`
+	FromSchoolID   *int64    `json:"from_school_id,omitempty"`
+	FromGradeID    *int64    `json:"from_grade_id,omitempty"`
+	FromClassID    *int64    `json:"from_class_id,omitempty"`
+	ToSchoolID     *int64    `json:"to_school_id,omitempty"`
+	ToGradeID      *int64    `json:"to_grade_id,omitempty"`
+	ToClassID      *int64    `json:"to_class_id,omitempty"`
+	OccurredAt     time.Time `json:"occurred_at"`
+	OperatorID     int64     `json:"operator_id"`
+	Remark         string    `json:"remark,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type TeacherAssignmentHistory struct {
-	ID            int64      `json:"id"`
-	TenantID      int64      `json:"tenant_id"`
-	TeacherID     int64      `json:"teacher_id"`
-	ClassID       int64      `json:"class_id"`
-	CourseID      int64      `json:"course_id"`
-	ChangeType    string     `json:"change_type"`
-	EffectiveFrom time.Time  `json:"effective_from"`
-	EffectiveTo   *time.Time `json:"effective_to,omitempty"`
-	OperatorID    int64      `json:"operator_id"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID             int64      `json:"id"`
+	TenantID       int64      `json:"tenant_id"`
+	TeacherID      int64      `json:"teacher_id"`
+	ClassID        int64      `json:"class_id"`
+	CourseID       *int64     `json:"course_id,omitempty"`
+	AssignmentType string     `json:"assignment_type"`
+	ChangeType     string     `json:"change_type"`
+	EffectiveFrom  time.Time  `json:"effective_from"`
+	EffectiveTo    *time.Time `json:"effective_to,omitempty"`
+	OperatorID     int64      `json:"operator_id"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type AuditLogListFilter struct {
@@ -125,18 +129,19 @@ type EntitySnapshotListFilter struct {
 }
 
 type StudentTransitionListFilter struct {
-	StudentID       int64
-	TransitionType  string
-	Page            int
-	PageSize        int
+	StudentID      int64
+	TransitionType string
+	Page           int
+	PageSize       int
 }
 
 type TeacherAssignmentHistoryListFilter struct {
-	TeacherID int64
-	ClassID   int64
-	CourseID  int64
-	Page      int
-	PageSize  int
+	TeacherID      int64
+	ClassID        int64
+	CourseID       int64
+	AssignmentType string
+	Page           int
+	PageSize       int
 }
 
 type StudentTransitionInput struct {
@@ -148,11 +153,12 @@ type StudentTransitionInput struct {
 }
 
 type TeacherAssignmentChangeInput struct {
-	TeacherID   int64     `json:"teacher_id"`
-	ClassID     int64     `json:"class_id"`
-	CourseID    int64     `json:"course_id"`
-	ChangeType  string    `json:"change_type"`
-	EffectiveAt time.Time `json:"effective_at"`
+	TeacherID      int64     `json:"teacher_id"`
+	ClassID        int64     `json:"class_id"`
+	CourseID       int64     `json:"course_id,omitempty"`
+	AssignmentType string    `json:"assignment_type"`
+	ChangeType     string    `json:"change_type"`
+	EffectiveAt    time.Time `json:"effective_at"`
 }
 
 type Repository interface {

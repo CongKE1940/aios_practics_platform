@@ -18,6 +18,7 @@ const (
 
 var (
 	ErrInvalidInput = errors.New("invalid input")
+	ErrForbidden    = errors.New("forbidden")
 	ErrNotFound     = errors.New("resource not found")
 )
 
@@ -103,8 +104,8 @@ type QuestionListFilter struct {
 }
 
 type Repository interface {
-	ListQuestions(ctx context.Context, tenantID int64, filter QuestionListFilter) (PageResult[Question], error)
-	GetQuestion(ctx context.Context, tenantID int64, id int64) (Question, error)
+	ListQuestions(ctx context.Context, scope Scope, filter QuestionListFilter) (PageResult[Question], error)
+	GetQuestion(ctx context.Context, scope Scope, id int64) (Question, error)
 	CreateQuestion(ctx context.Context, question Question, version QuestionVersion, bankIDs []int64, courseIDs []int64) (Question, error)
 	UpdateQuestion(ctx context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error)
 	ListVersions(ctx context.Context, tenantID int64, questionID int64) ([]QuestionVersion, error)

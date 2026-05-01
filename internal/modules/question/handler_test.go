@@ -233,6 +233,51 @@ func TestHandler_QuestionRequiresPermission(t *testing.T) {
 	}
 }
 
+func TestHandler_StudentCanCreateQuestion(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	repo.questionBanks[11] = questionBankRef{ID: 11, TenantID: 1, CourseID: int64Ptr(10)}
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:    21,
+			TenantID:  1,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	rec := performQuestionRequest(router, http.MethodPost, "/api/v1/questions", map[string]any{
+		"question_type": "single_choice",
+		"content": map[string]any{
+			"stem": map[string]any{"content_type": "text", "text": "2+2=？"},
+			"options": []map[string]any{
+				{"key": "A", "content_type": "text", "text": "3"},
+				{"key": "B", "content_type": "text", "text": "4"},
+			},
+		},
+		"answer": map[string]any{
+			"judge_mode":   "by_option_key",
+			"correct_keys": []string{"B"},
+		},
+		"bank_ids":   []int64{11},
+		"course_ids": []int64{10},
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var created envelope[Question]
+	decodeQuestionBody(t, rec, &created)
+	if created.Data.CreatorID != 21 || len(created.Data.BankIDs) != 1 {
+		t.Fatalf("created question = %+v", created.Data)
+	}
+}
+
 type envelope[T any] struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -280,10 +325,11 @@ func newMemoryRepository() *memoryRepository {
 	}
 }
 
-func (repo *memoryRepository) ListQuestions(_ context.Context, tenantID int64, filter QuestionListFilter) (PageResult[Question], error) {
+func (repo *memoryRepository) ListQuestions(_ context.Context, scope Scope, filter QuestionListFilter) (PageResult[Question], error) {
 	items := make([]Question, 0)
+	tenantID := readTenantID(scope)
 	for _, question := range repo.questions {
-		if question.TenantID != tenantID {
+		if tenantID > 0 && question.TenantID != tenantID {
 			continue
 		}
 		if filter.QuestionType != "" && question.QuestionType != filter.QuestionType {
@@ -303,9 +349,10 @@ func (repo *memoryRepository) ListQuestions(_ context.Context, tenantID int64, f
 	return pageOf(items, filter.Page, filter.PageSize), nil
 }
 
-func (repo *memoryRepository) GetQuestion(_ context.Context, tenantID int64, id int64) (Question, error) {
+func (repo *memoryRepository) GetQuestion(_ context.Context, scope Scope, id int64) (Question, error) {
 	question, ok := repo.questions[id]
-	if !ok || question.TenantID != tenantID {
+	tenantID := readTenantID(scope)
+	if !ok || (tenantID > 0 && question.TenantID != tenantID) {
 		return Question{}, ErrNotFound
 	}
 	return question, nil

@@ -16,14 +16,15 @@ type JWTConfig struct {
 }
 
 type AccessClaims struct {
-	UserID      int64    `json:"user_id"`
-	TenantID    int64    `json:"tenant_id"`
-	Username    string   `json:"username"`
-	DisplayName string   `json:"display_name"`
-	UserType    string   `json:"user_type"`
-	Roles       []string `json:"roles"`
-	Permissions []string `json:"permissions,omitempty"`
-	TokenType   string   `json:"token_type"`
+	UserID             int64    `json:"user_id"`
+	TenantID           int64    `json:"tenant_id"`
+	Username           string   `json:"username"`
+	DisplayName        string   `json:"display_name"`
+	UserType           string   `json:"user_type"`
+	MustChangePassword bool     `json:"must_change_password"`
+	Roles              []string `json:"roles"`
+	Permissions        []string `json:"permissions,omitempty"`
+	TokenType          string   `json:"token_type"`
 	jwt.RegisteredClaims
 }
 
@@ -54,14 +55,15 @@ func (issuer *JWTIssuer) IssuePair(_ context.Context, user User) (TokenPair, err
 	refreshExpiresAt := now.Add(issuer.config.RefreshTokenTTL)
 
 	accessToken, err := issuer.sign(AccessClaims{
-		UserID:      user.ID,
-		TenantID:    user.TenantID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		UserType:    user.UserType,
-		Roles:       user.Roles,
-		Permissions: user.Permissions,
-		TokenType:   TokenTypeAccess,
+		UserID:             user.ID,
+		TenantID:           user.TenantID,
+		Username:           user.Username,
+		DisplayName:        user.DisplayName,
+		UserType:           user.UserType,
+		MustChangePassword: user.MustChangePassword,
+		Roles:              user.Roles,
+		Permissions:        user.Permissions,
+		TokenType:          TokenTypeAccess,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.Username,
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -73,14 +75,15 @@ func (issuer *JWTIssuer) IssuePair(_ context.Context, user User) (TokenPair, err
 	}
 
 	refreshToken, err := issuer.sign(AccessClaims{
-		UserID:      user.ID,
-		TenantID:    user.TenantID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		UserType:    user.UserType,
-		Roles:       user.Roles,
-		Permissions: user.Permissions,
-		TokenType:   TokenTypeRefresh,
+		UserID:             user.ID,
+		TenantID:           user.TenantID,
+		Username:           user.Username,
+		DisplayName:        user.DisplayName,
+		UserType:           user.UserType,
+		MustChangePassword: user.MustChangePassword,
+		Roles:              user.Roles,
+		Permissions:        user.Permissions,
+		TokenType:          TokenTypeRefresh,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.Username,
 			IssuedAt:  jwt.NewNumericDate(now),

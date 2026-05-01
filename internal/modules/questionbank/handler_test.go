@@ -179,6 +179,55 @@ func TestHandler_QuestionBankRequiresPermission(t *testing.T) {
 	}
 }
 
+func TestHandler_TeacherCanCreateQuestionBankWithZeroTargetVisibility(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:    11,
+			TenantID:  1,
+			UserType:  "teacher",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	rec := performQuestionBankRequest(router, http.MethodPost, "/api/v1/question-banks", map[string]any{
+		"name": "教师自建题库",
+		"visibility_grants": []map[string]any{
+			{
+				"grant_type":      "visibility",
+				"target_type":     "student",
+				"target_id":       0,
+				"permission_type": "view",
+			},
+			{
+				"grant_type":      "share",
+				"target_type":     "teacher",
+				"target_id":       0,
+				"permission_type": "share",
+			},
+		},
+	}, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var created envelope[QuestionBank]
+	decodeQuestionBankBody(t, rec, &created)
+	grants := repo.visibility[created.Data.ID]
+	if len(grants) != 2 {
+		t.Fatalf("grant count = %d", len(grants))
+	}
+	if grants[0].TargetID != 0 || grants[1].TargetType != TargetTypeTeacher {
+		t.Fatalf("grants = %+v", grants)
+	}
+}
+
 func TestHandler_QuestionBankRejectsCrossTenantAccess(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -247,10 +296,11 @@ func newMemoryRepository() *memoryRepository {
 	}
 }
 
-func (repo *memoryRepository) ListQuestionBanks(_ context.Context, tenantID int64, filter QuestionBankListFilter) (PageResult[QuestionBank], error) {
+func (repo *memoryRepository) ListQuestionBanks(_ context.Context, scope Scope, filter QuestionBankListFilter) (PageResult[QuestionBank], error) {
 	items := make([]QuestionBank, 0)
+	tenantID := readTenantID(scope)
 	for _, questionBank := range repo.questionBanks {
-		if questionBank.TenantID != tenantID {
+		if tenantID > 0 && questionBank.TenantID != tenantID {
 			continue
 		}
 		if filter.CourseID != nil {
@@ -269,9 +319,10 @@ func (repo *memoryRepository) ListQuestionBanks(_ context.Context, tenantID int6
 	return pageOf(items, filter.Page, filter.PageSize), nil
 }
 
-func (repo *memoryRepository) GetQuestionBank(_ context.Context, tenantID int64, id int64) (QuestionBank, error) {
+func (repo *memoryRepository) GetQuestionBank(_ context.Context, scope Scope, id int64) (QuestionBank, error) {
 	questionBank, ok := repo.questionBanks[id]
-	if !ok || questionBank.TenantID != tenantID {
+	tenantID := readTenantID(scope)
+	if !ok || (tenantID > 0 && questionBank.TenantID != tenantID) {
 		return QuestionBank{}, ErrNotFound
 	}
 	return questionBank, nil

@@ -113,11 +113,12 @@ func (handler *Handler) listTeacherAssignmentHistories(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.ListTeacherAssignmentHistories(ctx.Request.Context(), scope, TeacherAssignmentHistoryListFilter{
-		TeacherID: parseInt64(ctx.Query("teacher_id")),
-		ClassID:   parseInt64(ctx.Query("class_id")),
-		CourseID:  parseInt64(ctx.Query("course_id")),
-		Page:      parseInt(ctx.Query("page")),
-		PageSize:  parseInt(ctx.Query("page_size")),
+		TeacherID:      parseInt64(ctx.Query("teacher_id")),
+		ClassID:        parseInt64(ctx.Query("class_id")),
+		CourseID:       parseInt64(ctx.Query("course_id")),
+		AssignmentType: ctx.Query("assignment_type"),
+		Page:           parseInt(ctx.Query("page")),
+		PageSize:       parseInt(ctx.Query("page_size")),
 	})
 	if err != nil {
 		writeSnapshotError(ctx, err)

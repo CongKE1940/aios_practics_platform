@@ -108,6 +108,9 @@ func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query 
 		}
 		query.TenantID = tenantID
 	}
+	if scope.UserType == "teacher" {
+		query.TeacherID = scope.UserID
+	}
 	var err error
 	query, err = normalizeExamOverviewQuery(query)
 	if err != nil {
@@ -122,6 +125,15 @@ func (service *Service) GetExamOverview(ctx context.Context, scope Scope, query 
 	}
 	if !exists {
 		return ExamOverviewResult{}, ErrNotFound
+	}
+	if scope.UserType == "teacher" {
+		allowed, err := service.repo.TeacherCanViewExam(ctx, query.TenantID, scope.UserID, query.ExamID)
+		if err != nil {
+			return ExamOverviewResult{}, err
+		}
+		if !allowed {
+			return ExamOverviewResult{}, ErrForbidden
+		}
 	}
 
 	summary, err := service.repo.GetExamOverviewSummary(ctx, query)
@@ -159,6 +171,9 @@ func (service *Service) ExportExamOverviewCSV(ctx context.Context, scope Scope, 
 		}
 		query.TenantID = tenantID
 	}
+	if scope.UserType == "teacher" {
+		query.TeacherID = scope.UserID
+	}
 	var err error
 	query, err = normalizeExamOverviewQuery(query)
 	if err != nil {
@@ -171,6 +186,15 @@ func (service *Service) ExportExamOverviewCSV(ctx context.Context, scope Scope, 
 	}
 	if !exists {
 		return nil, ErrNotFound
+	}
+	if scope.UserType == "teacher" {
+		allowed, err := service.repo.TeacherCanViewExam(ctx, query.TenantID, scope.UserID, query.ExamID)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, ErrForbidden
+		}
 	}
 
 	rows, err := service.repo.ListExamOverviewExportStudents(ctx, query)
@@ -201,6 +225,15 @@ func (service *Service) GetExamAttemptReview(ctx context.Context, scope Scope, q
 		}
 		query.TenantID = tenantID
 	}
+	if scope.UserType == "teacher" {
+		allowed, err := service.repo.TeacherCanReviewExamAttempt(ctx, query.TenantID, scope.UserID, query.AttemptID)
+		if err != nil {
+			return ExamAttemptReviewResult{}, err
+		}
+		if !allowed {
+			return ExamAttemptReviewResult{}, ErrForbidden
+		}
+	}
 	return service.repo.GetExamAttemptReview(ctx, query)
 }
 
@@ -224,6 +257,15 @@ func (service *Service) UpsertExamAttemptQuestionReview(ctx context.Context, sco
 			return ExamAttemptQuestionReviewResult{}, err
 		}
 		command.TenantID = tenantID
+	}
+	if scope.UserType == "teacher" {
+		allowed, err := service.repo.TeacherCanReviewExamAttempt(ctx, command.TenantID, scope.UserID, command.AttemptID)
+		if err != nil {
+			return ExamAttemptQuestionReviewResult{}, err
+		}
+		if !allowed {
+			return ExamAttemptQuestionReviewResult{}, ErrForbidden
+		}
 	}
 	command.ReviewerUserID = scope.UserID
 	command.ReviewComment = strings.TrimSpace(command.ReviewComment)

@@ -16,7 +16,7 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 
 func (repo *MySQLRepository) ListUsers(ctx context.Context, tenantID int64, filter UserListFilter) (PageResult[User], error) {
 	query := `
-SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, created_at, updated_at
+SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password, created_at, updated_at
 FROM users
 WHERE deleted_at IS NULL
 `
@@ -61,7 +61,7 @@ WHERE deleted_at IS NULL
 
 func (repo *MySQLRepository) GetUser(ctx context.Context, tenantID int64, id int64) (User, error) {
 	query := `
-SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, created_at, updated_at
+SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password, created_at, updated_at
 FROM users
 `
 	args := []any{id}
@@ -92,7 +92,7 @@ func (repo *MySQLRepository) CreateUser(ctx context.Context, user User, password
 
 	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO users (tenant_id, username, phone, email, password_hash, display_name, user_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.TenantID,
 		user.Username,
 		nullString(user.Phone),
@@ -101,6 +101,7 @@ func (repo *MySQLRepository) CreateUser(ctx context.Context, user User, password
 		user.DisplayName,
 		user.UserType,
 		user.Status,
+		user.MustChangePassword,
 	)
 	if err != nil {
 		return User{}, err
@@ -155,6 +156,21 @@ func (repo *MySQLRepository) UpdateUser(ctx context.Context, user User) (User, e
 	return repo.GetUser(ctx, user.TenantID, user.ID)
 }
 
+func (repo *MySQLRepository) UpdateProfile(ctx context.Context, user User) (User, error) {
+	if err := repo.execAffectingOne(
+		ctx,
+		`UPDATE users SET phone = ?, email = ?, display_name = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		nullString(user.Phone),
+		nullString(user.Email),
+		user.DisplayName,
+		user.ID,
+		user.TenantID,
+	); err != nil {
+		return User{}, err
+	}
+	return repo.GetUser(ctx, user.TenantID, user.ID)
+}
+
 func (repo *MySQLRepository) AssignRoles(ctx context.Context, tenantID int64, userID int64, roleIDs []int64) (User, error) {
 	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -181,21 +197,27 @@ func (repo *MySQLRepository) DisableUser(ctx context.Context, tenantID int64, us
 	return repo.GetUser(ctx, tenantID, userID)
 }
 
-func (repo *MySQLRepository) ResetPassword(ctx context.Context, tenantID int64, userID int64, passwordHash string) (User, error) {
-	if err := repo.execAffectingOne(ctx, "UPDATE users SET password_hash = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL", passwordHash, userID, tenantID); err != nil {
+func (repo *MySQLRepository) ResetPassword(ctx context.Context, tenantID int64, userID int64, passwordHash string, mustChangePassword bool) (User, error) {
+	if err := repo.execAffectingOne(ctx, "UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL", passwordHash, mustChangePassword, userID, tenantID); err != nil {
 		return User{}, err
 	}
 	return repo.GetUser(ctx, tenantID, userID)
 }
 
 func (repo *MySQLRepository) ListRoles(ctx context.Context, tenantID int64) ([]RoleSummary, error) {
-	query := "SELECT id, tenant_id, code, name, status FROM roles WHERE status = 'active'"
+	query := `
+SELECT r.id, r.tenant_id, r.code, r.name, r.status, COALESCE(GROUP_CONCAT(DISTINCT p.code ORDER BY p.code SEPARATOR ','), '')
+FROM roles r
+LEFT JOIN role_permissions rp ON rp.role_id = r.id
+LEFT JOIN permissions p ON p.id = rp.permission_id
+WHERE r.status = 'active'
+`
 	args := make([]any, 0, 1)
 	if tenantID > 0 {
-		query += " AND tenant_id = ?"
+		query += " AND r.tenant_id = ?"
 		args = append(args, tenantID)
 	}
-	query += " ORDER BY id"
+	query += " GROUP BY r.id, r.tenant_id, r.code, r.name, r.status ORDER BY r.id"
 	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -204,8 +226,12 @@ func (repo *MySQLRepository) ListRoles(ctx context.Context, tenantID int64) ([]R
 	items := make([]RoleSummary, 0)
 	for rows.Next() {
 		var role RoleSummary
-		if err := rows.Scan(&role.ID, &role.TenantID, &role.Code, &role.Name, &role.Status); err != nil {
+		var permissionCodes string
+		if err := rows.Scan(&role.ID, &role.TenantID, &role.Code, &role.Name, &role.Status, &permissionCodes); err != nil {
 			return nil, err
+		}
+		if permissionCodes != "" {
+			role.PermissionCodes = strings.Split(permissionCodes, ",")
 		}
 		items = append(items, role)
 	}
@@ -279,7 +305,7 @@ func scanUserScanner(scanner interface{ Scan(dest ...any) error }) (User, error)
 	var user User
 	var phone sql.NullString
 	var email sql.NullString
-	err := scanner.Scan(&user.ID, &user.TenantID, &user.Username, &phone, &email, &user.PasswordHash, &user.DisplayName, &user.UserType, &user.Status, &user.CreatedAt, &user.UpdatedAt)
+	err := scanner.Scan(&user.ID, &user.TenantID, &user.Username, &phone, &email, &user.PasswordHash, &user.DisplayName, &user.UserType, &user.Status, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return User{}, err
 	}

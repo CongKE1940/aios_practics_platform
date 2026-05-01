@@ -39,7 +39,7 @@ SELECT
   ea.subjective_score,
   ea.final_score
 FROM exam_attempts ea
-JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id AND e.owner_org_type <> 'user'
 JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
 LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
 LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
@@ -154,7 +154,7 @@ SELECT
   ea.subjective_score,
   ea.final_score
 FROM exam_attempts ea
-JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id AND e.owner_org_type <> 'user'
 JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
 LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
 LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
@@ -245,7 +245,7 @@ SELECT
   ea.subjective_score,
   ea.final_score
 FROM exam_attempts ea
-JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id AND e.owner_org_type <> 'user'
 JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
 LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
 LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
@@ -347,9 +347,14 @@ SELECT id
 FROM teacher_class_course_assignments
 WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND course_id = ?
   AND is_current = 1 AND status = 'active'
+UNION
+SELECT id
+FROM class_head_teacher_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND class_id = ?
+  AND is_current = 1 AND status = 'active'
 LIMIT 1
 `)).
-		WithArgs(int64(7), int64(88), int64(101), int64(12)).
+		WithArgs(int64(7), int64(88), int64(101), int64(12), int64(7), int64(88), int64(101)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9001))
 
 	ok, err := repo.TeacherCanViewClassCourse(context.Background(), 7, 88, 101, 12)
@@ -378,9 +383,14 @@ SELECT id
 FROM teacher_class_course_assignments
 WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND course_id = ?
   AND is_current = 1 AND status = 'active'
+UNION
+SELECT id
+FROM class_head_teacher_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND class_id = ?
+  AND is_current = 1 AND status = 'active'
 LIMIT 1
 `)).
-		WithArgs(int64(7), int64(88), int64(101), int64(12)).
+		WithArgs(int64(7), int64(88), int64(101), int64(12), int64(7), int64(88), int64(101)).
 		WillReturnError(sql.ErrNoRows)
 
 	ok, err := repo.TeacherCanViewClassCourse(context.Background(), 7, 88, 101, 12)
@@ -410,15 +420,25 @@ SELECT
   c.name AS class_name,
   co.id AS course_id,
   co.name AS course_name
-FROM teacher_class_course_assignments tcca
-JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
-JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
-WHERE tcca.tenant_id = ? AND tcca.teacher_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+FROM (
+  SELECT tcca.tenant_id, tcca.class_id, tcca.course_id
+  FROM teacher_class_course_assignments tcca
+  WHERE tcca.tenant_id = ? AND tcca.teacher_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  UNION
+  SELECT chta.tenant_id, chta.class_id, co.id AS course_id
+  FROM class_head_teacher_assignments chta
+  JOIN courses co ON co.tenant_id = chta.tenant_id
+  WHERE chta.tenant_id = ? AND chta.teacher_id = ? AND chta.is_current = 1 AND chta.status = 'active'
+    AND co.status = 'active' AND co.deleted_at IS NULL
+) assignment_scope
+JOIN classes c ON c.tenant_id = assignment_scope.tenant_id AND c.id = assignment_scope.class_id
+JOIN courses co ON co.tenant_id = assignment_scope.tenant_id AND co.id = assignment_scope.course_id
+WHERE 1 = 1
   AND c.status = 'active' AND c.deleted_at IS NULL
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC
 `)).
-		WithArgs(int64(7), int64(88)).
+		WithArgs(int64(7), int64(88), int64(7), int64(88)).
 		WillReturnRows(sqlmock.NewRows([]string{"class_id", "class_name", "course_id", "course_name"}).
 			AddRow(int64(301), "七年级一班", int64(10), "数学").
 			AddRow(int64(301), "七年级一班", int64(11), "英语"))
@@ -463,10 +483,20 @@ SELECT
   c.name AS class_name,
   co.id AS course_id,
   co.name AS course_name
-FROM teacher_class_course_assignments tcca
-JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
-JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
-WHERE tcca.is_current = 1 AND tcca.status = 'active'
+FROM (
+  SELECT tcca.tenant_id, tcca.class_id, tcca.course_id
+  FROM teacher_class_course_assignments tcca
+  WHERE tcca.is_current = 1 AND tcca.status = 'active'
+  UNION
+  SELECT chta.tenant_id, chta.class_id, co.id AS course_id
+  FROM class_head_teacher_assignments chta
+  JOIN courses co ON co.tenant_id = chta.tenant_id
+  WHERE chta.is_current = 1 AND chta.status = 'active'
+    AND co.status = 'active' AND co.deleted_at IS NULL
+) assignment_scope
+JOIN classes c ON c.tenant_id = assignment_scope.tenant_id AND c.id = assignment_scope.class_id
+JOIN courses co ON co.tenant_id = assignment_scope.tenant_id AND co.id = assignment_scope.course_id
+WHERE 1 = 1
   AND c.status = 'active' AND c.deleted_at IS NULL
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC

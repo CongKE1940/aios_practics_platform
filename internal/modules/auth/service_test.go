@@ -119,6 +119,85 @@ func TestServiceLoginRejectsWrongPassword(t *testing.T) {
 	}
 }
 
+func TestServiceLoginRequiresPasswordChangeBeforeIssuingToken(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("Init@123456"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword() error = %v", err)
+	}
+
+	repo := &fakeUserRepository{
+		user: User{
+			ID:                 9,
+			TenantID:           2,
+			Username:           "admin",
+			PasswordHash:       string(hash),
+			DisplayName:        "学校管理员",
+			UserType:           "school_admin",
+			Status:             UserStatusActive,
+			MustChangePassword: true,
+		},
+	}
+	issuer := &fakeTokenIssuer{
+		pair: TokenPair{AccessToken: "access_token"},
+	}
+	service := NewService(repo, BcryptPasswordVerifier{}, issuer)
+
+	_, err = service.Login(context.Background(), LoginCommand{
+		TenantCode: "demo_school",
+		Username:   "admin",
+		Password:   "Init@123456",
+	})
+	if !errors.Is(err, ErrPasswordChangeRequired) {
+		t.Fatalf("Login() error = %v, want ErrPasswordChangeRequired", err)
+	}
+	if issuer.issued {
+		t.Fatal("IssuePair() should not be called before password change")
+	}
+	if repo.lastLoginUserID != 0 {
+		t.Fatalf("lastLoginUserID = %d", repo.lastLoginUserID)
+	}
+}
+
+func TestServiceChangeInitialPasswordClearsPasswordFlag(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("Init@123456"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword() error = %v", err)
+	}
+
+	repo := &fakeUserRepository{
+		user: User{
+			ID:                 10,
+			TenantID:           2,
+			Username:           "admin",
+			PasswordHash:       string(hash),
+			DisplayName:        "学校管理员",
+			UserType:           "school_admin",
+			Status:             UserStatusActive,
+			MustChangePassword: true,
+		},
+	}
+	service := NewService(repo, BcryptPasswordVerifier{}, &fakeTokenIssuer{})
+
+	err = service.ChangeInitialPassword(context.Background(), ChangeInitialPasswordCommand{
+		TenantCode:  "demo_school",
+		Username:    "admin",
+		OldPassword: "Init@123456",
+		NewPassword: "Safe@123456",
+	})
+	if err != nil {
+		t.Fatalf("ChangeInitialPassword() error = %v", err)
+	}
+	if repo.updatedPasswordHash == "" {
+		t.Fatal("updatedPasswordHash is empty")
+	}
+	if repo.updatedMustChangePassword {
+		t.Fatal("updatedMustChangePassword = true")
+	}
+	if !(BcryptPasswordVerifier{}).Verify(repo.updatedPasswordHash, "Safe@123456") {
+		t.Fatal("new password hash does not match")
+	}
+}
+
 func TestServiceRefreshReissuesTokenPairFromRefreshToken(t *testing.T) {
 	tokens := &fakeTokenIssuer{
 		claims: AccessClaims{
@@ -192,11 +271,13 @@ func TestServiceCurrentUserUsesAccessTokenClaims(t *testing.T) {
 }
 
 type fakeUserRepository struct {
-	user               User
-	err                error
-	lastLoginUserID    int64
-	lastTenantCode     string
-	loginOrganizations []LoginOrganization
+	user                      User
+	err                       error
+	lastLoginUserID           int64
+	lastTenantCode            string
+	updatedPasswordHash       string
+	updatedMustChangePassword bool
+	loginOrganizations        []LoginOrganization
 }
 
 func (repo *fakeUserRepository) FindByTenantCodeAndUsername(_ context.Context, tenantCode string, username string) (User, error) {
@@ -222,14 +303,25 @@ func (repo *fakeUserRepository) MarkLastLogin(_ context.Context, userID int64) e
 	return nil
 }
 
+func (repo *fakeUserRepository) UpdatePassword(_ context.Context, userID int64, passwordHash string, mustChangePassword bool) error {
+	if repo.user.ID != userID {
+		return ErrInvalidCredentials
+	}
+	repo.updatedPasswordHash = passwordHash
+	repo.updatedMustChangePassword = mustChangePassword
+	return nil
+}
+
 type fakeTokenIssuer struct {
 	pair          TokenPair
 	claims        AccessClaims
 	err           error
 	lastTokenType string
+	issued        bool
 }
 
 func (issuer *fakeTokenIssuer) IssuePair(_ context.Context, user User) (TokenPair, error) {
+	issuer.issued = true
 	if issuer.err != nil {
 		return TokenPair{}, issuer.err
 	}

@@ -138,7 +138,7 @@ func (handler *Handler) authorize(ctx *gin.Context) (Scope, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
 		return Scope{}, false
 	}
-	if claims.UserType != "sys_admin" && !containsPermission(claims.Permissions, "question:manage") {
+	if !canAccessQuestionModule(claims) {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 		return Scope{}, false
 	}
@@ -167,10 +167,21 @@ func writeQuestionError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidInput):
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+	case errors.Is(err, ErrForbidden):
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, response.Failure(CodeNotFound, "资源不存在", ctx.GetHeader("X-Request-Id")))
 	default:
 		ctx.JSON(http.StatusInternalServerError, response.Failure(50000, "服务异常", ctx.GetHeader("X-Request-Id")))
+	}
+}
+
+func canAccessQuestionModule(claims auth.AccessClaims) bool {
+	switch claims.UserType {
+	case "sys_admin", "tenant_admin", "school_admin", "teacher", "student":
+		return true
+	default:
+		return containsPermission(claims.Permissions, "question:manage")
 	}
 }
 

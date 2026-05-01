@@ -17,7 +17,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (service *Service) ListQuestions(ctx context.Context, scope Scope, filter QuestionListFilter) (PageResult[Question], error) {
-	return service.repo.ListQuestions(ctx, readTenantID(scope), normalizeListFilter(filter))
+	return service.repo.ListQuestions(ctx, scope, normalizeListFilter(filter))
 }
 
 func (service *Service) CreateQuestion(ctx context.Context, scope Scope, input QuestionInput) (Question, error) {
@@ -52,9 +52,12 @@ func (service *Service) CreateQuestion(ctx context.Context, scope Scope, input Q
 }
 
 func (service *Service) UpdateQuestion(ctx context.Context, scope Scope, id int64, input QuestionUpdateInput) (Question, error) {
-	current, err := service.repo.GetQuestion(ctx, readTenantID(scope), id)
+	current, err := service.repo.GetQuestion(ctx, scope, id)
 	if err != nil {
 		return Question{}, err
+	}
+	if !canManageQuestion(scope, current) {
+		return Question{}, ErrForbidden
 	}
 
 	current.Difficulty = strings.TrimSpace(input.Difficulty)
@@ -76,13 +79,20 @@ func (service *Service) UpdateQuestion(ctx context.Context, scope Scope, id int6
 }
 
 func (service *Service) ListVersions(ctx context.Context, scope Scope, id int64) ([]QuestionVersion, error) {
-	return service.repo.ListVersions(ctx, readTenantID(scope), id)
+	current, err := service.repo.GetQuestion(ctx, scope, id)
+	if err != nil {
+		return nil, err
+	}
+	return service.repo.ListVersions(ctx, current.TenantID, id)
 }
 
 func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64, input QuestionVersionInput) (QuestionVersion, error) {
-	current, err := service.repo.GetQuestion(ctx, readTenantID(scope), id)
+	current, err := service.repo.GetQuestion(ctx, scope, id)
 	if err != nil {
 		return QuestionVersion{}, err
+	}
+	if !canManageQuestion(scope, current) {
+		return QuestionVersion{}, ErrForbidden
 	}
 	if len(input.Content) == 0 || len(input.Answer) == 0 {
 		return QuestionVersion{}, ErrInvalidInput
@@ -114,11 +124,38 @@ func readTenantID(scope Scope) int64 {
 		return 0
 	}
 	for _, permission := range scope.Permissions {
-		if permission == "system:manage" || permission == "tenant:manage" {
+		if permission == "system:manage" {
 			return 0
 		}
 	}
 	return scope.TenantID
+}
+
+func canManageQuestion(scope Scope, item Question) bool {
+	if isSystemScope(scope) {
+		return true
+	}
+	if item.CreatorID == scope.UserID && scope.UserID > 0 {
+		return true
+	}
+	return item.TenantID == scope.TenantID && (isTenantManageScope(scope) || containsExactPermission(scope.Permissions, "question:manage"))
+}
+
+func isSystemScope(scope Scope) bool {
+	return scope.UserType == "sys_admin" || containsExactPermission(scope.Permissions, "system:manage")
+}
+
+func isTenantManageScope(scope Scope) bool {
+	return scope.UserType == "tenant_admin" || containsExactPermission(scope.Permissions, "tenant:manage")
+}
+
+func containsExactPermission(permissions []string, target string) bool {
+	for _, permission := range permissions {
+		if permission == target {
+			return true
+		}
+	}
+	return false
 }
 
 func isAllowedQuestionType(questionType string) bool {

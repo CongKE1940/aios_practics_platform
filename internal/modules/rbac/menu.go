@@ -47,22 +47,34 @@ func (handler *MenuHandler) listMenus(ctx *gin.Context) {
 		return
 	}
 
-	menus := BuildMenus(ctx.Query("app_type"), claims.Permissions)
+	menus := BuildMenusForClaims(ctx.Query("app_type"), claims)
 	ctx.JSON(http.StatusOK, response.Success(menus, ctx.GetHeader("X-Request-Id")))
 }
 
 func BuildMenus(appType string, permissions []string) []MenuItem {
+	return buildMenus(appType, "", permissions)
+}
+
+func BuildMenusForClaims(appType string, claims auth.AccessClaims) []MenuItem {
+	permissions := append([]string{}, claims.Permissions...)
+	if claims.UserType == "sys_admin" && !containsAnyPermission(permissions, "system:manage") {
+		permissions = append(permissions, "system:manage")
+	}
+	return buildMenus(appType, claims.UserType, permissions)
+}
+
+func buildMenus(appType string, userType string, permissions []string) []MenuItem {
 	var menus []menuDef
 	switch appType {
 	case "", "admin":
 		menus = adminMenus
 	case "user":
-		return buildUserMenus(permissions)
+		return buildUserMenus(userType, permissions)
 	default:
 		return []MenuItem{}
 	}
 
-	return filterMenus(menus, permissions)
+	return filterMenus(menus, userType, permissions)
 }
 
 type menuDef struct {
@@ -70,45 +82,59 @@ type menuDef struct {
 	name                string
 	path                string
 	requiredPermissions []string
+	requiredUserTypes   []string
 	children            []menuDef
 }
 
 var adminMenus = []menuDef{
 	{
-		id:                  1,
+		id:   1,
+		name: "工作台",
+		path: "/admin/workbench",
+	},
+	{
+		id:                  2,
 		name:                "组织管理",
 		path:                "/admin/org",
 		requiredPermissions: []string{"org:manage"},
 		children: []menuDef{
-			{id: 11, name: "学校与组织管理", path: "/admin/org/schools", requiredPermissions: []string{"org:manage"}},
-			{id: 12, name: "年级管理", path: "/admin/org/grades", requiredPermissions: []string{"org:manage"}},
-			{id: 13, name: "班级管理", path: "/admin/org/classes", requiredPermissions: []string{"org:manage"}},
+			{id: 21, name: "学校管理", path: "/admin/org/schools", requiredPermissions: []string{"org:manage"}},
+			{id: 22, name: "年级管理", path: "/admin/org/grades", requiredPermissions: []string{"org:manage"}},
+			{id: 23, name: "班级管理", path: "/admin/org/classes", requiredPermissions: []string{"org:manage"}},
 		},
 	},
 	{
-		id:                  2,
+		id:                  3,
 		name:                "课程管理",
 		path:                "/admin/courses",
 		requiredPermissions: []string{"org:manage"},
 	},
 	{
-		id:   3,
+		id:   4,
 		name: "系统管理",
 		path: "/admin/system",
 		children: []menuDef{
-			{id: 31, name: "用户管理", path: "/admin/users", requiredPermissions: []string{"user:manage"}},
-			{id: 32, name: "角色权限", path: "/admin/roles", requiredPermissions: []string{"role:manage"}},
-			{id: 33, name: "字典管理", path: "/admin/dictionaries", requiredPermissions: []string{"role:manage"}},
-			{id: 34, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
-			{id: 35, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
-			{id: 36, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
-			{id: 37, name: "导入中心", path: "/admin/imports", requiredPermissions: []string{"import:manage"}},
-			{id: 38, name: "考试管理", path: "/admin/exams", requiredPermissions: []string{"exam:manage"}},
-			{id: 39, name: "试卷管理", path: "/admin/exam-papers", requiredPermissions: []string{"exam:manage"}},
-			{id: 43, name: "试卷组卷", path: "/admin/exams/assembly", requiredPermissions: []string{"exam:manage"}},
-			{id: 40, name: "质疑处理", path: "/admin/challenges", requiredPermissions: []string{"question:manage"}},
-			{id: 41, name: "数据看板", path: "/admin/analytics", requiredPermissions: []string{"analytics:view"}},
-			{id: 42, name: "快照历史", path: "/admin/history", requiredPermissions: []string{"audit:view"}},
+			{id: 41, name: "用户管理", path: "/admin/users", requiredPermissions: []string{"user:manage"}},
+			{id: 42, name: "字典管理", path: "/admin/dictionaries", requiredPermissions: []string{"role:manage"}},
+			{id: 43, name: "公告通知", path: "/admin/notices", requiredPermissions: []string{"notice:manage"}},
+			{id: 44, name: "题库管理", path: "/admin/question-banks", requiredPermissions: []string{"question_bank:manage"}},
+			{id: 45, name: "题目管理", path: "/admin/questions", requiredPermissions: []string{"question:manage"}},
+			{id: 46, name: "导入中心", path: "/admin/imports", requiredPermissions: []string{"import:manage"}},
+			{id: 47, name: "考试管理", path: "/admin/exams", requiredPermissions: []string{"exam:manage"}},
+			{id: 48, name: "试卷管理", path: "/admin/exam-papers", requiredPermissions: []string{"exam:manage"}},
+			{id: 49, name: "试卷组卷", path: "/admin/exams/assembly", requiredPermissions: []string{"exam:manage"}},
+			{id: 50, name: "质疑处理", path: "/admin/challenges", requiredPermissions: []string{"question:manage"}},
+			{id: 51, name: "数据看板", path: "/admin/analytics", requiredPermissions: []string{"analytics:view"}},
+			{id: 52, name: "快照历史", path: "/admin/history", requiredPermissions: []string{"audit:view"}},
+		},
+	},
+	{
+		id:   5,
+		name: "配置中心",
+		path: "/admin/config",
+		children: []menuDef{
+			{id: 53, name: "系统配置", path: "/admin/system/config", requiredPermissions: []string{"system:manage"}},
+			{id: 54, name: "租户角色配置", path: "/admin/tenant/roles", requiredPermissions: []string{"tenant:manage"}},
 		},
 	},
 }
@@ -128,18 +154,18 @@ var userMenus = []menuDef{
 			{id: 26, name: "疑惑题", path: "/app/practice/confused", requiredPermissions: []string{"practice:use"}},
 			{id: 27, name: "班级学习", path: "/app/class-learning", requiredPermissions: []string{"analytics:view"}},
 			{id: 28, name: "通知中心", path: "/app/notifications"},
-			{id: 29, name: "老师题库", path: "/app/teacher-banks", requiredPermissions: []string{"question_bank:manage"}},
+			{id: 29, name: "我的题库", path: "/app/teacher-banks", requiredUserTypes: []string{"teacher", "student"}},
 		},
 	},
 }
 
-func buildUserMenus(permissions []string) []MenuItem {
-	menus := filterMenus(userMenus, permissions)
+func buildUserMenus(userType string, permissions []string) []MenuItem {
+	menus := filterMenus(userMenus, userType, permissions)
 	if len(menus) == 0 {
 		return []MenuItem{}
 	}
 
-	if containsAnyPermission(permissions, "exam:publish", "exam:manage", "tenant:manage", "system:manage") {
+	if userType == "teacher" || containsAnyPermission(permissions, "exam:publish", "exam:manage", "tenant:manage", "system:manage") {
 		menus[0].Children = append(menus[0].Children, MenuItem{
 			ID:       30,
 			Name:     "考试管理",
@@ -161,7 +187,7 @@ func buildUserMenus(permissions []string) []MenuItem {
 	return menus
 }
 
-func filterMenus(menus []menuDef, permissions []string) []MenuItem {
+func filterMenus(menus []menuDef, userType string, permissions []string) []MenuItem {
 	permissionSet := make(map[string]struct{}, len(permissions))
 	for _, permission := range permissions {
 		permissionSet[permission] = struct{}{}
@@ -169,10 +195,13 @@ func filterMenus(menus []menuDef, permissions []string) []MenuItem {
 
 	result := make([]MenuItem, 0)
 	for _, menu := range menus {
+		if !hasRequiredUserType(userType, menu.requiredUserTypes) {
+			continue
+		}
 		if !hasPermissions(permissionSet, menu.requiredPermissions) {
 			continue
 		}
-		children := filterMenus(menu.children, permissions)
+		children := filterMenus(menu.children, userType, permissions)
 		if len(menu.children) > 0 && len(children) == 0 {
 			continue
 		}
@@ -193,6 +222,9 @@ func hasPermissions(permissionSet map[string]struct{}, required []string) bool {
 	if _, ok := permissionSet["system:manage"]; ok {
 		return true
 	}
+	if requiresSystemManage(required) {
+		return false
+	}
 	if _, ok := permissionSet["tenant:manage"]; ok {
 		return true
 	}
@@ -202,6 +234,27 @@ func hasPermissions(permissionSet map[string]struct{}, required []string) bool {
 		}
 	}
 	return true
+}
+
+func hasRequiredUserType(userType string, required []string) bool {
+	if len(required) == 0 {
+		return true
+	}
+	for _, item := range required {
+		if userType == item {
+			return true
+		}
+	}
+	return false
+}
+
+func requiresSystemManage(required []string) bool {
+	for _, permission := range required {
+		if permission == "system:manage" {
+			return true
+		}
+	}
+	return false
 }
 
 func containsAnyPermission(permissions []string, targets ...string) bool {

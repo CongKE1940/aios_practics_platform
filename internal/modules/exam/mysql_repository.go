@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,23 +18,112 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+func teacherExamAccessCondition(alias string) string {
+	scopedCourseID := singlePublishedPaperCourseIDSQL(alias)
+	return `(
+  ` + alias + `.creator_id = ?
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN class_head_teacher_assignments chta ON chta.tenant_id = ` + alias + `.tenant_id
+      AND chta.class_id = et.target_id
+      AND chta.teacher_id = ?
+      AND chta.is_current = 1
+      AND chta.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'class'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + alias + `.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN class_head_teacher_assignments chta ON chta.tenant_id = scm.tenant_id
+      AND chta.class_id = scm.class_id
+      AND chta.teacher_id = ?
+      AND chta.is_current = 1
+      AND chta.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'user'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = ` + alias + `.tenant_id
+      AND tcca.course_id = et.target_id
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'course'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = ` + alias + `.tenant_id
+      AND tcca.class_id = et.target_id
+      AND tcca.course_id = ` + scopedCourseID + `
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'class'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + alias + `.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = scm.tenant_id
+      AND tcca.class_id = scm.class_id
+      AND tcca.course_id = ` + scopedCourseID + `
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'user'
+  )
+)`
+}
+
+func singlePublishedPaperCourseIDSQL(alias string) string {
+	return `(
+    SELECT MIN(epqr.course_id)
+    FROM exam_paper_question_rules epqr
+    WHERE epqr.paper_id = ` + alias + `.paper_id
+    HAVING COUNT(*) > 0 AND COUNT(*) = COUNT(epqr.course_id) AND COUNT(DISTINCT epqr.course_id) = 1
+  )`
+}
+
+func teacherExamAccessArgs(teacherID int64) []any {
+	return []any{teacherID, teacherID, teacherID, teacherID, teacherID, teacherID}
+}
+
 func (repo *MySQLRepository) ListExams(ctx context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error) {
 	if repo == nil || repo.db == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType == "student" || (scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish")) {
+	if scope.UserType == "student" || !canManageExam(scope) {
 		return repo.listStudentExams(ctx, scope, filter)
 	}
 	query := `
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at
-FROM exams
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at
+FROM exams e
 `
 	args := make([]any, 0, 1)
 	if scope.TenantID > 0 {
-		query += "WHERE tenant_id = ?\n"
+		query += "WHERE e.tenant_id = ?\n"
 		args = append(args, scope.TenantID)
+		query += " AND e.owner_org_type <> ?\n"
+		args = append(args, OwnerOrgTypeUser)
+	} else {
+		query += "WHERE e.owner_org_type <> ?\n"
+		args = append(args, OwnerOrgTypeUser)
 	}
-	query += " ORDER BY id DESC"
+	if scope.UserType == "teacher" {
+		query += " AND " + teacherExamAccessCondition("e") + "\n"
+		args = append(args, teacherExamAccessArgs(scope.UserID)...)
+	}
+	query += " ORDER BY e.id DESC"
 	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return PageResult[Exam]{}, err
@@ -111,6 +201,13 @@ func (repo *MySQLRepository) CreateExam(ctx context.Context, scope Scope, input 
 	}
 	defer tx.Rollback()
 
+	ownerOrgType := OwnerOrgTypeSchool
+	ownerOrgID := scope.TenantID
+	if scope.UserType == "student" {
+		ownerOrgType = OwnerOrgTypeUser
+		ownerOrgID = scope.UserID
+	}
+
 	query := `
 INSERT INTO exams (tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, assembly_rule_json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -121,8 +218,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	}
 	args := []any{
 		scope.TenantID,
-		OwnerOrgTypeSchool,
-		scope.TenantID,
+		ownerOrgType,
+		ownerOrgID,
 		scope.UserID,
 		input.Name,
 		input.ExamMode,
@@ -144,8 +241,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 		args = []any{
 			scope.TenantID,
-			OwnerOrgTypeSchool,
-			scope.TenantID,
+			ownerOrgType,
+			ownerOrgID,
 			scope.UserID,
 			input.Name,
 			input.ExamMode,
@@ -187,14 +284,25 @@ func (repo *MySQLRepository) GetExam(ctx context.Context, scope Scope, id int64)
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
 	query := `
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, name, exam_mode, status, start_time, end_time, duration_minutes, total_score, paper_id, created_at, updated_at, assembly_rule_json
-FROM exams
-WHERE id = ?
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at, e.assembly_rule_json
+FROM exams e
+WHERE e.id = ?
 `
 	args := []any{id}
 	if scope.TenantID > 0 {
-		query += " AND tenant_id = ?"
+		query += " AND e.tenant_id = ?"
 		args = append(args, scope.TenantID)
+	}
+	if scope.UserType == "student" {
+		query += " AND e.owner_org_type = ? AND e.owner_org_id = ? AND e.creator_id = ?"
+		args = append(args, OwnerOrgTypeUser, scope.UserID, scope.UserID)
+	} else {
+		query += " AND e.owner_org_type <> ?"
+		args = append(args, OwnerOrgTypeUser)
+		if scope.UserType == "teacher" {
+			query += " AND " + teacherExamAccessCondition("e")
+			args = append(args, teacherExamAccessArgs(scope.UserID)...)
+		}
 	}
 	query += " LIMIT 1"
 	row := repo.db.QueryRowContext(ctx, query, args...)
@@ -216,7 +324,10 @@ WHERE id = ?
 	}
 	var paper *ExamPaperDetail
 	if item.PaperID != nil {
-		paperDetail, err := repo.GetExamPaper(ctx, Scope{TenantID: item.TenantID, Permissions: []string{"exam:publish"}}, *item.PaperID)
+		paperScope := scope
+		paperScope.TenantID = item.TenantID
+		paperScope.Permissions = append(append([]string{}, scope.Permissions...), "exam:publish")
+		paperDetail, err := repo.GetExamPaper(ctx, paperScope, *item.PaperID)
 		if err != nil {
 			return ExamDetail{}, err
 		}
@@ -682,6 +793,13 @@ WHERE 1 = 1
 		query += " AND ep.paper_name LIKE ?"
 		args = append(args, "%"+filter.Keyword+"%")
 	}
+	if scope.UserType == "student" {
+		query += " AND COALESCE(ep.creator_id, e.creator_id, 0) = ? AND (e.id IS NULL OR e.owner_org_type = ?)"
+		args = append(args, scope.UserID, OwnerOrgTypeUser)
+	} else {
+		query += " AND (e.id IS NULL OR e.owner_org_type <> ?)"
+		args = append(args, OwnerOrgTypeUser)
+	}
 	query += `
 GROUP BY
   ep.id,
@@ -785,6 +903,13 @@ WHERE ep.id = ?
 	if scope.TenantID > 0 {
 		query += " AND COALESCE(ep.tenant_id, e.tenant_id) = ?"
 		args = append(args, scope.TenantID)
+	}
+	if scope.UserType == "student" {
+		query += " AND COALESCE(ep.creator_id, e.creator_id, 0) = ? AND (e.id IS NULL OR e.owner_org_type = ?)"
+		args = append(args, scope.UserID, OwnerOrgTypeUser)
+	} else {
+		query += " AND (e.id IS NULL OR e.owner_org_type <> ?)"
+		args = append(args, OwnerOrgTypeUser)
 	}
 	query += `
 GROUP BY
@@ -1231,6 +1356,77 @@ ORDER BY id ASC
 		return nil, err
 	}
 	return items, nil
+}
+
+func (repo *MySQLRepository) TeacherCanManageClass(ctx context.Context, tenantID int64, teacherID int64, classID int64) (bool, error) {
+	const query = `
+SELECT id
+FROM class_head_teacher_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND class_id = ?
+  AND is_current = 1 AND status = 'active'
+LIMIT 1
+`
+	return repo.existsByID(ctx, query, tenantID, teacherID, classID)
+}
+
+func (repo *MySQLRepository) TeacherCanTeachClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error) {
+	const query = `
+SELECT id
+FROM teacher_class_course_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND course_id = ?
+  AND is_current = 1 AND status = 'active'
+LIMIT 1
+`
+	return repo.existsByID(ctx, query, tenantID, teacherID, classID, courseID)
+}
+
+func (repo *MySQLRepository) TeacherCanTeachCourse(ctx context.Context, tenantID int64, teacherID int64, courseID int64) (bool, error) {
+	const query = `
+SELECT id
+FROM teacher_class_course_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND course_id = ?
+  AND is_current = 1 AND status = 'active'
+LIMIT 1
+`
+	return repo.existsByID(ctx, query, tenantID, teacherID, courseID)
+}
+
+func (repo *MySQLRepository) TeacherCanManageStudent(ctx context.Context, tenantID int64, teacherID int64, studentID int64) (bool, error) {
+	const query = `
+SELECT chta.id
+FROM student_class_memberships scm
+JOIN class_head_teacher_assignments chta ON chta.tenant_id = scm.tenant_id AND chta.class_id = scm.class_id
+WHERE scm.tenant_id = ? AND scm.student_id = ?
+  AND scm.is_current = 1 AND scm.status = 'active'
+  AND chta.teacher_id = ? AND chta.is_current = 1 AND chta.status = 'active'
+LIMIT 1
+`
+	return repo.existsByID(ctx, query, tenantID, studentID, teacherID)
+}
+
+func (repo *MySQLRepository) TeacherCanTeachStudentCourse(ctx context.Context, tenantID int64, teacherID int64, studentID int64, courseID int64) (bool, error) {
+	const query = `
+SELECT tcca.id
+FROM student_class_memberships scm
+JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = scm.tenant_id AND tcca.class_id = scm.class_id
+WHERE scm.tenant_id = ? AND scm.student_id = ?
+  AND scm.is_current = 1 AND scm.status = 'active'
+  AND tcca.teacher_id = ? AND tcca.course_id = ?
+  AND tcca.is_current = 1 AND tcca.status = 'active'
+LIMIT 1
+`
+	return repo.existsByID(ctx, query, tenantID, studentID, teacherID, courseID)
+}
+
+func (repo *MySQLRepository) existsByID(ctx context.Context, query string, args ...any) (bool, error) {
+	var id int64
+	if err := repo.db.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (repo *MySQLRepository) listExamFixedQuestions(ctx context.Context, examID int64) ([]ExamFixedQuestion, error) {

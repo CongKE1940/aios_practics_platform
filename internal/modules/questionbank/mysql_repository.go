@@ -14,31 +14,31 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
-func (repo *MySQLRepository) ListQuestionBanks(ctx context.Context, tenantID int64, filter QuestionBankListFilter) (PageResult[QuestionBank], error) {
+func (repo *MySQLRepository) ListQuestionBanks(ctx context.Context, scope Scope, filter QuestionBankListFilter) (PageResult[QuestionBank], error) {
 	query := `
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, course_id, name, description, status, source_type, created_at, updated_at
-FROM question_banks
-WHERE deleted_at IS NULL
+SELECT qb.id, qb.tenant_id, qb.owner_org_type, qb.owner_org_id, qb.creator_id, qb.course_id, qb.name, qb.description, qb.status, qb.source_type, qb.created_at, qb.updated_at
+FROM question_banks qb
+WHERE qb.deleted_at IS NULL
 `
 	args := make([]any, 0, 5)
-	if tenantID > 0 {
-		query += " AND tenant_id = ?"
-		args = append(args, tenantID)
+	if accessSQL, accessArgs := buildQuestionBankAccessCondition("qb", scope); accessSQL != "" {
+		query += accessSQL
+		args = append(args, accessArgs...)
 	}
 	if filter.CourseID != nil {
-		query += " AND course_id = ?"
+		query += " AND qb.course_id = ?"
 		args = append(args, *filter.CourseID)
 	}
 	if filter.Status != "" {
-		query += " AND status = ?"
+		query += " AND qb.status = ?"
 		args = append(args, filter.Status)
 	}
 	if filter.Keyword != "" {
-		query += " AND (name LIKE ? OR description LIKE ?)"
+		query += " AND (qb.name LIKE ? OR qb.description LIKE ?)"
 		keyword := "%" + filter.Keyword + "%"
 		args = append(args, keyword, keyword)
 	}
-	query += " ORDER BY id DESC"
+	query += " ORDER BY qb.id DESC"
 
 	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -61,16 +61,16 @@ WHERE deleted_at IS NULL
 	return pageOf(items, filter.Page, filter.PageSize), nil
 }
 
-func (repo *MySQLRepository) GetQuestionBank(ctx context.Context, tenantID int64, id int64) (QuestionBank, error) {
+func (repo *MySQLRepository) GetQuestionBank(ctx context.Context, scope Scope, id int64) (QuestionBank, error) {
 	query := `
-SELECT id, tenant_id, owner_org_type, owner_org_id, creator_id, course_id, name, description, status, source_type, created_at, updated_at
-FROM question_banks
-WHERE id = ? AND deleted_at IS NULL
+SELECT qb.id, qb.tenant_id, qb.owner_org_type, qb.owner_org_id, qb.creator_id, qb.course_id, qb.name, qb.description, qb.status, qb.source_type, qb.created_at, qb.updated_at
+FROM question_banks qb
+WHERE qb.id = ? AND qb.deleted_at IS NULL
 `
 	args := []any{id}
-	if tenantID > 0 {
-		query += " AND tenant_id = ?"
-		args = append(args, tenantID)
+	if accessSQL, accessArgs := buildQuestionBankAccessCondition("qb", scope); accessSQL != "" {
+		query += accessSQL
+		args = append(args, accessArgs...)
 	}
 	query += " LIMIT 1"
 	row := repo.db.QueryRowContext(ctx, query, args...)
@@ -106,7 +106,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	if err != nil {
 		return QuestionBank{}, err
 	}
-	return repo.GetQuestionBank(ctx, questionBank.TenantID, id)
+	return repo.GetQuestionBank(ctx, Scope{TenantID: questionBank.TenantID, UserID: questionBank.CreatorID, UserType: "sys_admin"}, id)
 }
 
 func (repo *MySQLRepository) UpdateQuestionBank(ctx context.Context, questionBank QuestionBank) (QuestionBank, error) {
@@ -127,7 +127,7 @@ WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 	); err != nil {
 		return QuestionBank{}, err
 	}
-	return repo.GetQuestionBank(ctx, questionBank.TenantID, questionBank.ID)
+	return repo.GetQuestionBank(ctx, Scope{TenantID: questionBank.TenantID, UserID: questionBank.CreatorID, UserType: "sys_admin"}, questionBank.ID)
 }
 
 func (repo *MySQLRepository) PublishQuestionBank(ctx context.Context, tenantID int64, id int64) (QuestionBank, error) {
@@ -139,7 +139,7 @@ WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL
 	if err := repo.execAffectingOne(ctx, query, StatusActive, id, tenantID); err != nil {
 		return QuestionBank{}, err
 	}
-	return repo.GetQuestionBank(ctx, tenantID, id)
+	return repo.GetQuestionBank(ctx, Scope{TenantID: tenantID, UserType: "sys_admin"}, id)
 }
 
 func (repo *MySQLRepository) ReplaceVisibility(ctx context.Context, tenantID int64, questionBankID int64, grantedBy int64, grants []QuestionBankVisibilityGrant) error {
@@ -179,6 +179,99 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
 	}
 
 	return tx.Commit()
+}
+
+func buildQuestionBankAccessCondition(alias string, scope Scope) (string, []any) {
+	if isSystemScope(scope) {
+		return "", nil
+	}
+
+	allVisibleSQL := `
+EXISTS (
+  SELECT 1
+  FROM question_bank_visibility qbv_all
+  WHERE qbv_all.question_bank_id = ` + alias + `.id
+    AND qbv_all.status = 'active'
+    AND qbv_all.permission_type IN ('view', 'practice', 'share', 'manage', 'exam')
+    AND qbv_all.target_type = 'all'
+)
+`
+	if scope.TenantID <= 0 {
+		return " AND (" + alias + ".creator_id = ? OR " + allVisibleSQL + ")", []any{scope.UserID}
+	}
+
+	if containsExactPermission(scope.Permissions, "question_bank:manage") {
+		return " AND (" + alias + ".tenant_id = ? OR " + allVisibleSQL + ")", []any{scope.TenantID}
+	}
+
+	condition := `
+ AND (
+  ` + alias + `.creator_id = ?
+  OR ` + allVisibleSQL + `
+  OR (
+    ` + alias + `.tenant_id = ?
+    AND EXISTS (
+      SELECT 1
+      FROM question_bank_visibility qbv
+      WHERE qbv.question_bank_id = ` + alias + `.id
+        AND qbv.tenant_id = ` + alias + `.tenant_id
+        AND qbv.status = 'active'
+        AND qbv.permission_type IN ('view', 'practice', 'share', 'manage', 'exam')
+        AND (
+          (qbv.target_type = 'tenant' AND (qbv.target_id = 0 OR qbv.target_id = ?))
+          OR (qbv.target_type = ? AND (qbv.target_id = 0 OR qbv.target_id = ?))
+          OR (
+            qbv.target_type = 'class'
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM student_class_memberships scm
+                WHERE scm.tenant_id = ` + alias + `.tenant_id
+                  AND scm.student_id = ?
+                  AND scm.class_id = qbv.target_id
+                  AND scm.is_current = 1
+                  AND scm.status = 'active'
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM class_head_teacher_assignments chta
+                WHERE chta.tenant_id = ` + alias + `.tenant_id
+                  AND chta.teacher_id = ?
+                  AND chta.class_id = qbv.target_id
+                  AND chta.is_current = 1
+                  AND chta.status = 'active'
+              )
+              OR (
+                ` + alias + `.course_id IS NOT NULL
+                AND EXISTS (
+                  SELECT 1
+                  FROM teacher_class_course_assignments tcca
+                  WHERE tcca.tenant_id = ` + alias + `.tenant_id
+                    AND tcca.teacher_id = ?
+                    AND tcca.class_id = qbv.target_id
+                    AND tcca.course_id = ` + alias + `.course_id
+                    AND tcca.is_current = 1
+                    AND tcca.status = 'active'
+                )
+              )
+            )
+          )
+        )
+    )
+  )
+)
+`
+	args := []any{
+		scope.UserID,
+		scope.TenantID,
+		scope.TenantID,
+		scope.UserType,
+		scope.UserID,
+		scope.UserID,
+		scope.UserID,
+		scope.UserID,
+	}
+	return condition, args
 }
 
 func (repo *MySQLRepository) execAffectingOne(ctx context.Context, query string, args ...any) error {

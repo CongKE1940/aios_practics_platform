@@ -3,24 +3,29 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUserDisabled       = errors.New("user disabled")
-	ErrInvalidToken       = errors.New("invalid token")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrUserDisabled           = errors.New("user disabled")
+	ErrInvalidToken           = errors.New("invalid token")
+	ErrPasswordChangeRequired = errors.New("password change required")
+	ErrInvalidPassword        = errors.New("invalid password")
 )
 
 type UserRepository interface {
 	FindByTenantCodeAndUsername(ctx context.Context, tenantCode string, username string) (User, error)
 	ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error)
 	MarkLastLogin(ctx context.Context, userID int64) error
+	UpdatePassword(ctx context.Context, userID int64, passwordHash string, mustChangePassword bool) error
 }
 
 type PasswordVerifier interface {
 	Verify(passwordHash string, password string) bool
+	Hash(password string) (string, error)
 }
 
 type TokenIssuer interface {
@@ -53,6 +58,9 @@ func (service *Service) Login(ctx context.Context, command LoginCommand) (LoginR
 	if !service.password.Verify(user.PasswordHash, command.Password) {
 		return LoginResult{}, ErrInvalidCredentials
 	}
+	if user.MustChangePassword {
+		return LoginResult{}, ErrPasswordChangeRequired
+	}
 
 	pair, err := service.tokens.IssuePair(ctx, user)
 	if err != nil {
@@ -67,14 +75,38 @@ func (service *Service) Login(ctx context.Context, command LoginCommand) (LoginR
 		RefreshToken: pair.RefreshToken,
 		ExpiresIn:    pair.ExpiresIn,
 		User: CurrentUser{
-			ID:          user.ID,
-			TenantID:    user.TenantID,
-			DisplayName: user.DisplayName,
-			UserType:    user.UserType,
-			Roles:       user.Roles,
-			Permissions: user.Permissions,
+			ID:                 user.ID,
+			TenantID:           user.TenantID,
+			DisplayName:        user.DisplayName,
+			UserType:           user.UserType,
+			MustChangePassword: user.MustChangePassword,
+			Roles:              user.Roles,
+			Permissions:        user.Permissions,
 		},
 	}, nil
+}
+
+func (service *Service) ChangeInitialPassword(ctx context.Context, command ChangeInitialPasswordCommand) error {
+	if !isUsableNewPassword(command.OldPassword, command.NewPassword) {
+		return ErrInvalidPassword
+	}
+
+	user, err := service.users.FindByTenantCodeAndUsername(ctx, command.TenantCode, command.Username)
+	if err != nil {
+		return ErrInvalidCredentials
+	}
+	if user.Status != UserStatusActive || !user.MustChangePassword {
+		return ErrInvalidCredentials
+	}
+	if !service.password.Verify(user.PasswordHash, command.OldPassword) {
+		return ErrInvalidCredentials
+	}
+
+	passwordHash, err := service.password.Hash(command.NewPassword)
+	if err != nil {
+		return err
+	}
+	return service.users.UpdatePassword(ctx, user.ID, passwordHash, false)
 }
 
 func (service *Service) ListLoginOrganizations(ctx context.Context) ([]LoginOrganization, error) {
@@ -118,26 +150,41 @@ func (BcryptPasswordVerifier) Verify(passwordHash string, password string) bool 
 	return bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) == nil
 }
 
+func (BcryptPasswordVerifier) Hash(password string) (string, error) {
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashed), nil
+}
+
+func isUsableNewPassword(oldPassword string, newPassword string) bool {
+	normalized := strings.TrimSpace(newPassword)
+	return len([]rune(normalized)) >= 8 && newPassword != oldPassword
+}
+
 func currentUserFromClaims(claims AccessClaims) CurrentUser {
 	return CurrentUser{
-		ID:          claims.UserID,
-		TenantID:    claims.TenantID,
-		DisplayName: claims.DisplayName,
-		UserType:    claims.UserType,
-		Roles:       claims.Roles,
-		Permissions: claims.Permissions,
+		ID:                 claims.UserID,
+		TenantID:           claims.TenantID,
+		DisplayName:        claims.DisplayName,
+		UserType:           claims.UserType,
+		MustChangePassword: claims.MustChangePassword,
+		Roles:              claims.Roles,
+		Permissions:        claims.Permissions,
 	}
 }
 
 func userFromClaims(claims AccessClaims) User {
 	return User{
-		ID:          claims.UserID,
-		TenantID:    claims.TenantID,
-		Username:    claims.Username,
-		DisplayName: claims.DisplayName,
-		UserType:    claims.UserType,
-		Roles:       claims.Roles,
-		Permissions: claims.Permissions,
-		Status:      UserStatusActive,
+		ID:                 claims.UserID,
+		TenantID:           claims.TenantID,
+		Username:           claims.Username,
+		DisplayName:        claims.DisplayName,
+		UserType:           claims.UserType,
+		MustChangePassword: claims.MustChangePassword,
+		Roles:              claims.Roles,
+		Permissions:        claims.Permissions,
+		Status:             UserStatusActive,
 	}
 }

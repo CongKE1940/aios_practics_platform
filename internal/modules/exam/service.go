@@ -11,6 +11,14 @@ type Service struct {
 	repo Repository
 }
 
+type teacherExamScopeRepository interface {
+	TeacherCanManageClass(ctx context.Context, tenantID int64, teacherID int64, classID int64) (bool, error)
+	TeacherCanTeachClassCourse(ctx context.Context, tenantID int64, teacherID int64, classID int64, courseID int64) (bool, error)
+	TeacherCanTeachCourse(ctx context.Context, tenantID int64, teacherID int64, courseID int64) (bool, error)
+	TeacherCanManageStudent(ctx context.Context, tenantID int64, teacherID int64, studentID int64) (bool, error)
+	TeacherCanTeachStudentCourse(ctx context.Context, tenantID int64, teacherID int64, studentID int64, courseID int64) (bool, error)
+}
+
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
@@ -19,7 +27,7 @@ func (service *Service) ListExams(ctx context.Context, scope Scope, filter ExamL
 	if service == nil || service.repo == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "student" && scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "student" && !canManageExam(scope) {
 		return PageResult[Exam]{}, ErrForbidden
 	}
 	filter.Page = normalizePage(filter.Page)
@@ -31,11 +39,20 @@ func (service *Service) CreateExam(ctx context.Context, scope Scope, input ExamI
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "student" && !canManageExam(scope) {
 		return ExamDetail{}, ErrForbidden
+	}
+	if scope.UserType == "student" {
+		if scope.UserID <= 0 || scope.TenantID <= 0 {
+			return ExamDetail{}, ErrInvalidInput
+		}
+		input = normalizeStudentSelfTestInput(scope, input)
 	}
 	normalized, err := normalizeExamInput(input)
 	if err != nil {
+		return ExamDetail{}, err
+	}
+	if err := service.ensureTeacherCanUseExamScope(ctx, scope, normalized); err != nil {
 		return ExamDetail{}, err
 	}
 	return service.repo.CreateExam(ctx, scope, normalized)
@@ -45,7 +62,7 @@ func (service *Service) ListExamPapers(ctx context.Context, scope Scope, filter 
 	if service == nil || service.repo == nil {
 		return PageResult[ExamPaper]{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return PageResult[ExamPaper]{}, ErrForbidden
 	}
 	filter.Page = normalizePage(filter.Page)
@@ -57,7 +74,7 @@ func (service *Service) CreateExamPaper(ctx context.Context, scope Scope, input 
 	if service == nil || service.repo == nil {
 		return ExamPaperDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return ExamPaperDetail{}, ErrForbidden
 	}
 	normalized, err := normalizeExamPaperInput(input)
@@ -71,7 +88,7 @@ func (service *Service) GetExamPaper(ctx context.Context, scope Scope, id int64)
 	if service == nil || service.repo == nil {
 		return ExamPaperDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return ExamPaperDetail{}, ErrForbidden
 	}
 	if id <= 0 {
@@ -84,7 +101,7 @@ func (service *Service) UpdateExamPaper(ctx context.Context, scope Scope, id int
 	if service == nil || service.repo == nil {
 		return ExamPaperDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return ExamPaperDetail{}, ErrForbidden
 	}
 	if id <= 0 {
@@ -105,7 +122,7 @@ func (service *Service) PublishExamPaper(ctx context.Context, scope Scope, id in
 	if service == nil || service.repo == nil {
 		return ExamPaperDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return ExamPaperDetail{}, ErrForbidden
 	}
 	if id <= 0 {
@@ -122,7 +139,7 @@ func (service *Service) GetExam(ctx context.Context, scope Scope, id int64) (Exa
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return ExamDetail{}, ErrForbidden
 	}
 	if id <= 0 {
@@ -135,7 +152,7 @@ func (service *Service) UpdateExam(ctx context.Context, scope Scope, id int64, i
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if !canManageExam(scope) {
 		return ExamDetail{}, ErrForbidden
 	}
 	if id <= 0 {
@@ -143,6 +160,9 @@ func (service *Service) UpdateExam(ctx context.Context, scope Scope, id int64, i
 	}
 	normalized, err := normalizeExamInput(input)
 	if err != nil {
+		return ExamDetail{}, err
+	}
+	if err := service.ensureTeacherCanUseExamScope(ctx, scope, normalized); err != nil {
 		return ExamDetail{}, err
 	}
 	targetScope, err := service.scopeForExamMutation(ctx, scope, id)
@@ -156,11 +176,21 @@ func (service *Service) PublishExam(ctx context.Context, scope Scope, id int64) 
 	if service == nil || service.repo == nil {
 		return ExamDetail{}, ErrRepositoryUnavailable
 	}
-	if scope.UserType != "sys_admin" && !containsPermission(scope.Permissions, "exam:publish") {
+	if scope.UserType != "student" && !canManageExam(scope) {
 		return ExamDetail{}, ErrForbidden
 	}
 	if id <= 0 {
 		return ExamDetail{}, ErrInvalidInput
+	}
+	if scope.UserType == "student" {
+		current, err := service.repo.GetExam(ctx, scopeForRead(scope), id)
+		if err != nil {
+			return ExamDetail{}, err
+		}
+		if !isStudentSelfTestExam(scope, current) {
+			return ExamDetail{}, ErrForbidden
+		}
+		return service.repo.PublishExam(ctx, scope, id)
 	}
 	targetScope, err := service.scopeForExamMutation(ctx, scope, id)
 	if err != nil {
@@ -296,6 +326,33 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	return input, nil
 }
 
+func normalizeStudentSelfTestInput(scope Scope, input ExamInput) ExamInput {
+	input.PaperID = nil
+	input.Targets = []ExamTargetInput{
+		{
+			TargetType: TargetTypeUser,
+			TargetID:   scope.UserID,
+		},
+	}
+	if input.ExamMode == ExamModePaper {
+		input.ExamMode = ""
+	}
+	return input
+}
+
+func isStudentSelfTestExam(scope Scope, detail ExamDetail) bool {
+	if detail.OwnerOrgType != OwnerOrgTypeUser || detail.OwnerOrgID != scope.UserID || detail.CreatorID != scope.UserID {
+		return false
+	}
+	if detail.TenantID != scope.TenantID {
+		return false
+	}
+	if len(detail.Targets) != 1 {
+		return false
+	}
+	return detail.Targets[0].TargetType == TargetTypeUser && detail.Targets[0].TargetID == scope.UserID
+}
+
 func normalizeExamPaperInput(input ExamPaperInput) (ExamPaperInput, error) {
 	input.PaperName = strings.TrimSpace(input.PaperName)
 	input.PaperType = strings.TrimSpace(strings.ToLower(input.PaperType))
@@ -374,11 +431,109 @@ func readTenantID(scope Scope) int64 {
 		return 0
 	}
 	for _, permission := range scope.Permissions {
-		if permission == "system:manage" || permission == "tenant:manage" {
+		if permission == "system:manage" {
 			return 0
 		}
 	}
 	return scope.TenantID
+}
+
+func canManageExam(scope Scope) bool {
+	return scope.UserType == "sys_admin" || scope.UserType == "teacher" || containsPermission(scope.Permissions, "exam:publish")
+}
+
+func (service *Service) ensureTeacherCanUseExamScope(ctx context.Context, scope Scope, input ExamInput) error {
+	if scope.UserType != "teacher" {
+		return nil
+	}
+	if scope.TenantID <= 0 || scope.UserID <= 0 {
+		return ErrInvalidInput
+	}
+	scopeRepo, ok := service.repo.(teacherExamScopeRepository)
+	if !ok {
+		return nil
+	}
+	courseID, specialScope := singleCourseScope(input)
+	for _, target := range input.Targets {
+		switch target.TargetType {
+		case TargetTypeClass:
+			headTeacher, err := scopeRepo.TeacherCanManageClass(ctx, scope.TenantID, scope.UserID, target.TargetID)
+			if err != nil {
+				return err
+			}
+			if headTeacher {
+				continue
+			}
+			if specialScope || courseID == nil {
+				return ErrForbidden
+			}
+			allowed, err := scopeRepo.TeacherCanTeachClassCourse(ctx, scope.TenantID, scope.UserID, target.TargetID, *courseID)
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return ErrForbidden
+			}
+		case TargetTypeCourse:
+			if specialScope || courseID == nil || *courseID != target.TargetID {
+				return ErrForbidden
+			}
+			allowed, err := scopeRepo.TeacherCanTeachCourse(ctx, scope.TenantID, scope.UserID, target.TargetID)
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return ErrForbidden
+			}
+		case TargetTypeUser:
+			headTeacher, err := scopeRepo.TeacherCanManageStudent(ctx, scope.TenantID, scope.UserID, target.TargetID)
+			if err != nil {
+				return err
+			}
+			if headTeacher {
+				continue
+			}
+			if specialScope || courseID == nil {
+				return ErrForbidden
+			}
+			allowed, err := scopeRepo.TeacherCanTeachStudentCourse(ctx, scope.TenantID, scope.UserID, target.TargetID, *courseID)
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return ErrForbidden
+			}
+		}
+	}
+	return nil
+}
+
+func singleCourseScope(input ExamInput) (*int64, bool) {
+	courseIDs := make(map[int64]struct{})
+	hasNoCourseRule := false
+	if input.ExamMode == ExamModeRandom {
+		for _, rule := range input.PaperRules {
+			if rule.CourseID == nil {
+				hasNoCourseRule = true
+				continue
+			}
+			courseIDs[*rule.CourseID] = struct{}{}
+		}
+	}
+	if len(courseIDs) == 0 && !hasNoCourseRule {
+		for _, target := range input.Targets {
+			if target.TargetType == TargetTypeCourse {
+				courseIDs[target.TargetID] = struct{}{}
+			}
+		}
+	}
+	if len(courseIDs) == 1 && !hasNoCourseRule {
+		for courseID := range courseIDs {
+			value := courseID
+			return &value, false
+		}
+	}
+	return nil, true
 }
 
 func judgeExamAnswer(correctAnswer map[string]any, submitted map[string]any) (bool, error) {

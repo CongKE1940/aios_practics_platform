@@ -8,17 +8,29 @@ import (
 )
 
 const (
-	OwnerOrgTypeSchool = "school"
-	StatusDraft        = "draft"
-	StatusActive       = "active"
-	SourceTypeManual   = "manual"
-	CodeInvalidInput   = 40000
-	CodeForbidden      = 40300
-	CodeNotFound       = 40400
+	OwnerOrgTypeSchool     = "school"
+	StatusDraft            = "draft"
+	StatusActive           = "active"
+	SourceTypeManual       = "manual"
+	GrantTypeVisibility    = "visibility"
+	GrantTypeShare         = "share"
+	TargetTypeAll          = "all"
+	TargetTypeTenant       = "tenant"
+	TargetTypeTeacher      = "teacher"
+	TargetTypeStudent      = "student"
+	TargetTypeTenantAdmin  = "tenant_admin"
+	TargetTypeClass        = "class"
+	PermissionTypeView     = "view"
+	PermissionTypePractice = "practice"
+	PermissionTypeShare    = "share"
+	CodeInvalidInput       = 40000
+	CodeForbidden          = 40300
+	CodeNotFound           = 40400
 )
 
 var (
 	ErrInvalidInput = errors.New("invalid input")
+	ErrForbidden    = errors.New("forbidden")
 	ErrNotFound     = errors.New("resource not found")
 )
 
@@ -52,9 +64,10 @@ type QuestionBank struct {
 }
 
 type QuestionBankInput struct {
-	Name        string `json:"name" binding:"required"`
-	CourseID    *int64 `json:"course_id"`
-	Description string `json:"description"`
+	Name             string                        `json:"name" binding:"required"`
+	CourseID         *int64                        `json:"course_id"`
+	Description      string                        `json:"description"`
+	VisibilityGrants []QuestionBankVisibilityGrant `json:"visibility_grants"`
 }
 
 type QuestionBankVisibilityInput struct {
@@ -64,7 +77,7 @@ type QuestionBankVisibilityInput struct {
 type QuestionBankVisibilityGrant struct {
 	GrantType         string `json:"grant_type" binding:"required"`
 	TargetType        string `json:"target_type" binding:"required"`
-	TargetID          int64  `json:"target_id" binding:"required"`
+	TargetID          int64  `json:"target_id"`
 	PermissionType    string `json:"permission_type" binding:"required"`
 	InheritToChildren bool   `json:"inherit_to_children"`
 }
@@ -78,8 +91,8 @@ type QuestionBankListFilter struct {
 }
 
 type Repository interface {
-	ListQuestionBanks(ctx context.Context, tenantID int64, filter QuestionBankListFilter) (PageResult[QuestionBank], error)
-	GetQuestionBank(ctx context.Context, tenantID int64, id int64) (QuestionBank, error)
+	ListQuestionBanks(ctx context.Context, scope Scope, filter QuestionBankListFilter) (PageResult[QuestionBank], error)
+	GetQuestionBank(ctx context.Context, scope Scope, id int64) (QuestionBank, error)
 	CreateQuestionBank(ctx context.Context, questionBank QuestionBank) (QuestionBank, error)
 	UpdateQuestionBank(ctx context.Context, questionBank QuestionBank) (QuestionBank, error)
 	PublishQuestionBank(ctx context.Context, tenantID int64, id int64) (QuestionBank, error)

@@ -40,35 +40,282 @@ const latestPracticeAnswerWithPayloadSubquery = `
 )
 `
 
-const examTargetStudentsSubquery = `
+func NewMySQLRepository(db *sql.DB) *MySQLRepository {
+	return &MySQLRepository{db: db}
+}
+
+func examTargetStudentsSubquery(teacherID int64) string {
+	userTeacherFilter := ""
+	classTeacherFilter := ""
+	courseTeacherFilter := ""
+	if teacherID > 0 {
+		userTeacherFilter = `
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM class_head_teacher_assignments chta
+          WHERE chta.tenant_id = e.tenant_id
+            AND chta.teacher_id = ?
+            AND chta.class_id = scm.class_id
+            AND chta.is_current = 1
+            AND chta.status = 'active'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM teacher_class_course_assignments tcca_scope
+          WHERE tcca_scope.tenant_id = e.tenant_id
+            AND tcca_scope.teacher_id = ?
+            AND tcca_scope.class_id = scm.class_id
+            AND tcca_scope.is_current = 1
+            AND tcca_scope.status = 'active'
+            AND (
+              tcca_scope.course_id IN (
+                SELECT course_target.target_id
+                FROM exam_targets course_target
+                WHERE course_target.exam_id = e.id AND course_target.target_type = 'course'
+              )
+              OR tcca_scope.course_id = ` + singlePublishedPaperCourseIDSQL("e") + `
+            )
+        )
+      )`
+		classTeacherFilter = `
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM class_head_teacher_assignments chta
+          WHERE chta.tenant_id = e.tenant_id
+            AND chta.teacher_id = ?
+            AND chta.class_id = et.target_id
+            AND chta.is_current = 1
+            AND chta.status = 'active'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM teacher_class_course_assignments tcca_scope
+          WHERE tcca_scope.tenant_id = e.tenant_id
+            AND tcca_scope.teacher_id = ?
+            AND tcca_scope.class_id = et.target_id
+            AND tcca_scope.course_id = ` + singlePublishedPaperCourseIDSQL("e") + `
+            AND tcca_scope.is_current = 1
+            AND tcca_scope.status = 'active'
+        )
+      )`
+		courseTeacherFilter = `
+      AND tcca.teacher_id = ?`
+	}
+	return `
 (
   SELECT DISTINCT target_students.student_id
   FROM (
     SELECT et.target_id AS student_id
     FROM exam_targets et
-    WHERE et.exam_id = ? AND et.target_type = 'user'
+    JOIN exams e ON e.id = et.exam_id
+    LEFT JOIN student_class_memberships scm ON scm.tenant_id = e.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    WHERE et.exam_id = ? AND et.target_type = 'user'` + userTeacherFilter + `
     UNION
     SELECT scm.student_id
     FROM exam_targets et
     JOIN exams e ON e.id = et.exam_id
     JOIN student_class_memberships scm ON scm.tenant_id = e.tenant_id AND scm.class_id = et.target_id
     WHERE et.exam_id = ? AND et.target_type = 'class'
-      AND scm.is_current = 1 AND scm.status = 'active'
+      AND scm.is_current = 1 AND scm.status = 'active'` + classTeacherFilter + `
     UNION
     SELECT scm.student_id
     FROM exam_targets et
     JOIN exams e ON e.id = et.exam_id
     JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = e.tenant_id AND tcca.course_id = et.target_id
-      AND tcca.is_current = 1 AND tcca.status = 'active'
+      AND tcca.is_current = 1 AND tcca.status = 'active'` + courseTeacherFilter + `
     JOIN student_class_memberships scm ON scm.tenant_id = tcca.tenant_id AND scm.class_id = tcca.class_id
     WHERE et.exam_id = ? AND et.target_type = 'course'
       AND scm.is_current = 1 AND scm.status = 'active'
   ) target_students
 )
 `
+}
 
-func NewMySQLRepository(db *sql.DB) *MySQLRepository {
-	return &MySQLRepository{db: db}
+func examTargetStudentsArgs(examID int64, teacherID int64) []any {
+	if teacherID <= 0 {
+		return []any{examID, examID, examID}
+	}
+	return []any{examID, teacherID, teacherID, examID, teacherID, teacherID, teacherID, examID}
+}
+
+func teacherExamAccessCondition(alias string) string {
+	scopedCourseID := singlePublishedPaperCourseIDSQL(alias)
+	return `(
+  ` + alias + `.creator_id = ?
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN class_head_teacher_assignments chta ON chta.tenant_id = ` + alias + `.tenant_id
+      AND chta.class_id = et.target_id
+      AND chta.teacher_id = ?
+      AND chta.is_current = 1
+      AND chta.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'class'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + alias + `.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN class_head_teacher_assignments chta ON chta.tenant_id = scm.tenant_id
+      AND chta.class_id = scm.class_id
+      AND chta.teacher_id = ?
+      AND chta.is_current = 1
+      AND chta.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'user'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = ` + alias + `.tenant_id
+      AND tcca.course_id = et.target_id
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'course'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = ` + alias + `.tenant_id
+      AND tcca.class_id = et.target_id
+      AND tcca.course_id = ` + scopedCourseID + `
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'class'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + alias + `.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = scm.tenant_id
+      AND tcca.class_id = scm.class_id
+      AND tcca.course_id = ` + scopedCourseID + `
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + alias + `.id AND et.target_type = 'user'
+  )
+)`
+}
+
+func teacherExamAttemptAccessCondition(examAlias string, attemptAlias string) string {
+	scopedCourseID := singlePublishedPaperCourseIDSQL(examAlias)
+	return `(
+  ` + examAlias + `.creator_id = ?
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + examAlias + `.tenant_id
+      AND scm.class_id = et.target_id
+      AND scm.student_id = ` + attemptAlias + `.user_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN class_head_teacher_assignments chta ON chta.tenant_id = scm.tenant_id
+      AND chta.class_id = scm.class_id
+      AND chta.teacher_id = ?
+      AND chta.is_current = 1
+      AND chta.status = 'active'
+    WHERE et.exam_id = ` + examAlias + `.id AND et.target_type = 'class'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + examAlias + `.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.student_id = ` + attemptAlias + `.user_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN class_head_teacher_assignments chta ON chta.tenant_id = scm.tenant_id
+      AND chta.class_id = scm.class_id
+      AND chta.teacher_id = ?
+      AND chta.is_current = 1
+      AND chta.status = 'active'
+    WHERE et.exam_id = ` + examAlias + `.id AND et.target_type = 'user'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = ` + examAlias + `.tenant_id
+      AND tcca.course_id = et.target_id
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    JOIN student_class_memberships scm ON scm.tenant_id = tcca.tenant_id
+      AND scm.class_id = tcca.class_id
+      AND scm.student_id = ` + attemptAlias + `.user_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    WHERE et.exam_id = ` + examAlias + `.id AND et.target_type = 'course'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + examAlias + `.tenant_id
+      AND scm.class_id = et.target_id
+      AND scm.student_id = ` + attemptAlias + `.user_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = scm.tenant_id
+      AND tcca.class_id = scm.class_id
+      AND tcca.course_id = ` + scopedCourseID + `
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + examAlias + `.id AND et.target_type = 'class'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.tenant_id = ` + examAlias + `.tenant_id
+      AND scm.student_id = et.target_id
+      AND scm.student_id = ` + attemptAlias + `.user_id
+      AND scm.is_current = 1
+      AND scm.status = 'active'
+    JOIN teacher_class_course_assignments tcca ON tcca.tenant_id = scm.tenant_id
+      AND tcca.class_id = scm.class_id
+      AND tcca.course_id = ` + scopedCourseID + `
+      AND tcca.teacher_id = ?
+      AND tcca.is_current = 1
+      AND tcca.status = 'active'
+    WHERE et.exam_id = ` + examAlias + `.id AND et.target_type = 'user'
+  )
+)`
+}
+
+func singlePublishedPaperCourseIDSQL(alias string) string {
+	return `(
+    SELECT MIN(epqr.course_id)
+    FROM exam_paper_question_rules epqr
+    WHERE epqr.paper_id = ` + alias + `.paper_id
+    HAVING COUNT(*) > 0 AND COUNT(*) = COUNT(epqr.course_id) AND COUNT(DISTINCT epqr.course_id) = 1
+  )`
+}
+
+func teacherExamAccessArgs(teacherID int64) []any {
+	return []any{teacherID, teacherID, teacherID, teacherID, teacherID, teacherID}
+}
+
+func (repo *MySQLRepository) existsByID(ctx context.Context, query string, args ...any) (bool, error) {
+	var id int64
+	if err := repo.db.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (repo *MySQLRepository) GetAdminOverview(ctx context.Context, tenantID int64) (AdminOverviewResult, error) {
@@ -279,7 +526,7 @@ func (repo *MySQLRepository) ExamExists(ctx context.Context, tenantID int64, exa
 	const query = `
 SELECT id
 FROM exams
-WHERE tenant_id = ? AND id = ?
+WHERE tenant_id = ? AND id = ? AND owner_org_type <> 'user'
 LIMIT 1
 `
 	var id int64
@@ -335,7 +582,7 @@ LIMIT 1
 }
 
 func (repo *MySQLRepository) GetExamOverviewSummary(ctx context.Context, query ExamOverviewQuery) (ExamOverviewSummary, error) {
-	const statement = `
+	statement := `
 SELECT
   e.id,
   e.name,
@@ -360,20 +607,18 @@ LEFT JOIN (
   WHERE exam_id = ?
   GROUP BY exam_id
 ) ep ON ep.exam_id = e.id
-LEFT JOIN ` + examTargetStudentsSubquery + ` ts ON 1 = 1
+LEFT JOIN ` + examTargetStudentsSubquery(query.TeacherID) + ` ts ON 1 = 1
 LEFT JOIN exam_attempts ea ON ea.exam_id = e.id AND ea.user_id = ts.student_id AND ea.tenant_id = e.tenant_id
 WHERE e.tenant_id = ? AND e.id = ?
 GROUP BY e.id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, ep.total_score
 `
+	args := []any{query.ExamID}
+	args = append(args, examTargetStudentsArgs(query.ExamID, query.TeacherID)...)
+	args = append(args, query.TenantID, query.ExamID)
 	row := repo.db.QueryRowContext(
 		ctx,
 		statement,
-		query.ExamID,
-		query.ExamID,
-		query.ExamID,
-		query.ExamID,
-		query.TenantID,
-		query.ExamID,
+		args...,
 	)
 	var summary ExamOverviewSummary
 	var startAt sql.NullTime
@@ -437,7 +682,7 @@ func (repo *MySQLRepository) countExamOverviewStudents(ctx context.Context, quer
 	filters, args := buildExamOverviewFilterClause(query)
 	countQuery := `
 SELECT COUNT(*)
-FROM ` + examOverviewStudentBaseFromClause() + `
+FROM ` + examOverviewStudentBaseFromClause(query.TeacherID) + `
 WHERE 1 = 1` + filters
 	var total int
 	if err := repo.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
@@ -475,7 +720,7 @@ SELECT
   ea.objective_score,
   review_stats.subjective_score,
   ea.final_score
-FROM ` + examOverviewStudentBaseFromClause() + `
+FROM ` + examOverviewStudentBaseFromClause(query.TeacherID) + `
 WHERE 1 = 1` + filters + `
 ORDER BY
   CASE WHEN ea.final_score IS NULL THEN 1 ELSE 0 END ASC,
@@ -508,9 +753,9 @@ ORDER BY
 	return items, nil
 }
 
-func examOverviewStudentBaseFromClause() string {
+func examOverviewStudentBaseFromClause(teacherID int64) string {
 	return `
-` + examTargetStudentsSubquery + ` ts
+` + examTargetStudentsSubquery(teacherID) + ` ts
 JOIN users u ON u.id = ts.student_id AND u.tenant_id = ?
 LEFT JOIN student_profiles sp ON sp.tenant_id = u.tenant_id AND sp.user_id = u.id
 LEFT JOIN student_class_memberships scm ON scm.tenant_id = u.tenant_id AND scm.student_id = u.id
@@ -535,7 +780,8 @@ LEFT JOIN (
 }
 
 func buildExamOverviewFilterClause(query ExamOverviewQuery) (string, []any) {
-	args := []any{query.ExamID, query.ExamID, query.ExamID, query.TenantID, query.ExamID}
+	args := examTargetStudentsArgs(query.ExamID, query.TeacherID)
+	args = append(args, query.TenantID, query.ExamID)
 	filters := strings.Builder{}
 	if query.AttemptStatus != "" {
 		switch query.AttemptStatus {
@@ -592,7 +838,7 @@ SELECT
   ea.subjective_score,
   ea.final_score
 FROM exam_attempts ea
-JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id AND e.owner_org_type <> 'user'
 JOIN users u ON u.id = ea.user_id AND u.tenant_id = ea.tenant_id
 LEFT JOIN student_profiles sp ON sp.user_id = u.id AND sp.tenant_id = u.tenant_id
 LEFT JOIN student_class_memberships scm ON scm.student_id = u.id AND scm.tenant_id = u.tenant_id
@@ -791,16 +1037,48 @@ SELECT id
 FROM teacher_class_course_assignments
 WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND course_id = ?
   AND is_current = 1 AND status = 'active'
+UNION
+SELECT id
+FROM class_head_teacher_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND class_id = ?
+  AND is_current = 1 AND status = 'active'
 LIMIT 1
 `
 	var id int64
-	if err := repo.db.QueryRowContext(ctx, query, tenantID, teacherID, classID, courseID).Scan(&id); err != nil {
+	if err := repo.db.QueryRowContext(ctx, query, tenantID, teacherID, classID, courseID, tenantID, teacherID, classID).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, err
 	}
 	return true, nil
+}
+
+func (repo *MySQLRepository) TeacherCanViewExam(ctx context.Context, tenantID int64, teacherID int64, examID int64) (bool, error) {
+	query := `
+SELECT e.id
+FROM exams e
+WHERE e.tenant_id = ? AND e.id = ? AND e.owner_org_type <> 'user'
+  AND ` + teacherExamAccessCondition("e") + `
+LIMIT 1
+`
+	args := []any{tenantID, examID}
+	args = append(args, teacherExamAccessArgs(teacherID)...)
+	return repo.existsByID(ctx, query, args...)
+}
+
+func (repo *MySQLRepository) TeacherCanReviewExamAttempt(ctx context.Context, tenantID int64, teacherID int64, attemptID int64) (bool, error) {
+	query := `
+SELECT ea.id
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id AND e.tenant_id = ea.tenant_id AND e.owner_org_type <> 'user'
+WHERE ea.tenant_id = ? AND ea.id = ?
+  AND ` + teacherExamAttemptAccessCondition("e", "ea") + `
+LIMIT 1
+`
+	args := []any{tenantID, attemptID}
+	args = append(args, teacherExamAccessArgs(teacherID)...)
+	return repo.existsByID(ctx, query, args...)
 }
 
 func (repo *MySQLRepository) ListClassCourseOptions(ctx context.Context, scope Scope) ([]ClassCourseOption, error) {
@@ -810,10 +1088,20 @@ SELECT
   c.name AS class_name,
   co.id AS course_id,
   co.name AS course_name
-FROM teacher_class_course_assignments tcca
-JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
-JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
-WHERE tcca.tenant_id = ? AND tcca.teacher_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+FROM (
+  SELECT tcca.tenant_id, tcca.class_id, tcca.course_id
+  FROM teacher_class_course_assignments tcca
+  WHERE tcca.tenant_id = ? AND tcca.teacher_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  UNION
+  SELECT chta.tenant_id, chta.class_id, co.id AS course_id
+  FROM class_head_teacher_assignments chta
+  JOIN courses co ON co.tenant_id = chta.tenant_id
+  WHERE chta.tenant_id = ? AND chta.teacher_id = ? AND chta.is_current = 1 AND chta.status = 'active'
+    AND co.status = 'active' AND co.deleted_at IS NULL
+) assignment_scope
+JOIN classes c ON c.tenant_id = assignment_scope.tenant_id AND c.id = assignment_scope.class_id
+JOIN courses co ON co.tenant_id = assignment_scope.tenant_id AND co.id = assignment_scope.course_id
+WHERE 1 = 1
   AND c.status = 'active' AND c.deleted_at IS NULL
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC
@@ -824,10 +1112,20 @@ SELECT
   c.name AS class_name,
   co.id AS course_id,
   co.name AS course_name
-FROM teacher_class_course_assignments tcca
-JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
-JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
-WHERE tcca.tenant_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+FROM (
+  SELECT tcca.tenant_id, tcca.class_id, tcca.course_id
+  FROM teacher_class_course_assignments tcca
+  WHERE tcca.tenant_id = ? AND tcca.is_current = 1 AND tcca.status = 'active'
+  UNION
+  SELECT chta.tenant_id, chta.class_id, co.id AS course_id
+  FROM class_head_teacher_assignments chta
+  JOIN courses co ON co.tenant_id = chta.tenant_id
+  WHERE chta.tenant_id = ? AND chta.is_current = 1 AND chta.status = 'active'
+    AND co.status = 'active' AND co.deleted_at IS NULL
+) assignment_scope
+JOIN classes c ON c.tenant_id = assignment_scope.tenant_id AND c.id = assignment_scope.class_id
+JOIN courses co ON co.tenant_id = assignment_scope.tenant_id AND co.id = assignment_scope.course_id
+WHERE 1 = 1
   AND c.status = 'active' AND c.deleted_at IS NULL
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC
@@ -838,10 +1136,20 @@ SELECT
   c.name AS class_name,
   co.id AS course_id,
   co.name AS course_name
-FROM teacher_class_course_assignments tcca
-JOIN classes c ON c.tenant_id = tcca.tenant_id AND c.id = tcca.class_id
-JOIN courses co ON co.tenant_id = tcca.tenant_id AND co.id = tcca.course_id
-WHERE tcca.is_current = 1 AND tcca.status = 'active'
+FROM (
+  SELECT tcca.tenant_id, tcca.class_id, tcca.course_id
+  FROM teacher_class_course_assignments tcca
+  WHERE tcca.is_current = 1 AND tcca.status = 'active'
+  UNION
+  SELECT chta.tenant_id, chta.class_id, co.id AS course_id
+  FROM class_head_teacher_assignments chta
+  JOIN courses co ON co.tenant_id = chta.tenant_id
+  WHERE chta.is_current = 1 AND chta.status = 'active'
+    AND co.status = 'active' AND co.deleted_at IS NULL
+) assignment_scope
+JOIN classes c ON c.tenant_id = assignment_scope.tenant_id AND c.id = assignment_scope.class_id
+JOIN courses co ON co.tenant_id = assignment_scope.tenant_id AND co.id = assignment_scope.course_id
+WHERE 1 = 1
   AND c.status = 'active' AND c.deleted_at IS NULL
   AND co.status = 'active' AND co.deleted_at IS NULL
 ORDER BY c.name ASC, co.name ASC
@@ -856,7 +1164,9 @@ ORDER BY c.name ASC, co.name ASC
 	}
 	if scope.UserType == "teacher" {
 		query = teacherQuery
-		args = []any{scope.TenantID, scope.UserID}
+		args = []any{scope.TenantID, scope.UserID, scope.TenantID, scope.UserID}
+	} else if tenantID > 0 {
+		args = []any{tenantID, tenantID}
 	}
 
 	rows, err := repo.db.QueryContext(ctx, query, args...)

@@ -26,6 +26,7 @@ func TestAdminHandler_RoleLifecycleAndPermissionAssignment(t *testing.T) {
 		claims: auth.AccessClaims{
 			UserID:      1,
 			TenantID:    1,
+			UserType:    "sys_admin",
 			Permissions: []string{"role:manage"},
 			TokenType:   auth.TokenTypeAccess,
 		},
@@ -111,6 +112,137 @@ func TestAdminHandler_RoleLifecycleAndPermissionAssignment(t *testing.T) {
 	}
 }
 
+func TestAdminHandler_TenantAdminCanOnlyGrantOwnNonPermissionManagementPermissions(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryAdminRepository()
+	repo.roles[1] = Role{
+		ID:            1,
+		TenantID:      1,
+		Code:          "org_operator",
+		Name:          "学校/组织协管员",
+		RoleType:      "custom",
+		DataScopeType: "tenant",
+		Status:        RoleStatusActive,
+	}
+	repo.roles[2] = Role{
+		ID:            2,
+		TenantID:      1,
+		Code:          "school_admin",
+		Name:          "学校/组织管理员",
+		RoleType:      "builtin",
+		DataScopeType: "tenant",
+		Status:        RoleStatusActive,
+	}
+	repo.roles[3] = Role{
+		ID:            3,
+		TenantID:      2,
+		Code:          "other_tenant_operator",
+		Name:          "其他租户角色",
+		RoleType:      "custom",
+		DataScopeType: "tenant",
+		Status:        RoleStatusActive,
+	}
+	repo.permissions[1] = Permission{ID: 1, Code: "user:manage", Module: "user", ActionName: "manage", ResourceType: "user", Name: "用户管理"}
+	repo.permissions[2] = Permission{ID: 2, Code: "role:manage", Module: "role", ActionName: "manage", ResourceType: "role", Name: "角色管理"}
+	repo.permissions[3] = Permission{ID: 3, Code: "tenant:manage", Module: "tenant", ActionName: "manage", ResourceType: "tenant", Name: "租户管理"}
+	repo.permissions[4] = Permission{ID: 4, Code: "notice:manage", Module: "notice", ActionName: "manage", ResourceType: "notice", Name: "公告管理"}
+
+	handler := NewAdminHandler(NewAdminService(repo), fakeAdminTokenParser{
+		claims: auth.AccessClaims{
+			UserID:      10,
+			TenantID:    1,
+			UserType:    "tenant_admin",
+			Permissions: []string{"tenant:manage", "user:manage", "role:manage"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterAdminRoutes(api)
+
+	listRec := performRBACRequest(router, http.MethodGet, "/api/v1/roles?status=active", nil, "token")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list tenant roles status = %d", listRec.Code)
+	}
+	var listed envelope[PageResult[Role]]
+	decodeRBACBody(t, listRec, &listed)
+	if listed.Data.Total != 2 {
+		t.Fatalf("tenant role count = %d", listed.Data.Total)
+	}
+	for _, role := range listed.Data.Items {
+		if role.TenantID != 1 {
+			t.Fatalf("listed cross-tenant role: %+v", role)
+		}
+	}
+
+	allowedRec := performRBACRequest(
+		router,
+		http.MethodPut,
+		"/api/v1/roles/1/permissions",
+		map[string]any{"permission_ids": []int64{1}},
+		"token",
+	)
+	if allowedRec.Code != http.StatusOK {
+		t.Fatalf("assign allowed permissions status = %d", allowedRec.Code)
+	}
+
+	permissionManagementRec := performRBACRequest(
+		router,
+		http.MethodPut,
+		"/api/v1/roles/1/permissions",
+		map[string]any{"permission_ids": []int64{1, 2}},
+		"token",
+	)
+	if permissionManagementRec.Code != http.StatusForbidden {
+		t.Fatalf("assign permission management permissions status = %d", permissionManagementRec.Code)
+	}
+
+	tenantManageRec := performRBACRequest(
+		router,
+		http.MethodPut,
+		"/api/v1/roles/1/permissions",
+		map[string]any{"permission_ids": []int64{3}},
+		"token",
+	)
+	if tenantManageRec.Code != http.StatusForbidden {
+		t.Fatalf("assign tenant manage permission status = %d", tenantManageRec.Code)
+	}
+
+	exceedSelfRec := performRBACRequest(
+		router,
+		http.MethodPut,
+		"/api/v1/roles/1/permissions",
+		map[string]any{"permission_ids": []int64{1, 4}},
+		"token",
+	)
+	if exceedSelfRec.Code != http.StatusForbidden {
+		t.Fatalf("assign permissions beyond self status = %d", exceedSelfRec.Code)
+	}
+
+	builtinRoleRec := performRBACRequest(
+		router,
+		http.MethodPut,
+		"/api/v1/roles/2/permissions",
+		map[string]any{"permission_ids": []int64{1}},
+		"token",
+	)
+	if builtinRoleRec.Code != http.StatusForbidden {
+		t.Fatalf("assign builtin role permissions status = %d", builtinRoleRec.Code)
+	}
+
+	createBuiltinRec := performRBACRequest(router, http.MethodPost, "/api/v1/roles", map[string]any{
+		"code":            "tenant_admin",
+		"name":            "租户管理员",
+		"role_type":       "custom",
+		"data_scope_type": "tenant",
+	}, "token")
+	if createBuiltinRec.Code != http.StatusForbidden {
+		t.Fatalf("create privileged role status = %d", createBuiltinRec.Code)
+	}
+}
+
 func TestAdminHandler_RejectsRoleManagementWithoutPermission(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -127,7 +259,12 @@ func TestAdminHandler_RejectsRoleManagementWithoutPermission(t *testing.T) {
 	api := router.Group("/api/v1")
 	handler.RegisterAdminRoutes(api)
 
-	rec := performRBACRequest(router, http.MethodGet, "/api/v1/roles", nil, "token")
+	rec := performRBACRequest(router, http.MethodPost, "/api/v1/roles", map[string]any{
+		"code":            "school_reviewer",
+		"name":            "学校审核员",
+		"role_type":       "custom",
+		"data_scope_type": "subtree",
+	}, "token")
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -175,7 +312,7 @@ func newMemoryAdminRepository() *memoryAdminRepository {
 func (repo *memoryAdminRepository) ListRoles(_ context.Context, tenantID int64, filter RoleListFilter) (PageResult[Role], error) {
 	items := make([]Role, 0)
 	for _, role := range repo.roles {
-		if role.TenantID != tenantID {
+		if tenantID > 0 && role.TenantID != tenantID {
 			continue
 		}
 		if filter.Status != "" && role.Status != filter.Status {
@@ -189,7 +326,7 @@ func (repo *memoryAdminRepository) ListRoles(_ context.Context, tenantID int64, 
 
 func (repo *memoryAdminRepository) GetRole(_ context.Context, tenantID int64, id int64) (Role, error) {
 	role, ok := repo.roles[id]
-	if !ok || role.TenantID != tenantID {
+	if !ok || (tenantID > 0 && role.TenantID != tenantID) {
 		return Role{}, ErrNotFound
 	}
 	role.PermissionIDs = append([]int64{}, repo.rolePermissions[id]...)

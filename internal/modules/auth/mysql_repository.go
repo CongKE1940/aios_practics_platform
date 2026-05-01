@@ -53,7 +53,8 @@ SELECT
   u.password_hash,
   u.display_name,
   u.user_type,
-  u.status
+  u.status,
+  u.must_change_password
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
 WHERE t.code = ? AND u.username = ? AND u.deleted_at IS NULL AND t.deleted_at IS NULL
@@ -69,6 +70,7 @@ LIMIT 1
 		&user.DisplayName,
 		&user.UserType,
 		&user.Status,
+		&user.MustChangePassword,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrInvalidCredentials
@@ -94,6 +96,27 @@ LIMIT 1
 func (repo *MySQLUserRepository) MarkLastLogin(ctx context.Context, userID int64) error {
 	_, err := repo.db.ExecContext(ctx, "UPDATE users SET last_login_at = CURRENT_TIMESTAMP(3) WHERE id = ?", userID)
 	return err
+}
+
+func (repo *MySQLUserRepository) UpdatePassword(ctx context.Context, userID int64, passwordHash string, mustChangePassword bool) error {
+	result, err := repo.db.ExecContext(
+		ctx,
+		"UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ? AND deleted_at IS NULL",
+		passwordHash,
+		mustChangePassword,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrInvalidCredentials
+	}
+	return nil
 }
 
 func (repo *MySQLUserRepository) findRoles(ctx context.Context, userID int64, tenantID int64) ([]string, error) {

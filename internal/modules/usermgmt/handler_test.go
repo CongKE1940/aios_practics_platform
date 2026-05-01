@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 
 	"aios_practice_platform/internal/modules/auth"
 )
@@ -52,6 +53,9 @@ func TestHandler_UserLifecycleAndRoleAssignment(t *testing.T) {
 	}
 	if len(created.Data.RoleIDs) != 1 || created.Data.RoleIDs[0] != 3 {
 		t.Fatalf("role_ids = %+v", created.Data.RoleIDs)
+	}
+	if !created.Data.MustChangePassword || created.Data.InitialPassword == "" {
+		t.Fatalf("created user password policy = %+v", created.Data)
 	}
 
 	listRec := performUserRequest(router, http.MethodGet, "/api/v1/users?user_type=teacher&keyword=张", nil, "token")
@@ -102,6 +106,197 @@ func TestHandler_UserLifecycleAndRoleAssignment(t *testing.T) {
 	decodeUserBody(t, disableRec, &disabled)
 	if disabled.Data.Status != UserStatusDisabled {
 		t.Fatalf("status = %q", disabled.Data.Status)
+	}
+}
+
+func TestHandler_TeacherAndStudentUseRandomOneTimePasswords(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	repo.roles[3] = RoleSummary{ID: 3, TenantID: 1, Code: "org_operator", Name: "学校/组织协管员", Status: UserStatusActive}
+
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:      1,
+			TenantID:    1,
+			UserType:    "school_admin",
+			Permissions: []string{"user:manage"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	teacherRec := performUserRequest(router, http.MethodPost, "/api/v1/users", map[string]any{
+		"username":     "teacher002",
+		"display_name": "李老师",
+		"user_type":    "teacher",
+		"password":     "SameInit@123",
+		"role_ids":     []int64{3},
+	}, "token")
+	if teacherRec.Code != http.StatusOK {
+		t.Fatalf("create teacher status = %d", teacherRec.Code)
+	}
+	var teacher envelope[User]
+	decodeUserBody(t, teacherRec, &teacher)
+
+	studentRec := performUserRequest(router, http.MethodPost, "/api/v1/users", map[string]any{
+		"username":     "student001",
+		"display_name": "王同学",
+		"user_type":    "student",
+		"password":     "SameInit@123",
+		"role_ids":     []int64{3},
+	}, "token")
+	if studentRec.Code != http.StatusOK {
+		t.Fatalf("create student status = %d", studentRec.Code)
+	}
+	var student envelope[User]
+	decodeUserBody(t, studentRec, &student)
+
+	if !teacher.Data.MustChangePassword || !student.Data.MustChangePassword {
+		t.Fatalf("must_change_password teacher=%v student=%v", teacher.Data.MustChangePassword, student.Data.MustChangePassword)
+	}
+	if teacher.Data.InitialPassword == "" || student.Data.InitialPassword == "" {
+		t.Fatalf("initial passwords teacher=%q student=%q", teacher.Data.InitialPassword, student.Data.InitialPassword)
+	}
+	if teacher.Data.InitialPassword == student.Data.InitialPassword || teacher.Data.InitialPassword == "SameInit@123" || student.Data.InitialPassword == "SameInit@123" {
+		t.Fatalf("initial passwords should be random and ignore input, teacher=%q student=%q", teacher.Data.InitialPassword, student.Data.InitialPassword)
+	}
+
+	resetRec := performUserRequest(router, http.MethodPost, "/api/v1/users/"+strconv.FormatInt(student.Data.ID, 10)+"/reset-password", nil, "token")
+	if resetRec.Code != http.StatusOK {
+		t.Fatalf("reset student password status = %d", resetRec.Code)
+	}
+	var reset envelope[User]
+	decodeUserBody(t, resetRec, &reset)
+	if !reset.Data.MustChangePassword || reset.Data.InitialPassword == "" || reset.Data.InitialPassword == student.Data.InitialPassword {
+		t.Fatalf("reset password policy = %+v", reset.Data)
+	}
+}
+
+func TestHandler_OrgAdminCanOnlyCreateLowerPrivilegeAdmins(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	repo.roles[3] = RoleSummary{
+		ID:              3,
+		TenantID:        1,
+		Code:            "org_operator",
+		Name:            "学校/组织协管员",
+		Status:          UserStatusActive,
+		PermissionCodes: []string{"user:manage"},
+	}
+	repo.roles[4] = RoleSummary{
+		ID:              4,
+		TenantID:        1,
+		Code:            "school_admin",
+		Name:            "学校/组织管理员",
+		Status:          UserStatusActive,
+		PermissionCodes: []string{"role:manage", "org:manage", "user:manage"},
+	}
+
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:      1,
+			TenantID:    1,
+			UserType:    "school_admin",
+			Permissions: []string{"user:manage"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	createOperatorRec := performUserRequest(router, http.MethodPost, "/api/v1/users", map[string]any{
+		"username":     "operator001",
+		"display_name": "协管员",
+		"user_type":    "staff",
+		"role_ids":     []int64{3},
+	}, "token")
+	if createOperatorRec.Code != http.StatusOK {
+		t.Fatalf("create operator status = %d", createOperatorRec.Code)
+	}
+	var operator envelope[User]
+	decodeUserBody(t, createOperatorRec, &operator)
+	if len(operator.Data.RoleIDs) != 1 || operator.Data.RoleIDs[0] != 3 {
+		t.Fatalf("operator roles = %+v", operator.Data.RoleIDs)
+	}
+
+	createSchoolAdminRec := performUserRequest(router, http.MethodPost, "/api/v1/users", map[string]any{
+		"username":     "admin002",
+		"display_name": "管理员",
+		"user_type":    "school_admin",
+		"role_ids":     []int64{4},
+	}, "token")
+	if createSchoolAdminRec.Code != http.StatusForbidden {
+		t.Fatalf("create school admin status = %d", createSchoolAdminRec.Code)
+	}
+
+	assignPrivilegedRoleRec := performUserRequest(
+		router,
+		http.MethodPut,
+		"/api/v1/users/"+strconv.FormatInt(operator.Data.ID, 10)+"/roles",
+		map[string]any{"role_ids": []int64{4}},
+		"token",
+	)
+	if assignPrivilegedRoleRec.Code != http.StatusForbidden {
+		t.Fatalf("assign privileged role status = %d", assignPrivilegedRoleRec.Code)
+	}
+}
+
+func TestHandler_CurrentUserProfileAndPassword(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("Old@123456"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword() error = %v", err)
+	}
+
+	repo := newMemoryRepository()
+	repo.users[1] = User{
+		ID:                 1,
+		TenantID:           1,
+		Username:           "teacher001",
+		PasswordHash:       string(hash),
+		DisplayName:        "张老师",
+		UserType:           "teacher",
+		Status:             UserStatusActive,
+		MustChangePassword: true,
+	}
+
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:    1,
+			TenantID:  1,
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	profileRec := performUserRequest(router, http.MethodGet, "/api/v1/users/me", nil, "token")
+	if profileRec.Code != http.StatusOK {
+		t.Fatalf("profile status = %d", profileRec.Code)
+	}
+
+	updateRec := performUserRequest(router, http.MethodPut, "/api/v1/users/me", map[string]any{
+		"display_name": "张老师-个人",
+		"phone":        "13900000000",
+		"email":        "teacher@example.com",
+	}, "token")
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update profile status = %d", updateRec.Code)
+	}
+
+	passwordRec := performUserRequest(router, http.MethodPut, "/api/v1/users/me/password", map[string]any{
+		"old_password": "Old@123456",
+		"new_password": "New@123456",
+	}, "token")
+	if passwordRec.Code != http.StatusOK {
+		t.Fatalf("password status = %d", passwordRec.Code)
+	}
+	if repo.users[1].MustChangePassword {
+		t.Fatal("MustChangePassword = true")
 	}
 }
 
@@ -204,8 +399,21 @@ func (repo *memoryRepository) UpdateUser(_ context.Context, user User) (User, er
 	}
 	user.Status = current.Status
 	user.PasswordHash = current.PasswordHash
+	user.MustChangePassword = current.MustChangePassword
 	repo.users[user.ID] = user
 	return user, nil
+}
+
+func (repo *memoryRepository) UpdateProfile(_ context.Context, user User) (User, error) {
+	current, ok := repo.users[user.ID]
+	if !ok || current.TenantID != user.TenantID {
+		return User{}, ErrNotFound
+	}
+	current.DisplayName = user.DisplayName
+	current.Phone = user.Phone
+	current.Email = user.Email
+	repo.users[user.ID] = current
+	return current, nil
 }
 
 func (repo *memoryRepository) AssignRoles(_ context.Context, tenantID int64, userID int64, roleIDs []int64) (User, error) {
@@ -228,12 +436,13 @@ func (repo *memoryRepository) DisableUser(_ context.Context, tenantID int64, use
 	return user, nil
 }
 
-func (repo *memoryRepository) ResetPassword(_ context.Context, tenantID int64, userID int64, passwordHash string) (User, error) {
+func (repo *memoryRepository) ResetPassword(_ context.Context, tenantID int64, userID int64, passwordHash string, mustChangePassword bool) (User, error) {
 	user, ok := repo.users[userID]
 	if !ok || user.TenantID != tenantID {
 		return User{}, ErrNotFound
 	}
 	user.PasswordHash = passwordHash
+	user.MustChangePassword = mustChangePassword
 	repo.users[userID] = user
 	return user, nil
 }

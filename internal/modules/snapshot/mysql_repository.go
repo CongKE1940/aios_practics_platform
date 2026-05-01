@@ -209,6 +209,10 @@ WHERE 1 = 1
 		base += " AND course_id = ?"
 		args = append(args, filter.CourseID)
 	}
+	if filter.AssignmentType != "" {
+		base += " AND assignment_type = ?"
+		args = append(args, filter.AssignmentType)
+	}
 	total, err := repo.countRows(ctx, "SELECT COUNT(*) "+base, args...)
 	if err != nil {
 		return PageResult[TeacherAssignmentHistory]{}, err
@@ -218,7 +222,7 @@ WHERE 1 = 1
 	pageSize := normalizePageSize(filter.PageSize)
 	offset := (page - 1) * pageSize
 	query := `
-SELECT id, tenant_id, teacher_id, class_id, course_id, change_type, effective_from, effective_to, operator_id, created_at
+SELECT id, tenant_id, teacher_id, class_id, course_id, assignment_type, change_type, effective_from, effective_to, operator_id, created_at
 ` + base + `
 ORDER BY created_at DESC, id DESC
 LIMIT ? OFFSET ?
@@ -413,27 +417,40 @@ func (repo *MySQLRepository) ApplyTeacherAssignmentChange(
 	if err != nil {
 		return TeacherAssignmentHistory{}, err
 	}
-	currentAssignment, err := repo.getCurrentTeacherAssignment(ctx, tx, tenantID, input.TeacherID, input.ClassID, input.CourseID)
+	currentAssignment, err := repo.getCurrentTeacherAssignment(ctx, tx, tenantID, input)
 	if err != nil && err != ErrNotFound {
 		return TeacherAssignmentHistory{}, err
 	}
 
 	now := time.Now()
 	history := TeacherAssignmentHistory{
-		TenantID:      tenantID,
-		TeacherID:     input.TeacherID,
-		ClassID:       input.ClassID,
-		CourseID:      input.CourseID,
-		ChangeType:    input.ChangeType,
-		EffectiveFrom: input.EffectiveAt,
-		OperatorID:    operatorUserID,
-		CreatedAt:     now,
+		TenantID:       tenantID,
+		TeacherID:      input.TeacherID,
+		ClassID:        input.ClassID,
+		AssignmentType: input.AssignmentType,
+		ChangeType:     input.ChangeType,
+		EffectiveFrom:  input.EffectiveAt,
+		OperatorID:     operatorUserID,
+		CreatedAt:      now,
+	}
+	if input.AssignmentType == TeacherAssignmentTypeCourseTeacher {
+		history.CourseID = int64Ptr(input.CourseID)
 	}
 
 	switch input.ChangeType {
 	case TeacherAssignmentChangeAssign:
 		if currentAssignment != nil {
 			return TeacherAssignmentHistory{}, ErrInvalidInput
+		}
+		if input.AssignmentType == TeacherAssignmentTypeHeadTeacher {
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO class_head_teacher_assignments (
+  tenant_id, teacher_id, school_id, grade_id, class_id, is_current, status, effective_from
+) VALUES (?, ?, ?, ?, ?, 1, 'active', ?)
+`, tenantID, input.TeacherID, classMeta.SchoolID, classMeta.GradeID, input.ClassID, input.EffectiveAt); err != nil {
+				return TeacherAssignmentHistory{}, err
+			}
+			break
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO teacher_class_course_assignments (
@@ -448,8 +465,12 @@ INSERT INTO teacher_class_course_assignments (
 		}
 		history.EffectiveFrom = currentAssignment.EffectiveFrom
 		history.EffectiveTo = &input.EffectiveAt
+		targetTable := "teacher_class_course_assignments"
+		if input.AssignmentType == TeacherAssignmentTypeHeadTeacher {
+			targetTable = "class_head_teacher_assignments"
+		}
 		if _, err := tx.ExecContext(ctx, `
-UPDATE teacher_class_course_assignments
+UPDATE `+targetTable+`
 SET is_current = 0, effective_to = ?
 WHERE id = ? AND tenant_id = ?
 `, input.EffectiveAt, currentAssignment.ID, tenantID); err != nil {
@@ -461,9 +482,9 @@ WHERE id = ? AND tenant_id = ?
 
 	result, err := tx.ExecContext(ctx, `
 INSERT INTO teacher_assignment_histories (
-  tenant_id, teacher_id, class_id, course_id, change_type, effective_from, effective_to, operator_id, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, tenantID, input.TeacherID, input.ClassID, input.CourseID, input.ChangeType, history.EffectiveFrom, history.EffectiveTo, operatorUserID, now)
+  tenant_id, teacher_id, class_id, course_id, assignment_type, change_type, effective_from, effective_to, operator_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, tenantID, input.TeacherID, input.ClassID, nullInt64Value(history.CourseID), input.AssignmentType, input.ChangeType, history.EffectiveFrom, history.EffectiveTo, operatorUserID, now)
 	if err != nil {
 		return TeacherAssignmentHistory{}, err
 	}
@@ -474,12 +495,13 @@ INSERT INTO teacher_assignment_histories (
 	history.ID = id
 
 	snapshotPayload := map[string]any{
-		"teacher_id":     input.TeacherID,
-		"class_id":       input.ClassID,
-		"course_id":      input.CourseID,
-		"change_type":    input.ChangeType,
-		"effective_from": history.EffectiveFrom.Format(time.RFC3339),
-		"effective_to":   timeOrNil(history.EffectiveTo),
+		"teacher_id":      input.TeacherID,
+		"class_id":        input.ClassID,
+		"course_id":       valueOrNil(history.CourseID),
+		"assignment_type": input.AssignmentType,
+		"change_type":     input.ChangeType,
+		"effective_from":  history.EffectiveFrom.Format(time.RFC3339),
+		"effective_to":    timeOrNil(history.EffectiveTo),
 	}
 	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "teacher_assignment", input.TeacherID, "event", snapshotPayload, input.ChangeType, now); err != nil {
 		return TeacherAssignmentHistory{}, err
@@ -595,18 +617,32 @@ func (repo *MySQLRepository) getCurrentTeacherAssignment(
 	ctx context.Context,
 	tx *sql.Tx,
 	tenantID int64,
-	teacherID int64,
-	classID int64,
-	courseID int64,
+	input TeacherAssignmentChangeInput,
 ) (*teacherAssignment, error) {
 	var item teacherAssignment
+	if input.AssignmentType == TeacherAssignmentTypeHeadTeacher {
+		err := tx.QueryRowContext(ctx, `
+SELECT id, effective_from
+FROM class_head_teacher_assignments
+WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND is_current = 1 AND status = 'active'
+ORDER BY id DESC
+LIMIT 1
+`, tenantID, input.TeacherID, input.ClassID).Scan(&item.ID, &item.EffectiveFrom)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
+		return &item, nil
+	}
 	err := tx.QueryRowContext(ctx, `
 SELECT id, effective_from
 FROM teacher_class_course_assignments
 WHERE tenant_id = ? AND teacher_id = ? AND class_id = ? AND course_id = ? AND is_current = 1 AND status = 'active'
 ORDER BY id DESC
 LIMIT 1
-`, tenantID, teacherID, classID, courseID).Scan(&item.ID, &item.EffectiveFrom)
+`, tenantID, input.TeacherID, input.ClassID, input.CourseID).Scan(&item.ID, &item.EffectiveFrom)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -797,13 +833,15 @@ func scanStudentTransition(scanner interface{ Scan(dest ...any) error }) (Studen
 
 func scanTeacherAssignmentHistory(scanner interface{ Scan(dest ...any) error }) (TeacherAssignmentHistory, error) {
 	var item TeacherAssignmentHistory
+	var courseID sql.NullInt64
 	var effectiveTo sql.NullTime
 	if err := scanner.Scan(
 		&item.ID,
 		&item.TenantID,
 		&item.TeacherID,
 		&item.ClassID,
-		&item.CourseID,
+		&courseID,
+		&item.AssignmentType,
 		&item.ChangeType,
 		&item.EffectiveFrom,
 		&effectiveTo,
@@ -815,6 +853,7 @@ func scanTeacherAssignmentHistory(scanner interface{ Scan(dest ...any) error }) 
 	if effectiveTo.Valid {
 		item.EffectiveTo = &effectiveTo.Time
 	}
+	item.CourseID = nullableInt64(courseID)
 	return item, nil
 }
 

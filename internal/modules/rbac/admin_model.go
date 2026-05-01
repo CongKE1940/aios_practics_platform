@@ -15,6 +15,7 @@ const (
 
 var (
 	ErrInvalidInput = errors.New("invalid input")
+	ErrForbidden    = errors.New("forbidden")
 	ErrNotFound     = errors.New("resource not found")
 )
 
@@ -48,6 +49,12 @@ type Permission struct {
 	Name         string    `json:"name"`
 	Description  string    `json:"description,omitempty"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
+}
+
+type Scope struct {
+	TenantID    int64
+	UserType    string
+	Permissions []string
 }
 
 type RoleInput struct {

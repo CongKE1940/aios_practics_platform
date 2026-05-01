@@ -26,15 +26,16 @@ SELECT
   u.password_hash,
   u.display_name,
   u.user_type,
-  u.status
+  u.status,
+  u.must_change_password
 FROM users u
 JOIN tenants t ON t.id = u.tenant_id
 WHERE t.code = ? AND u.username = ? AND u.deleted_at IS NULL AND t.deleted_at IS NULL
 LIMIT 1
 `)).
 		WithArgs("platform", "admin").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "username", "password_hash", "display_name", "user_type", "status"}).
-			AddRow(1, 1, "admin", "hash", "系统管理员", "sys_admin", "active"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "username", "password_hash", "display_name", "user_type", "status", "must_change_password"}).
+			AddRow(1, 1, "admin", "hash", "系统管理员", "sys_admin", "active", false))
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT r.code
@@ -70,6 +71,30 @@ ORDER BY p.code
 	}
 	if len(user.Permissions) != 2 {
 		t.Fatalf("Permissions = %+v", user.Permissions)
+	}
+	if user.MustChangePassword {
+		t.Fatal("MustChangePassword = true")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLUserRepositoryUpdatePassword(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLUserRepository(db)
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ? AND deleted_at IS NULL")).
+		WithArgs("new-hash", false, int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := repo.UpdatePassword(context.Background(), 1, "new-hash", false); err != nil {
+		t.Fatalf("UpdatePassword() error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet() error = %v", err)
