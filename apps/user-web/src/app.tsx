@@ -19,7 +19,7 @@ import brandIcon from "../../../docs/images/图标.png";
 
 import { createBrowserSessionStore } from "./auth-store";
 import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-types";
-import { MenuNav } from "./menu-nav";
+import { MenuNav, normalizeUserNavigationMenus } from "./menu-nav";
 import { LoginPage } from "./login-page";
 import { NotificationCenterPage, type NotificationCenterApi } from "./notification-center-page";
 import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
@@ -70,7 +70,7 @@ interface UserAppProps {
 
 export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   const store = useMemo(() => sessionStore ?? createBrowserSessionStore(), [sessionStore]);
-  const initialSession = useMemo(() => store.load(), [store]);
+  const initialSession = useMemo(() => normalizeUserSession(store.load()), [store]);
   const [session, setSession] = useState<UserSessionState | null>(initialSession);
   const [selectedPath, setSelectedPath] = useState(() => getFirstAvailablePath(initialSession?.menus ?? []));
   const [pendingPracticeSession, setPendingPracticeSession] = useState<PracticeSessionDetail | null>(null);
@@ -236,7 +236,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   }
 
   async function applyLoginResult(result: LoginResponse) {
-    const menus = await auth.menus(result.access_token);
+    const menus = normalizeUserNavigationMenus(await auth.menus(result.access_token));
     const nextSession: UserSessionState = {
       accessToken: result.access_token,
       refreshToken: result.refresh_token,
@@ -418,6 +418,7 @@ function renderUserContent({
       {selectedRoute === "/app/workbench" ? (
         <UserWorkbenchPage
           menus={session.menus}
+          api={currentPracticeApi}
           userDisplayName={session.user.display_name}
           userTypeLabel={getUserTypeLabel(session.user.user_type)}
           onNavigate={setSelectedPath}
@@ -564,6 +565,17 @@ function getSessionId(path: string): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function normalizeUserSession(session: UserSessionState | null): UserSessionState | null {
+  if (!session) {
+    return null;
+  }
+
+  return {
+    ...session,
+    menus: normalizeUserNavigationMenus(session.menus)
+  };
+}
+
 function getRoutePath(path: string): string {
   return path.split("?")[0];
 }
@@ -686,12 +698,12 @@ function getFirstAvailablePath(menus: MenuItem[]): string {
   for (const menu of menus) {
     if (menu.children.length > 0) {
       const childPath = getFirstAvailablePath(menu.children);
-      if (childPath) {
+      if (childPath && childPath !== "/app/workbench") {
         return childPath;
       }
     }
 
-    if (menu.path) {
+    if (menu.path && menu.path !== "/app/workbench") {
       return menu.path;
     }
   }

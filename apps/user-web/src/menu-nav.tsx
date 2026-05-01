@@ -9,6 +9,13 @@ interface MenuNavProps {
   onSelect(path: string): void;
 }
 
+const userWorkbenchMenu: MenuItem = {
+  id: -1,
+  name: "工作台",
+  path: "/app/workbench",
+  children: []
+};
+
 export function MenuNav({ menus, selectedPath, onSelect }: MenuNavProps) {
   if (menus.length === 0) {
     return <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />;
@@ -26,6 +33,21 @@ export function MenuNav({ menus, selectedPath, onSelect }: MenuNavProps) {
       </ul>
     </nav>
   );
+}
+
+export function normalizeUserNavigationMenus(menus: MenuItem[]): MenuItem[] {
+  const normalizedMenus = normalizeUserMenuTree(menus);
+  if (normalizedMenus.some((menu) => menuContainsPath(menu, userWorkbenchMenu.path))) {
+    return normalizedMenus;
+  }
+  return [userWorkbenchMenu, ...normalizedMenus];
+}
+
+function normalizeUserMenuTree(menus: MenuItem[]): MenuItem[] {
+  return menus.map((menu) => ({
+    ...menu,
+    children: normalizeUserMenuTree(menu.children ?? [])
+  }));
 }
 
 interface MenuNodeProps {

@@ -39,6 +39,7 @@ describe("UserApp", () => {
 
     await waitFor(() => {
       expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "工作台" })).toBeTruthy();
       expect(screen.getByRole("button", { name: "练题中心" })).toBeTruthy();
       expect(screen.getByRole("heading", { name: "我的课程" })).toBeTruthy();
       expect(screen.getByText("学习导航")).toBeTruthy();
@@ -122,8 +123,9 @@ describe("UserApp", () => {
       />
     );
 
-    expect(screen.getAllByText("当前账号暂无可用功能")).toHaveLength(2);
-    expect(screen.queryByText("学习导航")).toBeNull();
+    expect(screen.getByText("学习导航")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "工作台" })).toBeTruthy();
+    expect(screen.getByLabelText("用户工作台")).toBeTruthy();
     expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
     openUserMenu();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeTruthy();
@@ -1516,6 +1518,12 @@ describe("UserApp", () => {
         refreshToken: "refresh-1",
         expiresIn: 7200,
         menus: [
+          {
+            id: -1,
+            name: "工作台",
+            path: "/app/workbench",
+            children: []
+          },
           {
             id: 2,
             name: "学习中心",
