@@ -581,6 +581,73 @@ describe("createApiClient", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              items: [
+                {
+                  id: 1,
+                  tenant_id: 1,
+                  question_id: 1001,
+                  question_version_id: 3001,
+                  challenge_type: "wrong_answer",
+                  description: "答案应为 B。",
+                  attachments: [],
+                  status: "pending",
+                  challenger_user_id: 21,
+                  challenger: "张同学",
+                  question_bank: "高一数学基础题库",
+                  title: "1+1=？",
+                  current_version: "版本 1：1+1=？",
+                  current_content: { stem: { content_type: "text", text: "1+1=？" } },
+                  current_answer: { judge_mode: "by_option_key", correct_keys: ["A"] },
+                  current_analysis: { text: "原解析" },
+                  suggested_fix: "答案应为 B。",
+                  history_versions: ["版本 1：1+1=？"]
+                }
+              ],
+              page: 1,
+              page_size: 20,
+              total: 1
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: "ok",
+            data: {
+              id: 1,
+              tenant_id: 1,
+              question_id: 1001,
+              question_version_id: 3001,
+              challenge_type: "wrong_answer",
+              description: "答案应为 B。",
+              attachments: [],
+              status: "accepted",
+              challenger_user_id: 21,
+              challenger: "张同学",
+              question_bank: "高一数学基础题库",
+              title: "1+1=？",
+              current_version: "版本 2：采纳质疑修订",
+              current_content: { stem: { content_type: "text", text: "1+1=？" } },
+              current_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+              current_analysis: { text: "1+1=2，因此选择 B。" },
+              suggested_fix: "答案应为 B。",
+              history_versions: ["版本 1：1+1=？", "版本 2：采纳质疑修订"],
+              review_comment: "采纳质疑。",
+              resolved_version_id: 3002
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
       );
 
     const client = createApiClient({
@@ -607,6 +674,22 @@ describe("createApiClient", () => {
         attachments: [{ url: "https://cdn.example.com/proof.png", type: "image" }]
       })
     ).resolves.toBe(true);
+    await expect(client.listQuestionChallenges({ status: "pending", page: 1 })).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: 1, status: "pending" }]
+    });
+    await expect(
+      client.reviewQuestionChallenge(1, {
+        status: "accepted",
+        review_comment: "采纳质疑。",
+        new_version: {
+          content: { stem: { content_type: "text", text: "1+1=？" } },
+          answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+          analysis: { text: "1+1=2，因此选择 B。" },
+          change_summary: "采纳质疑修订"
+        }
+      })
+    ).resolves.toMatchObject({ id: 1, status: "accepted", review_comment: "采纳质疑。", resolved_version_id: 3002 });
 
     const [commentUrl, commentInit] = fetchMock.mock.calls[0];
     expect(String(commentUrl)).toContain("/questions/1001/comments");
@@ -630,6 +713,26 @@ describe("createApiClient", () => {
         challenge_type: "wrong_answer",
         description: "答案应为 B。",
         attachments: [{ url: "https://cdn.example.com/proof.png", type: "image" }]
+      })
+    );
+
+    const [listUrl, listInit] = fetchMock.mock.calls[2];
+    expect(String(listUrl)).toContain("/question-challenges?status=pending&page=1");
+    expect(listInit?.method).toBe("GET");
+
+    const [reviewUrl, reviewInit] = fetchMock.mock.calls[3];
+    expect(String(reviewUrl)).toContain("/question-challenges/1");
+    expect(reviewInit?.method).toBe("PUT");
+    expect(reviewInit?.body).toBe(
+      JSON.stringify({
+        status: "accepted",
+        review_comment: "采纳质疑。",
+        new_version: {
+          content: { stem: { content_type: "text", text: "1+1=？" } },
+          answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+          analysis: { text: "1+1=2，因此选择 B。" },
+          change_summary: "采纳质疑修订"
+        }
       })
     );
   });

@@ -729,6 +729,93 @@ ORDER BY e.id DESC
 	}
 }
 
+func TestMySQLRepositoryStartAttemptRequiresActiveExamWindow(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startedAt := time.Date(2026, 4, 24, 9, 10, 0, 0, time.UTC)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT id, exam_id, paper_id, tenant_id, user_id, start_at, submit_at, status, objective_score, subjective_score, final_score, created_at, updated_at
+FROM exam_attempts
+WHERE exam_id = ? AND tenant_id = ? AND user_id = ?
+LIMIT 1
+`)).
+		WithArgs(int64(301), int64(9), int64(10001)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at"}))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT COALESCE(e.paper_id, ep.id)
+FROM exams e
+LEFT JOIN exam_papers ep ON ep.exam_id = e.id
+WHERE e.id = ? AND e.tenant_id = ? AND e.status = ? AND e.start_time <= ? AND e.end_time >= ? AND COALESCE(e.paper_id, ep.id) IS NOT NULL
+AND (
+  EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    WHERE et.exam_id = e.id AND et.target_type = 'user' AND et.target_id = ?
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN student_class_memberships scm ON scm.class_id = et.target_id
+    WHERE et.exam_id = e.id AND et.target_type = 'class' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM exam_targets et
+    JOIN teacher_class_course_assignments tcca ON tcca.course_id = et.target_id
+    JOIN student_class_memberships scm ON scm.class_id = tcca.class_id
+    WHERE et.exam_id = e.id AND et.target_type = 'course' AND tcca.tenant_id = e.tenant_id AND tcca.is_current = 1 AND tcca.status = 'active' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
+  )
+)
+ORDER BY ep.id DESC
+LIMIT 1
+`)).
+		WithArgs(int64(301), int64(9), ExamStatusPublished, sqlmock.AnyArg(), sqlmock.AnyArg(), int64(10001), int64(10001), int64(10001)).
+		WillReturnRows(sqlmock.NewRows([]string{"paper_id"}).AddRow(int64(701)))
+	mock.ExpectExec(regexp.QuoteMeta(`
+INSERT INTO exam_attempts (exam_id, paper_id, tenant_id, user_id, start_at, status)
+VALUES (?, ?, ?, ?, ?, ?)
+`)).
+		WithArgs(int64(301), int64(701), int64(9), int64(10001), sqlmock.AnyArg(), ExamAttemptStatusInProgress).
+		WillReturnResult(sqlmock.NewResult(801, 1))
+	expectAttemptByID(mock, 801, 9, 10001, 701, startedAt, ExamAttemptStatusInProgress)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
+FROM exam_paper_questions epq
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+WHERE epq.paper_id = ?
+ORDER BY epq.order_no ASC
+`)).
+		WithArgs(int64(701)).
+		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score", "question_type", "content_json"}).
+			AddRow(int64(101), int64(1001), 1, "2.00", "single_choice", `{"stem":{"text":"1+1等于几？"}}`))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT attempt_id, question_id, question_version_id, display_order, answer_json, is_correct, score
+FROM exam_attempt_answers
+WHERE attempt_id = ?
+ORDER BY display_order ASC
+`)).
+		WithArgs(int64(801)).
+		WillReturnRows(sqlmock.NewRows([]string{"attempt_id", "question_id", "question_version_id", "display_order", "answer_json", "is_correct", "score"}))
+
+	result, err := repo.StartAttempt(context.Background(), Scope{TenantID: 9, UserID: 10001}, 301)
+	if err != nil {
+		t.Fatalf("StartAttempt() error = %v", err)
+	}
+	if result.Attempt.ID != 801 || len(result.Questions) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryListExamsReturnsExplicitErrorWhenDBMissing(t *testing.T) {
 	var repo *MySQLRepository
 

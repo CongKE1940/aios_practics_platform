@@ -81,6 +81,8 @@ export interface ApiClient {
   createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
   createQuestionComment(id: number, body: QuestionCommentInput): Promise<boolean>;
   createQuestionChallenge(id: number, body: QuestionChallengeInput): Promise<boolean>;
+  listQuestionChallenges(query?: QuestionChallengeListQuery): Promise<PageResult<QuestionChallengeManagementItem>>;
+  reviewQuestionChallenge(id: number, body: QuestionChallengeReviewInput): Promise<QuestionChallengeManagementItem>;
   listNotices(query?: NoticeListQuery): Promise<PageResult<Notice>>;
   createNotice(body: NoticeInput): Promise<Notice>;
   getNotice(id: number): Promise<Notice>;
@@ -396,6 +398,40 @@ export interface QuestionChallengeInput {
   challenge_type: string;
   description: string;
   attachments?: QuestionChallengeAttachmentInput[];
+}
+
+export interface QuestionChallengeManagementItem {
+  id: number;
+  tenant_id: number;
+  question_id: number;
+  question_version_id: number;
+  challenge_type: string;
+  description: string;
+  attachments: QuestionChallengeAttachmentInput[];
+  status: string;
+  challenger_user_id: number;
+  challenger: string;
+  question_bank: string;
+  title: string;
+  current_version: string;
+  current_content?: QuestionContentInput | Record<string, unknown>;
+  current_answer?: QuestionAnswerInput | Record<string, unknown>;
+  current_analysis?: Record<string, unknown>;
+  suggested_fix: string;
+  history_versions: string[];
+  review_comment?: string;
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  resolved_version_id?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface QuestionChallengeReviewInput {
+  status: string;
+  review_comment?: string;
+  resolved_version_id?: number | null;
+  new_version?: QuestionVersionInput;
 }
 
 export interface Notice {
@@ -1426,6 +1462,12 @@ export interface QuestionListQuery {
   page_size?: number;
 }
 
+export interface QuestionChallengeListQuery {
+  status?: string;
+  page?: number;
+  page_size?: number;
+}
+
 export interface NoticeListQuery {
   status?: string;
   notice_type?: string;
@@ -1653,6 +1695,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/questions/${id}/comments`, { method: "POST", body: JSON.stringify(body) }),
     createQuestionChallenge: (id, body) =>
       request(fetcher, options, `/questions/${id}/challenges`, { method: "POST", body: JSON.stringify(body) }),
+    listQuestionChallenges: (query) =>
+      request(fetcher, options, buildPath("/question-challenges", query), { method: "GET" }),
+    reviewQuestionChallenge: (id, body) =>
+      request(fetcher, options, `/question-challenges/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     listNotices: (query) => request(fetcher, options, buildPath("/notices", query), { method: "GET" }),
     createNotice: (body) => request(fetcher, options, "/notices", { method: "POST", body: JSON.stringify(body) }),
     getNotice: (id) => request(fetcher, options, `/notices/${id}`, { method: "GET" }),

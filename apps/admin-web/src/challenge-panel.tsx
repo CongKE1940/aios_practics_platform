@@ -1,66 +1,149 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-interface ChallengeItem {
-  id: number;
-  title: string;
-  challenge_type: string;
-  status: string;
-  challenger: string;
-  question_bank: string;
-  created_at: string;
-  current_version: string;
-  suggested_fix: string;
-  history_versions: string[];
+import type {
+  PageResult,
+  QuestionChallengeManagementItem,
+  QuestionChallengeReviewInput
+} from "@aios/api-sdk";
+
+export interface ChallengePanelApi {
+  listQuestionChallenges(query?: { status?: string; page?: number; page_size?: number }): Promise<PageResult<QuestionChallengeManagementItem>>;
+  reviewQuestionChallenge(id: number, body: QuestionChallengeReviewInput): Promise<QuestionChallengeManagementItem>;
 }
 
-const initialChallenges: ChallengeItem[] = [
-  {
-    id: 1,
-    title: "函数题答案有误",
-    challenge_type: "wrong_answer",
-    status: "pending",
-    challenger: "张同学",
-    question_bank: "高一数学基础题库",
-    created_at: "2026-04-24 09:10",
-    current_version: "版本 3：答案为 B",
-    suggested_fix: "学生认为正确答案应为 C，并附上演算过程。",
-    history_versions: ["版本 1：原始录入", "版本 2：修正文案", "版本 3：当前线上版本"]
-  },
-  {
-    id: 2,
-    title: "题干存在歧义",
-    challenge_type: "wrong_stem",
-    status: "reviewing",
-    challenger: "李老师",
-    question_bank: "英语阅读专项题库",
-    created_at: "2026-04-23 16:20",
-    current_version: "版本 2：题干未标注上下文",
-    suggested_fix: "建议补充材料背景，避免学生误读。",
-    history_versions: ["版本 1：导入版本", "版本 2：当前线上版本"]
-  }
-];
+interface ChallengePanelProps {
+  api?: ChallengePanelApi;
+}
 
-export function ChallengePanel() {
-  const [items, setItems] = useState(initialChallenges);
-  const [selectedID, setSelectedID] = useState<number>(initialChallenges[0].id);
-  const [detailItem, setDetailItem] = useState<ChallengeItem | null>(null);
-  const [decision, setDecision] = useState("通过并生成新版本");
+const defaultDecision = "accepted";
+const defaultVersionSummary = "采纳质疑修订";
+
+export function ChallengePanel({ api }: ChallengePanelProps) {
+  const [items, setItems] = useState<QuestionChallengeManagementItem[]>([]);
+  const [selectedID, setSelectedID] = useState<number | null>(null);
+  const [detailID, setDetailID] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState("pending");
+  const [decision, setDecision] = useState(defaultDecision);
   const [remark, setRemark] = useState("建议修正答案并同步更新解析。");
+  const [versionSummary, setVersionSummary] = useState(defaultVersionSummary);
+  const [versionContent, setVersionContent] = useState("{}");
+  const [versionAnswer, setVersionAnswer] = useState("{}");
+  const [versionAnalysis, setVersionAnalysis] = useState("{}");
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === selectedID) ?? items[0] ?? null,
     [items, selectedID]
   );
+  const detailItem = useMemo(
+    () => items.find((item) => item.id === detailID) ?? null,
+    [detailID, items]
+  );
 
-  function handleDecision(nextStatus: string) {
-    setItems((current) =>
-      current.map((item) => (item.id === selectedID ? { ...item, status: nextStatus } : item))
-    );
+  useEffect(() => {
+    void loadChallenges();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, statusFilter]);
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setSelectedID(null);
+      return;
+    }
+    if (!items.some((item) => item.id === selectedID)) {
+      setSelectedID(items[0].id);
+    }
+  }, [items, selectedID]);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setVersionContent("{}");
+      setVersionAnswer("{}");
+      setVersionAnalysis("{}");
+      setVersionSummary(defaultVersionSummary);
+      return;
+    }
+    setVersionContent(stringifyJSON(selectedItem.current_content ?? {}));
+    setVersionAnswer(stringifyJSON(selectedItem.current_answer ?? {}));
+    setVersionAnalysis(stringifyJSON(selectedItem.current_analysis ?? {}));
+    setVersionSummary(defaultVersionSummary);
+  }, [selectedItem]);
+
+  async function loadChallenges() {
+    if (!api) {
+      setItems([]);
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    try {
+      const result = await api.listQuestionChallenges({
+        status: statusFilter || undefined,
+        page: 1,
+        page_size: 50
+      });
+      setItems(result.items);
+    } catch (error) {
+      setItems([]);
+      setMessage(error instanceof Error ? error.message : "质疑队列加载失败");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function openDetail(item: ChallengeItem) {
+  async function handleDecision(nextStatus: string) {
+    if (!api || !selectedItem) {
+      return;
+    }
+    setMessage("");
+
+    const input: QuestionChallengeReviewInput = {
+      status: nextStatus,
+      review_comment: remark.trim()
+    };
+    if (nextStatus === "accepted") {
+      const content = parseJSONObject(versionContent);
+      if (!content) {
+        setMessage("修订内容 JSON 格式不正确。");
+        return;
+      }
+      const answer = parseJSONObject(versionAnswer);
+      if (!answer) {
+        setMessage("修订答案 JSON 格式不正确。");
+        return;
+      }
+      const analysis = parseJSONObject(versionAnalysis);
+      if (!analysis) {
+        setMessage("修订解析 JSON 格式不正确。");
+        return;
+      }
+      input.new_version = {
+        content,
+        answer,
+        analysis,
+        change_summary: versionSummary.trim() || defaultVersionSummary
+      };
+    }
+
+    setSubmitting(true);
+    try {
+      const updated = await api.reviewQuestionChallenge(selectedItem.id, input);
+      setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setDecision(nextStatus);
+      setSelectedID(updated.id);
+      setMessage("处理意见已保存。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "处理意见保存失败");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openDetail(item: QuestionChallengeManagementItem) {
     setSelectedID(item.id);
-    setDetailItem(item);
+    setDetailID(item.id);
   }
 
   return (
@@ -72,12 +155,22 @@ export function ChallengePanel() {
             <h2>质疑处理</h2>
           </div>
           <div className="ui-admin-toolbar">
-            <button type="button" className="ui-button ui-button--primary">
-              刷新质疑队列
+            <select aria-label="质疑状态" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="">全部状态</option>
+              <option value="pending">待处理</option>
+              <option value="reviewing">处理中</option>
+              <option value="accepted">已采纳</option>
+              <option value="resolved">已解决</option>
+              <option value="rejected">已驳回</option>
+            </select>
+            <button type="button" className="ui-button ui-button--primary" onClick={() => void loadChallenges()} disabled={loading}>
+              {loading ? "刷新中..." : "刷新质疑队列"}
             </button>
           </div>
         </div>
       </section>
+
+      {message ? <p className="ui-admin-inline-message">{message}</p> : null}
 
       <div className="ui-admin-layout--triple ui-admin-layout">
         <aside className="ui-admin-list-card">
@@ -87,6 +180,7 @@ export function ChallengePanel() {
             </div>
           </div>
           <div className="ui-admin-notice-list">
+            {items.length === 0 ? <div className="ui-admin-empty-inline">{loading ? "加载中..." : "暂无质疑数据"}</div> : null}
             {items.map((item) => (
               <article
                 key={item.id}
@@ -95,7 +189,7 @@ export function ChallengePanel() {
                 <strong>{item.title}</strong>
                 <div className="ui-admin-row-meta">
                   <span>{item.challenger}</span>
-                  <span>{item.created_at}</span>
+                  <span>{formatDateTime(item.created_at)}</span>
                 </div>
                 <span className={statusClassName(item.status)}>{formatStatus(item.status)}</span>
                 <button type="button" className="ui-admin-link" onClick={() => openDetail(item)}>
@@ -119,13 +213,13 @@ export function ChallengePanel() {
                   <strong>当前线上版本</strong>
                   <p>{selectedItem.current_version}</p>
                   <div className="ui-admin-row-meta">
-                    <span>{selectedItem.question_bank}</span>
+                    <span>{selectedItem.question_bank || "未绑定题库"}</span>
                     <span>{formatChallengeType(selectedItem.challenge_type)}</span>
                   </div>
                 </article>
                 <article className="ui-admin-mini-item">
                   <strong>质疑内容</strong>
-                  <p>{selectedItem.suggested_fix}</p>
+                  <p>{selectedItem.suggested_fix || selectedItem.description}</p>
                 </article>
               </div>
             ) : (
@@ -167,25 +261,77 @@ export function ChallengePanel() {
               <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                 <label htmlFor="challenge_decision">处理动作</label>
                 <select id="challenge_decision" value={decision} onChange={(event) => setDecision(event.target.value)}>
-                  <option value="通过并生成新版本">通过并生成新版本</option>
-                  <option value="退回补充">退回补充</option>
-                  <option value="驳回">驳回</option>
+                  <option value="accepted">采纳质疑</option>
+                  <option value="reviewing">退回补充</option>
+                  <option value="resolved">标记解决</option>
+                  <option value="rejected">驳回</option>
                 </select>
               </div>
               <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                 <label htmlFor="challenge_remark">审核意见</label>
                 <textarea id="challenge_remark" value={remark} onChange={(event) => setRemark(event.target.value)} />
               </div>
+              {decision === "accepted" ? (
+                <>
+                  <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="challenge_version_summary">版本说明</label>
+                    <input
+                      id="challenge_version_summary"
+                      value={versionSummary}
+                      onChange={(event) => setVersionSummary(event.target.value)}
+                    />
+                  </div>
+                  <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="challenge_version_content">修订内容</label>
+                    <textarea
+                      id="challenge_version_content"
+                      value={versionContent}
+                      onChange={(event) => setVersionContent(event.target.value)}
+                    />
+                  </div>
+                  <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="challenge_version_answer">修订答案</label>
+                    <textarea
+                      id="challenge_version_answer"
+                      value={versionAnswer}
+                      onChange={(event) => setVersionAnswer(event.target.value)}
+                    />
+                  </div>
+                  <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="challenge_version_analysis">修订解析</label>
+                    <textarea
+                      id="challenge_version_analysis"
+                      value={versionAnalysis}
+                      onChange={(event) => setVersionAnalysis(event.target.value)}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
             <div className="ui-admin-side-card__actions">
-              <button type="button" className="ui-button ui-button--ghost" onClick={() => handleDecision("reviewing")}>
+              <button
+                type="button"
+                className="ui-button ui-button--ghost"
+                onClick={() => void handleDecision("reviewing")}
+                disabled={!selectedItem || submitting}
+              >
                 退回补充
               </button>
-              <button type="button" className="ui-button ui-button--ghost" onClick={() => handleDecision("rejected")}>
+              <button
+                type="button"
+                className="ui-button ui-button--ghost"
+                onClick={() => void handleDecision("rejected")}
+                disabled={!selectedItem || submitting}
+              >
                 驳回
               </button>
-              <button type="button" className="ui-button ui-button--primary" onClick={() => handleDecision("resolved")}>
-                通过并生成新版本
+              <button
+                type="button"
+                className="ui-button ui-button--primary"
+                onClick={() => void handleDecision(decision)}
+                disabled={!selectedItem || submitting}
+              >
+                {submitting ? "保存中..." : "保存意见"}
               </button>
             </div>
           </section>
@@ -204,8 +350,14 @@ export function ChallengePanel() {
                 </article>
                 <article className="ui-admin-mini-item">
                   <strong>建议动作</strong>
-                  <p>{decision}</p>
+                  <p>{formatStatus(decision)}</p>
                 </article>
+                {selectedItem.review_comment ? (
+                  <article className="ui-admin-mini-item">
+                    <strong>最近意见</strong>
+                    <p>{selectedItem.review_comment}</p>
+                  </article>
+                ) : null}
               </div>
             ) : null}
           </section>
@@ -220,7 +372,7 @@ export function ChallengePanel() {
                 <h3>质疑详情</h3>
                 <p>{detailItem.title}</p>
               </div>
-              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDetailItem(null)}>
+              <button type="button" className="ui-button ui-button--ghost" onClick={() => setDetailID(null)}>
                 关闭
               </button>
             </div>
@@ -240,7 +392,7 @@ export function ChallengePanel() {
                 </div>
                 <div>
                   <dt>题库</dt>
-                  <dd>{detailItem.question_bank}</dd>
+                  <dd>{detailItem.question_bank || "未绑定题库"}</dd>
                 </div>
                 <div>
                   <dt>当前版本</dt>
@@ -248,12 +400,18 @@ export function ChallengePanel() {
                 </div>
                 <div>
                   <dt>建议修正</dt>
-                  <dd>{detailItem.suggested_fix}</dd>
+                  <dd>{detailItem.suggested_fix || detailItem.description}</dd>
                 </div>
+                {detailItem.attachments.length > 0 ? (
+                  <div>
+                    <dt>附件</dt>
+                    <dd>{detailItem.attachments.map((attachment) => attachment.url).join("、")}</dd>
+                  </div>
+                ) : null}
               </dl>
             </div>
             <div className="ui-admin-modal__footer">
-              <button type="button" className="ui-button ui-button--primary" onClick={() => setDetailItem(null)}>
+              <button type="button" className="ui-button ui-button--primary" onClick={() => setDetailID(null)}>
                 我知道了
               </button>
             </div>
@@ -270,6 +428,14 @@ function formatChallengeType(value: string): string {
       return "答案有误";
     case "wrong_stem":
       return "题干有误";
+    case "wrong_option":
+      return "选项有误";
+    case "typo":
+      return "文字错误";
+    case "dispute":
+      return "解析争议";
+    case "other":
+      return "其他";
     default:
       return value;
   }
@@ -282,9 +448,13 @@ function formatStatus(value: string): string {
     case "reviewing":
       return "处理中";
     case "resolved":
-      return "已通过";
+      return "已解决";
     case "rejected":
       return "已驳回";
+    case "accepted":
+      return "已采纳";
+    case "merged":
+      return "已合并";
     default:
       return value;
   }
@@ -293,6 +463,8 @@ function formatStatus(value: string): string {
 function statusClassName(value: string): string {
   switch (value) {
     case "resolved":
+    case "accepted":
+    case "merged":
       return "ui-admin-status ui-admin-status--active";
     case "reviewing":
     case "pending":
@@ -302,4 +474,31 @@ function statusClassName(value: string): string {
     default:
       return "ui-admin-status ui-admin-status--draft";
   }
+}
+
+function stringifyJSON(value: unknown): string {
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
+function parseJSONObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("zh-CN");
 }

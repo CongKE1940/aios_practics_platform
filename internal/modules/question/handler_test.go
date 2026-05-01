@@ -278,6 +278,206 @@ func TestHandler_StudentCanCreateQuestion(t *testing.T) {
 	}
 }
 
+func TestHandler_CreateCommentAndChallenge(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	versionID := int64(3001)
+	repo.questions[1001] = Question{
+		ID:               1001,
+		TenantID:         1,
+		OwnerOrgType:     OwnerOrgTypeSchool,
+		OwnerOrgID:       1,
+		QuestionType:     "single_choice",
+		CurrentVersionID: &versionID,
+		CurrentVersionNo: intPtr(1),
+		Status:           StatusActive,
+		SourceType:       SourceTypeManual,
+		CreatorID:        7,
+	}
+	repo.versions[1001] = []QuestionVersion{
+		{
+			ID:         versionID,
+			QuestionID: 1001,
+			VersionNo:  1,
+			Content:    map[string]any{"stem": map[string]any{"text": "1+1=？"}},
+			Answer:     map[string]any{"correct_keys": []string{"B"}},
+		},
+	}
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:    21,
+			TenantID:  1,
+			UserType:  "student",
+			TokenType: auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	commentRec := performQuestionRequest(router, http.MethodPost, "/api/v1/questions/1001/comments", map[string]any{
+		"question_version_id": versionID,
+		"content":             "  这题可以补一个口算方法。  ",
+		"comment_type":        "discussion",
+		"is_private":          false,
+		"parent_comment_id":   nil,
+	}, "token")
+	if commentRec.Code != http.StatusOK {
+		t.Fatalf("comment status = %d, body = %s", commentRec.Code, commentRec.Body.String())
+	}
+	var commentResult envelope[bool]
+	decodeQuestionBody(t, commentRec, &commentResult)
+	if !commentResult.Data || len(repo.comments) != 1 {
+		t.Fatalf("comment result = %+v, comments = %+v", commentResult, repo.comments)
+	}
+	if repo.comments[0].Content != "这题可以补一个口算方法。" || repo.comments[0].UserID != 21 {
+		t.Fatalf("stored comment = %+v", repo.comments[0])
+	}
+
+	challengeRec := performQuestionRequest(router, http.MethodPost, "/api/v1/questions/1001/challenges", map[string]any{
+		"question_version_id": versionID,
+		"challenge_type":      "wrong_answer",
+		"description":         " 答案应为 B。 ",
+		"attachments": []map[string]any{
+			{"url": "https://cdn.example.com/proof.png", "type": "image"},
+		},
+	}, "token")
+	if challengeRec.Code != http.StatusOK {
+		t.Fatalf("challenge status = %d, body = %s", challengeRec.Code, challengeRec.Body.String())
+	}
+	var challengeResult envelope[bool]
+	decodeQuestionBody(t, challengeRec, &challengeResult)
+	if !challengeResult.Data || len(repo.challenges) != 1 {
+		t.Fatalf("challenge result = %+v, challenges = %+v", challengeResult, repo.challenges)
+	}
+	if repo.challenges[0].Status != StatusPending || repo.challenges[0].Description != "答案应为 B。" {
+		t.Fatalf("stored challenge = %+v", repo.challenges[0])
+	}
+
+	invalidRec := performQuestionRequest(router, http.MethodPost, "/api/v1/questions/1001/comments", map[string]any{
+		"question_version_id": versionID,
+		"content":             "   ",
+		"comment_type":        "discussion",
+	}, "token")
+	if invalidRec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid comment status = %d", invalidRec.Code)
+	}
+
+	mismatchRec := performQuestionRequest(router, http.MethodPost, "/api/v1/questions/1001/challenges", map[string]any{
+		"question_version_id": int64(9999),
+		"challenge_type":      "wrong_answer",
+		"description":         "版本不属于当前题目。",
+	}, "token")
+	if mismatchRec.Code != http.StatusNotFound {
+		t.Fatalf("mismatch challenge status = %d", mismatchRec.Code)
+	}
+}
+
+func TestHandler_ListAndReviewChallenges(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryRepository()
+	repo.challengeItems[1] = QuestionChallengeListItem{
+		ID:                1,
+		TenantID:          1,
+		QuestionID:        1001,
+		QuestionVersionID: 3001,
+		ChallengeType:     "wrong_answer",
+		Description:       "答案应为 B。",
+		Status:            StatusPending,
+		ChallengerUserID:  21,
+		Challenger:        "张同学",
+		QuestionBank:      "高一数学基础题库",
+		Title:             "1+1=？",
+		CurrentVersion:    "版本 1：1+1=？",
+		CurrentContent:    map[string]any{"stem": map[string]any{"text": "1+1=？"}},
+		CurrentAnswer:     map[string]any{"judge_mode": "by_option_key", "correct_keys": []string{"A"}},
+		CurrentAnalysis:   map[string]any{"text": "原解析"},
+		SuggestedFix:      "答案应为 B。",
+		HistoryVersions:   []string{"版本 1：1+1=？"},
+		CreatedAt:         time.Date(2026, 4, 22, 10, 0, 0, 0, time.FixedZone("CST", 8*3600)),
+		UpdatedAt:         time.Date(2026, 4, 22, 10, 0, 0, 0, time.FixedZone("CST", 8*3600)),
+	}
+	repo.questions[1001] = Question{
+		ID:           1001,
+		TenantID:     1,
+		QuestionType: "single_choice",
+		Status:       StatusActive,
+		CreatorID:    7,
+	}
+	repo.versions[1001] = []QuestionVersion{
+		{
+			ID:        3001,
+			VersionNo: 1,
+			Content:   map[string]any{"stem": map[string]any{"text": "1+1=？"}},
+			Answer:    map[string]any{"judge_mode": "by_option_key", "correct_keys": []string{"A"}},
+			Analysis:  map[string]any{"text": "原解析"},
+		},
+	}
+
+	handler := NewHandler(NewService(repo), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:      7,
+			TenantID:    1,
+			UserType:    "teacher",
+			Permissions: []string{"question:manage"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+	router := gin.New()
+	api := router.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	listRec := performQuestionRequest(router, http.MethodGet, "/api/v1/question-challenges?status=pending", nil, "token")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list challenge status = %d, body = %s", listRec.Code, listRec.Body.String())
+	}
+	var listed envelope[PageResult[QuestionChallengeListItem]]
+	decodeQuestionBody(t, listRec, &listed)
+	if len(listed.Data.Items) != 1 || listed.Data.Items[0].Title != "1+1=？" {
+		t.Fatalf("listed challenges = %+v", listed.Data)
+	}
+
+	reviewRec := performQuestionRequest(router, http.MethodPut, "/api/v1/question-challenges/1", map[string]any{
+		"status":         StatusRejected,
+		"review_comment": "题目答案无误，已驳回。",
+	}, "token")
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("review challenge status = %d, body = %s", reviewRec.Code, reviewRec.Body.String())
+	}
+	var reviewed envelope[QuestionChallengeListItem]
+	decodeQuestionBody(t, reviewRec, &reviewed)
+	if reviewed.Data.Status != StatusRejected || reviewed.Data.ReviewComment != "题目答案无误，已驳回。" {
+		t.Fatalf("reviewed challenge = %+v", reviewed.Data)
+	}
+
+	acceptedRec := performQuestionRequest(router, http.MethodPut, "/api/v1/question-challenges/1", map[string]any{
+		"status":         StatusAccepted,
+		"review_comment": "采纳质疑，修正答案。",
+		"new_version": map[string]any{
+			"content": map[string]any{"stem": map[string]any{"text": "1+1=？"}},
+			"answer":  map[string]any{"judge_mode": "by_option_key", "correct_keys": []string{"B"}},
+			"analysis": map[string]any{
+				"text": "1+1=2，因此选择 B。",
+			},
+			"change_summary": "采纳质疑修正答案",
+		},
+	}, "token")
+	if acceptedRec.Code != http.StatusOK {
+		t.Fatalf("accepted challenge status = %d, body = %s", acceptedRec.Code, acceptedRec.Body.String())
+	}
+	var accepted envelope[QuestionChallengeListItem]
+	decodeQuestionBody(t, acceptedRec, &accepted)
+	if accepted.Data.Status != StatusAccepted || accepted.Data.ResolvedVersionID == nil || *accepted.Data.ResolvedVersionID <= 0 {
+		t.Fatalf("accepted challenge = %+v", accepted.Data)
+	}
+	if len(repo.versions[1001]) != 2 {
+		t.Fatalf("versions = %+v", repo.versions[1001])
+	}
+}
+
 type envelope[T any] struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -305,23 +505,44 @@ type questionBankRef struct {
 	CourseID *int64
 }
 
+type storedComment struct {
+	ID                int64
+	TenantID          int64
+	QuestionID        int64
+	QuestionVersionID int64
+	UserID            int64
+	ParentCommentID   *int64
+	CommentType       string
+	IsPrivate         bool
+	Content           string
+	Status            string
+}
+
 type memoryRepository struct {
 	nextQuestionID  int64
 	nextVersionID   int64
+	nextCommentID   int64
+	nextChallengeID int64
 	questions       map[int64]Question
 	versions        map[int64][]QuestionVersion
 	questionBanks   map[int64]questionBankRef
 	questionBankIDs map[int64][]int64
+	comments        []storedComment
+	challenges      []QuestionChallenge
+	challengeItems  map[int64]QuestionChallengeListItem
 }
 
 func newMemoryRepository() *memoryRepository {
 	return &memoryRepository{
 		nextQuestionID:  1,
 		nextVersionID:   1,
+		nextCommentID:   1,
+		nextChallengeID: 1,
 		questions:       map[int64]Question{},
 		versions:        map[int64][]QuestionVersion{},
 		questionBanks:   map[int64]questionBankRef{},
 		questionBankIDs: map[int64][]int64{},
+		challengeItems:  map[int64]QuestionChallengeListItem{},
 	}
 }
 
@@ -427,6 +648,119 @@ func (repo *memoryRepository) CreateVersion(_ context.Context, tenantID int64, q
 	return version, question, nil
 }
 
+func (repo *memoryRepository) CreateComment(_ context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error {
+	question, ok := repo.questions[questionID]
+	if !ok || question.TenantID != tenantID || !repo.hasVersion(questionID, input.QuestionVersionID) {
+		return ErrNotFound
+	}
+	if input.ParentCommentID != nil && !repo.hasComment(questionID, *input.ParentCommentID) {
+		return ErrNotFound
+	}
+	repo.comments = append(repo.comments, storedComment{
+		ID:                repo.nextCommentID,
+		TenantID:          tenantID,
+		QuestionID:        questionID,
+		QuestionVersionID: input.QuestionVersionID,
+		UserID:            userID,
+		ParentCommentID:   input.ParentCommentID,
+		CommentType:       input.CommentType,
+		IsPrivate:         input.IsPrivate,
+		Content:           input.Content,
+		Status:            StatusActive,
+	})
+	repo.nextCommentID++
+	return nil
+}
+
+func (repo *memoryRepository) CreateChallenge(_ context.Context, challenge QuestionChallenge) error {
+	question, ok := repo.questions[challenge.QuestionID]
+	if !ok || question.TenantID != challenge.TenantID || !repo.hasVersion(challenge.QuestionID, challenge.QuestionVersionID) {
+		return ErrNotFound
+	}
+	repo.challenges = append(repo.challenges, challenge)
+	id := repo.nextChallengeID
+	repo.nextChallengeID++
+	repo.challengeItems[id] = QuestionChallengeListItem{
+		ID:                id,
+		TenantID:          challenge.TenantID,
+		QuestionID:        challenge.QuestionID,
+		QuestionVersionID: challenge.QuestionVersionID,
+		ChallengeType:     challenge.ChallengeType,
+		Description:       challenge.Description,
+		Attachments:       append([]QuestionChallengeAttachmentInput{}, challenge.Attachments...),
+		Status:            challenge.Status,
+		ChallengerUserID:  challenge.ChallengerUserID,
+		Challenger:        "提交人",
+		Title:             "题目",
+		CurrentVersion:    "版本 1：题目",
+		SuggestedFix:      challenge.Description,
+		HistoryVersions:   []string{"版本 1：题目"},
+	}
+	return nil
+}
+
+func (repo *memoryRepository) ListChallenges(_ context.Context, scope Scope, filter QuestionChallengeListFilter) (PageResult[QuestionChallengeListItem], error) {
+	items := make([]QuestionChallengeListItem, 0)
+	tenantID := readTenantID(scope)
+	for _, item := range repo.challengeItems {
+		if tenantID > 0 && item.TenantID != tenantID {
+			continue
+		}
+		if filter.Status != "" && item.Status != filter.Status {
+			continue
+		}
+		items = append(items, item)
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *memoryRepository) UpdateChallengeReview(_ context.Context, scope Scope, id int64, input QuestionChallengeReviewInput) (QuestionChallengeListItem, error) {
+	item, ok := repo.challengeItems[id]
+	tenantID := readTenantID(scope)
+	if !ok || (tenantID > 0 && item.TenantID != tenantID) {
+		return QuestionChallengeListItem{}, ErrNotFound
+	}
+	if input.NewVersion != nil {
+		question, ok := repo.questions[item.QuestionID]
+		if !ok {
+			return QuestionChallengeListItem{}, ErrNotFound
+		}
+		version := QuestionVersion{
+			ID:            repo.nextVersionID,
+			QuestionID:    item.QuestionID,
+			VersionNo:     len(repo.versions[item.QuestionID]) + 1,
+			Content:       input.NewVersion.Content,
+			Answer:        input.NewVersion.Answer,
+			Analysis:      input.NewVersion.Analysis,
+			StructureHash: buildStructureHash(question.QuestionType, input.NewVersion.Content, input.NewVersion.Answer),
+			ChangeSummary: input.NewVersion.ChangeSummary,
+			IsPublished:   true,
+			CreatedBy:     scope.UserID,
+		}
+		repo.nextVersionID++
+		repo.versions[item.QuestionID] = append([]QuestionVersion{version}, repo.versions[item.QuestionID]...)
+		question.CurrentVersionID = &version.ID
+		question.CurrentVersionNo = intPtr(version.VersionNo)
+		repo.questions[item.QuestionID] = question
+		item.ResolvedVersionID = &version.ID
+		item.CurrentContent = input.NewVersion.Content
+		item.CurrentAnswer = input.NewVersion.Answer
+		item.CurrentAnalysis = input.NewVersion.Analysis
+		item.CurrentVersion = "版本 2：" + input.NewVersion.ChangeSummary
+		item.HistoryVersions = append(item.HistoryVersions, item.CurrentVersion)
+	} else {
+		item.ResolvedVersionID = input.ResolvedVersionID
+	}
+	item.Status = input.Status
+	item.ReviewComment = input.ReviewComment
+	if scope.UserID > 0 {
+		reviewerID := scope.UserID
+		item.ReviewedBy = &reviewerID
+	}
+	repo.challengeItems[id] = item
+	return item, nil
+}
+
 func (repo *memoryRepository) matchesCourse(bankIDs []int64, courseID int64) bool {
 	for _, bankID := range bankIDs {
 		bank, ok := repo.questionBanks[bankID]
@@ -434,6 +768,24 @@ func (repo *memoryRepository) matchesCourse(bankIDs []int64, courseID int64) boo
 			continue
 		}
 		if *bank.CourseID == courseID {
+			return true
+		}
+	}
+	return false
+}
+
+func (repo *memoryRepository) hasVersion(questionID int64, versionID int64) bool {
+	for _, version := range repo.versions[questionID] {
+		if version.ID == versionID {
+			return true
+		}
+	}
+	return false
+}
+
+func (repo *memoryRepository) hasComment(questionID int64, commentID int64) bool {
+	for _, comment := range repo.comments {
+		if comment.QuestionID == questionID && comment.ID == commentID {
 			return true
 		}
 	}

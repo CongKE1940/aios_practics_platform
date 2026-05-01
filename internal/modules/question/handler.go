@@ -28,10 +28,14 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/questions", handler.listQuestions)
+	router.GET("/question-challenges", handler.listChallenges)
+	router.PUT("/question-challenges/:id", handler.updateChallengeReview)
 	router.POST("/questions", handler.createQuestion)
 	router.PUT("/questions/:id", handler.updateQuestion)
 	router.GET("/questions/:id/versions", handler.listVersions)
 	router.POST("/questions/:id/versions", handler.createVersion)
+	router.POST("/questions/:id/comments", handler.createComment)
+	router.POST("/questions/:id/challenges", handler.createChallenge)
 }
 
 func (handler *Handler) listQuestions(ctx *gin.Context) {
@@ -120,6 +124,80 @@ func (handler *Handler) createVersion(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.CreateVersion(ctx.Request.Context(), scope, id, input)
+	if err != nil {
+		writeQuestionError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) createComment(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	var input QuestionCommentInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	if err := handler.service.CreateComment(ctx.Request.Context(), scope, id, input); err != nil {
+		writeQuestionError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(true, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) createChallenge(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	var input QuestionChallengeInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	if err := handler.service.CreateChallenge(ctx.Request.Context(), scope, id, input); err != nil {
+		writeQuestionError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(true, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) listChallenges(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.ListChallenges(ctx.Request.Context(), scope, QuestionChallengeListFilter{
+		Status:   ctx.Query("status"),
+		Page:     parseInt(ctx.Query("page")),
+		PageSize: parseInt(ctx.Query("page_size")),
+	})
+	if err != nil {
+		writeQuestionError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) updateChallengeReview(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(ctx.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	var input QuestionChallengeReviewInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	result, err := handler.service.UpdateChallengeReview(ctx.Request.Context(), scope, id, input)
 	if err != nil {
 		writeQuestionError(ctx, err)
 		return

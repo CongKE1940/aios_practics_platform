@@ -33,6 +33,7 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST("/files/upload", handler.upload)
 	router.POST("/files/import-url", handler.importURL)
+	router.GET("/files/:id/content", handler.content)
 	router.GET("/files/:id", handler.detail)
 }
 
@@ -54,12 +55,20 @@ func (handler *Handler) upload(ctx *gin.Context) {
 		return
 	}
 
+	content, err := fileHeader.Open()
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	defer content.Close()
+
 	result, err := handler.service.CreateUpload(ctx.Request.Context(), claims.TenantID, claims.UserID, UploadInput{
 		Usage:            ctx.PostForm("usage"),
 		OriginalFilename: fileHeader.Filename,
 		MimeType:         metadata.mimeType,
 		FileSize:         metadata.fileSize,
 		Checksum:         metadata.checksum,
+		Content:          content,
 	})
 	if err != nil {
 		writeFileError(ctx, err)
@@ -103,6 +112,34 @@ func (handler *Handler) detail(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) content(ctx *gin.Context) {
+	claims, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+
+	asset, content, err := handler.service.GetContent(ctx.Request.Context(), claims.TenantID, id)
+	if err != nil {
+		writeFileError(ctx, err)
+		return
+	}
+	if asset.SourceType == SourceTypeRemoteURL {
+		if asset.OriginalURL == "" {
+			writeFileError(ctx, ErrNotFound)
+			return
+		}
+		ctx.Redirect(http.StatusFound, asset.OriginalURL)
+		return
+	}
+	defer content.Close()
+
+	mimeType := asset.MimeType
+	if strings.TrimSpace(mimeType) == "" {
+		mimeType = "application/octet-stream"
+	}
+	ctx.DataFromReader(http.StatusOK, asset.FileSize, mimeType, content, nil)
 }
 
 func (handler *Handler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {

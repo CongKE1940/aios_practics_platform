@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { QuestionChallengeReviewInput } from "@aios/api-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { AdminApp, type SessionState, type SessionStore } from "./app";
@@ -1263,6 +1264,7 @@ describe("AdminApp", () => {
   it("opens challenge panel after selecting challenge menu", async () => {
     render(
       <AdminApp
+        challengeApi={createChallengeApi()}
         sessionStore={createMemorySessionStore({
           accessToken: "access_token",
           refreshToken: "refresh_token",
@@ -1296,6 +1298,72 @@ describe("AdminApp", () => {
     expect(screen.getByText("处理意见")).toBeTruthy();
   });
 });
+
+function createChallengeApi() {
+  return {
+    listQuestionChallenges: async () => ({
+      items: [
+        {
+          id: 1,
+          tenant_id: 1,
+          question_id: 1001,
+          question_version_id: 3001,
+          challenge_type: "wrong_answer",
+          description: "答案应为 B。",
+          attachments: [],
+          status: "pending",
+          challenger_user_id: 21,
+          challenger: "张同学",
+          question_bank: "高一数学基础题库",
+          title: "函数题答案有误",
+          current_version: "版本 1：答案为 A",
+          current_content: {
+            stem: { content_type: "text", text: "下列函数的值域是？" },
+            options: [
+              { key: "A", content_type: "text", text: "A" },
+              { key: "B", content_type: "text", text: "B" }
+            ]
+          },
+          current_answer: { judge_mode: "single", correct_keys: ["A"] },
+          current_analysis: { text: "原解析认为答案为 A。" },
+          suggested_fix: "学生认为正确答案应为 B。",
+          history_versions: ["版本 1：答案为 A"]
+        }
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1
+    }),
+    reviewQuestionChallenge: async (_id: number, body: QuestionChallengeReviewInput) => ({
+      id: 1,
+      tenant_id: 1,
+      question_id: 1001,
+      question_version_id: 3001,
+      challenge_type: "wrong_answer",
+      description: "答案应为 B。",
+      attachments: [],
+      status: body.status,
+      challenger_user_id: 21,
+      challenger: "张同学",
+      question_bank: "高一数学基础题库",
+      title: "函数题答案有误",
+      current_version: body.new_version ? "版本 2：采纳质疑修订" : "版本 1：答案为 A",
+      current_content: body.new_version?.content ?? {
+        stem: { content_type: "text", text: "下列函数的值域是？" },
+        options: [
+          { key: "A", content_type: "text", text: "A" },
+          { key: "B", content_type: "text", text: "B" }
+        ]
+      },
+      current_answer: body.new_version?.answer ?? { judge_mode: "single", correct_keys: ["A"] },
+      current_analysis: body.new_version?.analysis ?? { text: "原解析认为答案为 A。" },
+      suggested_fix: "学生认为正确答案应为 B。",
+      history_versions: body.new_version ? ["版本 1：答案为 A", "版本 2：采纳质疑修订"] : ["版本 1：答案为 A"],
+      resolved_version_id: body.new_version ? 3002 : body.resolved_version_id,
+      review_comment: body.review_comment
+    })
+  };
+}
 
 function createMemorySessionStore(initialSession: SessionState | null = null): SessionStore & {
   readonly savedSession: SessionState | null;

@@ -8,8 +8,15 @@ import (
 
 const (
 	OwnerOrgTypeSchool = "school"
+	ChallengerOrgType  = "tenant"
 	StatusActive       = "active"
 	StatusDisabled     = "disabled"
+	StatusPending      = "pending"
+	StatusReviewing    = "reviewing"
+	StatusResolved     = "resolved"
+	StatusRejected     = "rejected"
+	StatusAccepted     = "accepted"
+	StatusMerged       = "merged"
 	SourceTypeManual   = "manual"
 	CodeInvalidInput   = 40000
 	CodeForbidden      = 40300
@@ -93,6 +100,79 @@ type QuestionVersionInput struct {
 	ChangeSummary string         `json:"change_summary"`
 }
 
+type QuestionCommentInput struct {
+	QuestionVersionID int64  `json:"question_version_id" binding:"required"`
+	Content           string `json:"content" binding:"required"`
+	CommentType       string `json:"comment_type"`
+	IsPrivate         bool   `json:"is_private"`
+	ParentCommentID   *int64 `json:"parent_comment_id"`
+}
+
+type QuestionChallengeAttachmentInput struct {
+	URL  string `json:"url"`
+	Type string `json:"type"`
+}
+
+type QuestionChallengeInput struct {
+	QuestionVersionID int64                              `json:"question_version_id" binding:"required"`
+	ChallengeType     string                             `json:"challenge_type" binding:"required"`
+	Description       string                             `json:"description" binding:"required"`
+	Attachments       []QuestionChallengeAttachmentInput `json:"attachments"`
+}
+
+type QuestionChallenge struct {
+	TenantID          int64
+	QuestionID        int64
+	QuestionVersionID int64
+	ChallengerUserID  int64
+	ChallengerOrgType string
+	ChallengerOrgID   int64
+	ChallengeType     string
+	Description       string
+	Attachments       []QuestionChallengeAttachmentInput
+	Status            string
+}
+
+type QuestionChallengeListItem struct {
+	ID                int64                              `json:"id"`
+	TenantID          int64                              `json:"tenant_id"`
+	QuestionID        int64                              `json:"question_id"`
+	QuestionVersionID int64                              `json:"question_version_id"`
+	ChallengeType     string                             `json:"challenge_type"`
+	Description       string                             `json:"description"`
+	Attachments       []QuestionChallengeAttachmentInput `json:"attachments"`
+	Status            string                             `json:"status"`
+	ChallengerUserID  int64                              `json:"challenger_user_id"`
+	Challenger        string                             `json:"challenger"`
+	QuestionBank      string                             `json:"question_bank"`
+	Title             string                             `json:"title"`
+	CurrentVersion    string                             `json:"current_version"`
+	CurrentContent    map[string]any                     `json:"current_content,omitempty"`
+	CurrentAnswer     map[string]any                     `json:"current_answer,omitempty"`
+	CurrentAnalysis   map[string]any                     `json:"current_analysis,omitempty"`
+	SuggestedFix      string                             `json:"suggested_fix"`
+	HistoryVersions   []string                           `json:"history_versions"`
+	ReviewComment     string                             `json:"review_comment,omitempty"`
+	ReviewedBy        *int64                             `json:"reviewed_by,omitempty"`
+	ReviewedAt        *time.Time                         `json:"reviewed_at,omitempty"`
+	ResolvedVersionID *int64                             `json:"resolved_version_id,omitempty"`
+	CreatedAt         time.Time                          `json:"created_at,omitempty"`
+	UpdatedAt         time.Time                          `json:"updated_at,omitempty"`
+}
+
+type QuestionChallengeListFilter struct {
+	Status   string
+	Page     int
+	PageSize int
+}
+
+type QuestionChallengeReviewInput struct {
+	Status            string                `json:"status" binding:"required"`
+	ReviewComment     string                `json:"review_comment"`
+	ResolvedVersionID *int64                `json:"resolved_version_id"`
+	NewVersion        *QuestionVersionInput `json:"new_version"`
+}
+
 type QuestionListFilter struct {
 	QuestionType string
 	CourseID     *int64
@@ -110,6 +190,10 @@ type Repository interface {
 	UpdateQuestion(ctx context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error)
 	ListVersions(ctx context.Context, tenantID int64, questionID int64) ([]QuestionVersion, error)
 	CreateVersion(ctx context.Context, tenantID int64, questionID int64, version QuestionVersion) (QuestionVersion, Question, error)
+	CreateComment(ctx context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error
+	CreateChallenge(ctx context.Context, challenge QuestionChallenge) error
+	ListChallenges(ctx context.Context, scope Scope, filter QuestionChallengeListFilter) (PageResult[QuestionChallengeListItem], error)
+	UpdateChallengeReview(ctx context.Context, scope Scope, id int64, input QuestionChallengeReviewInput) (QuestionChallengeListItem, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

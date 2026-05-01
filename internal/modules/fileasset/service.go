@@ -3,6 +3,7 @@ package fileasset
 import (
 	"context"
 	"fmt"
+	"io"
 	neturl "net/url"
 	"path"
 	"strings"
@@ -10,14 +11,20 @@ import (
 )
 
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo  Repository
+	store ContentStore
+	now   func() time.Time
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, stores ...ContentStore) *Service {
+	var store ContentStore
+	if len(stores) > 0 {
+		store = stores[0]
+	}
 	return &Service{
-		repo: repo,
-		now:  time.Now,
+		repo:  repo,
+		store: store,
+		now:   time.Now,
 	}
 }
 
@@ -26,12 +33,22 @@ func (service *Service) CreateUpload(ctx context.Context, tenantID int64, upload
 		return FileAsset{}, ErrInvalidInput
 	}
 
+	objectKey := buildObjectKey(tenantID, input.Usage, input.OriginalFilename, service.now())
+	if service.store != nil {
+		if input.Content == nil {
+			return FileAsset{}, ErrInvalidInput
+		}
+		if err := service.store.Save(ctx, objectKey, input.Content); err != nil {
+			return FileAsset{}, err
+		}
+	}
+
 	asset, err := service.repo.Create(ctx, FileAsset{
 		TenantID:         tenantID,
 		UploaderID:       uploaderID,
 		SourceType:       SourceTypeUpload,
 		OriginalFilename: input.OriginalFilename,
-		ObjectKey:        buildObjectKey(tenantID, input.Usage, input.OriginalFilename, service.now()),
+		ObjectKey:        objectKey,
 		MimeType:         input.MimeType,
 		FileSize:         input.FileSize,
 		Checksum:         input.Checksum,
@@ -80,6 +97,25 @@ func (service *Service) GetByID(ctx context.Context, tenantID int64, id int64) (
 	return decorateAsset(asset), nil
 }
 
+func (service *Service) GetContent(ctx context.Context, tenantID int64, id int64) (FileAsset, io.ReadCloser, error) {
+	asset, err := service.repo.GetByID(ctx, tenantID, id)
+	if err != nil {
+		return FileAsset{}, nil, err
+	}
+	asset = decorateAsset(asset)
+	if asset.SourceType == SourceTypeRemoteURL {
+		return asset, nil, nil
+	}
+	if service.store == nil {
+		return FileAsset{}, nil, ErrNotFound
+	}
+	reader, err := service.store.Open(ctx, asset.ObjectKey)
+	if err != nil {
+		return FileAsset{}, nil, err
+	}
+	return asset, reader, nil
+}
+
 func decorateAsset(asset FileAsset) FileAsset {
 	if asset.URL == "" && asset.ID > 0 {
 		asset.URL = fmt.Sprintf("/api/v1/files/%d/content", asset.ID)
@@ -97,7 +133,7 @@ func isAllowedUsage(usage string) bool {
 }
 
 func buildObjectKey(tenantID int64, usage string, filename string, now time.Time) string {
-	return fmt.Sprintf("tenant/%d/%s/%s/%s", tenantID, usage, now.Format("20060102"), sanitizeFilename(filename))
+	return fmt.Sprintf("tenant/%d/%s/%s/%s-%s", tenantID, usage, now.Format("20060102"), now.Format("150405000000000"), sanitizeFilename(filename))
 }
 
 func sanitizeFilename(filename string) string {

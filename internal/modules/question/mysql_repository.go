@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -309,6 +310,200 @@ func (repo *MySQLRepository) CreateVersion(ctx context.Context, tenantID int64, 
 	return createdVersion, updatedQuestion, nil
 }
 
+func (repo *MySQLRepository) CreateComment(ctx context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error {
+	if err := repo.ensureQuestionVersion(ctx, questionID, input.QuestionVersionID); err != nil {
+		return err
+	}
+	if input.ParentCommentID != nil {
+		if err := repo.ensureParentComment(ctx, tenantID, questionID, *input.ParentCommentID); err != nil {
+			return err
+		}
+	}
+
+	const query = `
+INSERT INTO question_comments (
+  tenant_id,
+  question_id,
+  question_version_id,
+  user_id,
+  parent_comment_id,
+  comment_type,
+  is_private,
+  content,
+  status
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+	_, err := repo.db.ExecContext(
+		ctx,
+		query,
+		tenantID,
+		questionID,
+		input.QuestionVersionID,
+		userID,
+		nullInt64(input.ParentCommentID),
+		input.CommentType,
+		input.IsPrivate,
+		input.Content,
+		StatusActive,
+	)
+	return err
+}
+
+func (repo *MySQLRepository) CreateChallenge(ctx context.Context, challenge QuestionChallenge) error {
+	if err := repo.ensureQuestionVersion(ctx, challenge.QuestionID, challenge.QuestionVersionID); err != nil {
+		return err
+	}
+	attachmentsJSON, err := nullableAttachmentJSON(challenge.Attachments)
+	if err != nil {
+		return err
+	}
+
+	const query = `
+INSERT INTO question_challenges (
+  tenant_id,
+  question_id,
+  question_version_id,
+  challenger_user_id,
+  challenger_org_type,
+  challenger_org_id,
+  challenge_type,
+  description,
+  attachments_json,
+  status
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+	_, err = repo.db.ExecContext(
+		ctx,
+		query,
+		challenge.TenantID,
+		challenge.QuestionID,
+		challenge.QuestionVersionID,
+		challenge.ChallengerUserID,
+		challenge.ChallengerOrgType,
+		challenge.ChallengerOrgID,
+		challenge.ChallengeType,
+		challenge.Description,
+		attachmentsJSON,
+		challenge.Status,
+	)
+	return err
+}
+
+func (repo *MySQLRepository) ListChallenges(ctx context.Context, scope Scope, filter QuestionChallengeListFilter) (PageResult[QuestionChallengeListItem], error) {
+	query := challengeListSelectSQL() + `
+WHERE q.deleted_at IS NULL
+`
+	args := make([]any, 0, 4)
+	if scope.TenantID > 0 {
+		query += " AND qc.tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	if filter.Status != "" {
+		query += " AND qc.status = ?"
+		args = append(args, filter.Status)
+	}
+	query += " ORDER BY qc.created_at DESC, qc.id DESC"
+
+	items, err := repo.queryChallenges(ctx, query, args...)
+	if err != nil {
+		return PageResult[QuestionChallengeListItem]{}, err
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *MySQLRepository) UpdateChallengeReview(ctx context.Context, scope Scope, id int64, input QuestionChallengeReviewInput) (QuestionChallengeListItem, error) {
+	if input.NewVersion != nil {
+		return repo.updateChallengeReviewWithNewVersion(ctx, scope, id, input)
+	}
+	if input.ResolvedVersionID != nil {
+		if err := repo.ensureChallengeResolvedVersion(ctx, scope, id, *input.ResolvedVersionID); err != nil {
+			return QuestionChallengeListItem{}, err
+		}
+	}
+
+	query := `
+UPDATE question_challenges
+SET status = ?, reviewed_by = ?, reviewed_at = NOW(3), review_comment = ?, resolved_version_id = ?
+WHERE id = ?
+`
+	args := []any{input.Status, scope.UserID, nullString(input.ReviewComment), nullInt64(input.ResolvedVersionID), id}
+	if scope.TenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	if err := repo.execAffectingOne(ctx, query, args...); err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	return repo.getChallengeByID(ctx, scope, id)
+}
+
+func (repo *MySQLRepository) updateChallengeReviewWithNewVersion(ctx context.Context, scope Scope, id int64, input QuestionChallengeReviewInput) (QuestionChallengeListItem, error) {
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	defer tx.Rollback()
+
+	challengeTenantID, questionID, err := repo.getChallengeQuestionForUpdate(ctx, tx, scope, id)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	current, err := repo.getQuestionForUpdate(ctx, tx, challengeTenantID, questionID)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+
+	var currentVersionNo int
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version_no), 0) FROM question_versions WHERE question_id = ?", questionID).Scan(&currentVersionNo); err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	versionNo := currentVersionNo + 1
+	versionID, err := repo.insertVersion(ctx, tx, questionID, QuestionVersion{
+		Content:       input.NewVersion.Content,
+		Answer:        input.NewVersion.Answer,
+		Analysis:      input.NewVersion.Analysis,
+		StructureHash: buildStructureHash(current.QuestionType, input.NewVersion.Content, input.NewVersion.Answer),
+		ChangeSummary: input.NewVersion.ChangeSummary,
+		IsPublished:   true,
+		CreatedBy:     scope.UserID,
+	}, versionNo)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, "UPDATE questions SET current_version_id = ? WHERE id = ? AND tenant_id = ?", versionID, questionID, challengeTenantID); err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+
+	query := `
+UPDATE question_challenges
+SET status = ?, reviewed_by = ?, reviewed_at = NOW(3), review_comment = ?, resolved_version_id = ?
+WHERE id = ?
+`
+	args := []any{input.Status, scope.UserID, nullString(input.ReviewComment), versionID, id}
+	if scope.TenantID > 0 {
+		query += " AND tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	if rowsAffected == 0 {
+		return QuestionChallengeListItem{}, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	return repo.getChallengeByID(ctx, scope, id)
+}
+
 func (repo *MySQLRepository) insertVersion(ctx context.Context, tx *sql.Tx, questionID int64, version QuestionVersion, versionNo int) (int64, error) {
 	contentJSON, err := json.Marshal(version.Content)
 	if err != nil {
@@ -386,6 +581,274 @@ VALUES (?, ?, ?)
 		}
 	}
 	return nil
+}
+
+func (repo *MySQLRepository) ensureQuestionVersion(ctx context.Context, questionID int64, versionID int64) error {
+	const query = `
+SELECT id
+FROM question_versions
+WHERE id = ? AND question_id = ?
+LIMIT 1
+`
+	var id int64
+	err := repo.db.QueryRowContext(ctx, query, versionID, questionID).Scan(&id)
+	return wrapNotFound(err)
+}
+
+func (repo *MySQLRepository) ensureParentComment(ctx context.Context, tenantID int64, questionID int64, parentCommentID int64) error {
+	const query = `
+SELECT id
+FROM question_comments
+WHERE id = ? AND tenant_id = ? AND question_id = ? AND status <> 'deleted'
+LIMIT 1
+`
+	var id int64
+	err := repo.db.QueryRowContext(ctx, query, parentCommentID, tenantID, questionID).Scan(&id)
+	return wrapNotFound(err)
+}
+
+func (repo *MySQLRepository) ensureChallengeResolvedVersion(ctx context.Context, scope Scope, challengeID int64, versionID int64) error {
+	query := `
+SELECT qv.id
+FROM question_versions qv
+JOIN question_challenges qc ON qc.question_id = qv.question_id
+WHERE qv.id = ? AND qc.id = ?
+`
+	args := []any{versionID, challengeID}
+	if scope.TenantID > 0 {
+		query += " AND qc.tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	query += " LIMIT 1"
+	var id int64
+	err := repo.db.QueryRowContext(ctx, query, args...).Scan(&id)
+	return wrapNotFound(err)
+}
+
+func (repo *MySQLRepository) getChallengeQuestionForUpdate(ctx context.Context, tx *sql.Tx, scope Scope, challengeID int64) (int64, int64, error) {
+	query := `
+SELECT qc.tenant_id, qc.question_id
+FROM question_challenges qc
+JOIN questions q ON q.id = qc.question_id
+WHERE qc.id = ? AND q.deleted_at IS NULL
+`
+	args := []any{challengeID}
+	if scope.TenantID > 0 {
+		query += " AND qc.tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	query += " FOR UPDATE"
+	var tenantID int64
+	var questionID int64
+	err := tx.QueryRowContext(ctx, query, args...).Scan(&tenantID, &questionID)
+	if err != nil {
+		return 0, 0, wrapNotFound(err)
+	}
+	return tenantID, questionID, nil
+}
+
+func (repo *MySQLRepository) getChallengeByID(ctx context.Context, scope Scope, id int64) (QuestionChallengeListItem, error) {
+	query := challengeListSelectSQL() + `
+WHERE qc.id = ? AND q.deleted_at IS NULL
+`
+	args := []any{id}
+	if scope.TenantID > 0 {
+		query += " AND qc.tenant_id = ?"
+		args = append(args, scope.TenantID)
+	}
+	query += " LIMIT 1"
+	items, err := repo.queryChallenges(ctx, query, args...)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	if len(items) == 0 {
+		return QuestionChallengeListItem{}, ErrNotFound
+	}
+	return items[0], nil
+}
+
+func (repo *MySQLRepository) queryChallenges(ctx context.Context, query string, args ...any) ([]QuestionChallengeListItem, error) {
+	rows, err := repo.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]QuestionChallengeListItem, 0)
+	for rows.Next() {
+		item, err := scanQuestionChallengeListItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		item.HistoryVersions, err = repo.listChallengeHistoryVersions(ctx, item.QuestionID)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func challengeListSelectSQL() string {
+	return `
+SELECT
+  qc.id,
+  qc.tenant_id,
+  qc.question_id,
+  qc.question_version_id,
+  qc.challenge_type,
+  qc.description,
+  qc.attachments_json,
+  qc.status,
+  qc.challenger_user_id,
+  u.display_name,
+  COALESCE((
+    SELECT qb.name
+    FROM question_bank_questions qbq
+    JOIN question_banks qb ON qb.id = qbq.question_bank_id
+    WHERE qbq.question_id = qc.question_id AND qb.deleted_at IS NULL
+    ORDER BY qb.id
+    LIMIT 1
+  ), '') AS question_bank_name,
+  qc.reviewed_by,
+  qc.reviewed_at,
+  qc.review_comment,
+  qc.resolved_version_id,
+  qc.created_at,
+  qc.updated_at,
+  qv.version_no,
+  qv.content_json,
+  qv.answer_json,
+  qv.analysis_json
+FROM question_challenges qc
+JOIN questions q ON q.id = qc.question_id
+JOIN question_versions qv ON qv.id = COALESCE(q.current_version_id, qc.question_version_id)
+JOIN users u ON u.id = qc.challenger_user_id
+`
+}
+
+func scanQuestionChallengeListItem(scanner interface{ Scan(dest ...any) error }) (QuestionChallengeListItem, error) {
+	var item QuestionChallengeListItem
+	var attachmentsJSON []byte
+	var challengerName string
+	var questionBankName string
+	var reviewedBy sql.NullInt64
+	var reviewedAt sql.NullTime
+	var reviewComment sql.NullString
+	var resolvedVersionID sql.NullInt64
+	var versionNo int
+	var contentJSON []byte
+	var answerJSON []byte
+	var analysisJSON []byte
+
+	err := scanner.Scan(
+		&item.ID,
+		&item.TenantID,
+		&item.QuestionID,
+		&item.QuestionVersionID,
+		&item.ChallengeType,
+		&item.Description,
+		&attachmentsJSON,
+		&item.Status,
+		&item.ChallengerUserID,
+		&challengerName,
+		&questionBankName,
+		&reviewedBy,
+		&reviewedAt,
+		&reviewComment,
+		&resolvedVersionID,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+		&versionNo,
+		&contentJSON,
+		&answerJSON,
+		&analysisJSON,
+	)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	attachments, err := decodeChallengeAttachments(attachmentsJSON)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	content, err := decodeChallengeContent(contentJSON)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	answer, err := decodeChallengeContent(answerJSON)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	analysis, err := decodeChallengeContent(analysisJSON)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	if reviewedBy.Valid {
+		value := reviewedBy.Int64
+		item.ReviewedBy = &value
+	}
+	if reviewedAt.Valid {
+		value := reviewedAt.Time
+		item.ReviewedAt = &value
+	}
+	if reviewComment.Valid {
+		item.ReviewComment = reviewComment.String
+	}
+	if resolvedVersionID.Valid {
+		value := resolvedVersionID.Int64
+		item.ResolvedVersionID = &value
+	}
+	item.Attachments = attachments
+	item.Challenger = challengerName
+	item.QuestionBank = questionBankName
+	item.SuggestedFix = item.Description
+	item.Title = challengeTitle(item.QuestionID, content)
+	item.CurrentVersion = formatVersionSummary(versionNo, "", content)
+	item.CurrentContent = content
+	item.CurrentAnswer = answer
+	item.CurrentAnalysis = analysis
+	item.HistoryVersions = []string{}
+	return item, nil
+}
+
+func (repo *MySQLRepository) listChallengeHistoryVersions(ctx context.Context, questionID int64) ([]string, error) {
+	const query = `
+SELECT version_no, change_summary, content_json
+FROM question_versions
+WHERE question_id = ?
+ORDER BY version_no ASC, id ASC
+`
+	rows, err := repo.db.QueryContext(ctx, query, questionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]string, 0)
+	for rows.Next() {
+		var versionNo int
+		var changeSummary sql.NullString
+		var contentJSON []byte
+		if err := rows.Scan(&versionNo, &changeSummary, &contentJSON); err != nil {
+			return nil, err
+		}
+		content, err := decodeChallengeContent(contentJSON)
+		if err != nil {
+			return nil, err
+		}
+		summary := ""
+		if changeSummary.Valid {
+			summary = changeSummary.String
+		}
+		items = append(items, formatVersionSummary(versionNo, summary, content))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (repo *MySQLRepository) getQuestionForUpdate(ctx context.Context, tx *sql.Tx, tenantID int64, questionID int64) (Question, error) {
@@ -787,6 +1250,71 @@ func nullableJSON(value map[string]any) (any, error) {
 	return json.Marshal(value)
 }
 
+func nullableAttachmentJSON(value []QuestionChallengeAttachmentInput) (any, error) {
+	if len(value) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(value)
+}
+
+func decodeChallengeAttachments(payload []byte) ([]QuestionChallengeAttachmentInput, error) {
+	if len(payload) == 0 {
+		return []QuestionChallengeAttachmentInput{}, nil
+	}
+	var attachments []QuestionChallengeAttachmentInput
+	if err := json.Unmarshal(payload, &attachments); err != nil {
+		return nil, err
+	}
+	if attachments == nil {
+		return []QuestionChallengeAttachmentInput{}, nil
+	}
+	return attachments, nil
+}
+
+func decodeChallengeContent(payload []byte) (map[string]any, error) {
+	if len(payload) == 0 {
+		return map[string]any{}, nil
+	}
+	var content map[string]any
+	if err := json.Unmarshal(payload, &content); err != nil {
+		return nil, err
+	}
+	if content == nil {
+		return map[string]any{}, nil
+	}
+	return content, nil
+}
+
+func challengeTitle(questionID int64, content map[string]any) string {
+	if stem := challengeStemText(content); stem != "" {
+		return stem
+	}
+	return fmt.Sprintf("题目 #%d", questionID)
+}
+
+func formatVersionSummary(versionNo int, summary string, content map[string]any) string {
+	text := strings.TrimSpace(summary)
+	if text == "" {
+		text = challengeStemText(content)
+	}
+	if text == "" {
+		text = "版本内容"
+	}
+	return fmt.Sprintf("版本 %d：%s", versionNo, text)
+}
+
+func challengeStemText(content map[string]any) string {
+	stem, ok := content["stem"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	text, ok := stem["text"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(text)
+}
+
 func unmarshalJSONMap(payload []byte, target *map[string]any) error {
 	if len(payload) == 0 {
 		*target = map[string]any{}
@@ -806,6 +1334,13 @@ func nullString(value string) any {
 		return nil
 	}
 	return value
+}
+
+func nullInt64(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func wrapNotFound(err error) error {

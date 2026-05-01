@@ -20,7 +20,7 @@ import (
 func TestHandler_UploadImportAndGetDetail(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
-	handler := NewHandler(NewService(newMemoryRepository()), fakeTokenParser{
+	handler := NewHandler(NewService(newMemoryRepository(), newMemoryContentStore()), fakeTokenParser{
 		claims: auth.AccessClaims{
 			UserID:      1,
 			TenantID:    1,
@@ -72,6 +72,14 @@ func TestHandler_UploadImportAndGetDetail(t *testing.T) {
 		t.Fatalf("url should not be empty")
 	}
 
+	contentRec := performFileRequest(router, http.MethodGet, "/api/v1/files/"+strconv.FormatInt(uploaded.Data.ID, 10)+"/content", nil, "token")
+	if contentRec.Code != http.StatusOK {
+		t.Fatalf("content status = %d", contentRec.Code)
+	}
+	if contentRec.Body.String() != "id,title\n1,示例题" {
+		t.Fatalf("content body = %q", contentRec.Body.String())
+	}
+
 	importRec := performFileRequest(router, http.MethodPost, "/api/v1/files/import-url", map[string]any{
 		"url":   "https://example.com/assets/question.png",
 		"usage": "question_asset",
@@ -87,6 +95,14 @@ func TestHandler_UploadImportAndGetDetail(t *testing.T) {
 	}
 	if imported.Data.OriginalURL != "https://example.com/assets/question.png" {
 		t.Fatalf("original_url = %q", imported.Data.OriginalURL)
+	}
+
+	redirectRec := performFileRequest(router, http.MethodGet, "/api/v1/files/"+strconv.FormatInt(imported.Data.ID, 10)+"/content", nil, "token")
+	if redirectRec.Code != http.StatusFound {
+		t.Fatalf("redirect status = %d", redirectRec.Code)
+	}
+	if redirectRec.Header().Get("Location") != "https://example.com/assets/question.png" {
+		t.Fatalf("redirect location = %q", redirectRec.Header().Get("Location"))
 	}
 }
 
@@ -138,11 +154,19 @@ type memoryRepository struct {
 	items  map[int64]FileAsset
 }
 
+type memoryContentStore struct {
+	items map[string][]byte
+}
+
 func newMemoryRepository() *memoryRepository {
 	return &memoryRepository{
 		nextID: 1,
 		items:  map[int64]FileAsset{},
 	}
+}
+
+func newMemoryContentStore() *memoryContentStore {
+	return &memoryContentStore{items: map[string][]byte{}}
 }
 
 func (repo *memoryRepository) Create(_ context.Context, asset FileAsset) (FileAsset, error) {
@@ -161,6 +185,23 @@ func (repo *memoryRepository) GetByID(_ context.Context, tenantID int64, id int6
 		return FileAsset{}, ErrNotFound
 	}
 	return item, nil
+}
+
+func (store *memoryContentStore) Save(_ context.Context, objectKey string, content io.Reader) error {
+	payload, err := io.ReadAll(content)
+	if err != nil {
+		return err
+	}
+	store.items[objectKey] = append([]byte{}, payload...)
+	return nil
+}
+
+func (store *memoryContentStore) Open(_ context.Context, objectKey string) (io.ReadCloser, error) {
+	payload, ok := store.items[objectKey]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return io.NopCloser(bytes.NewReader(payload)), nil
 }
 
 func performFileRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {

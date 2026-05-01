@@ -12,6 +12,7 @@ type Config struct {
 	Database         DatabaseConfig
 	Redis            RedisConfig
 	Auth             AuthConfig
+	FileStorage      FileStorageConfig
 	PlatformTenantID int64
 }
 
@@ -37,6 +38,10 @@ type AuthConfig struct {
 	AccessTokenTTLSeconds int64
 }
 
+type FileStorageConfig struct {
+	Dir string
+}
+
 func Load() (Config, error) {
 	platformTenantID, err := int64FromEnv("AIOS_PLATFORM_TENANT_ID", 1)
 	if err != nil {
@@ -60,6 +65,9 @@ func Load() (Config, error) {
 		Auth: AuthConfig{
 			JWTSecret:             getenvDefault("AIOS_JWT_SECRET", "local-dev-secret"),
 			AccessTokenTTLSeconds: 7200,
+		},
+		FileStorage: FileStorageConfig{
+			Dir: getenvDefault("AIOS_FILE_STORAGE_DIR", "data/file_assets"),
 		},
 		PlatformTenantID: platformTenantID,
 	}, nil

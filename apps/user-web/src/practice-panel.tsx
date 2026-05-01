@@ -50,6 +50,8 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
   const [draftAnswers, setDraftAnswers] = useState<Record<number, string[]>>({});
   const [result, setResult] = useState<PracticeAnswerResult | null>(null);
   const [questionState, setQuestionState] = useState<UserQuestionState | null>(null);
+  const [answering, setAnswering] = useState(false);
+  const [answerMessage, setAnswerMessage] = useState("");
   const currentQuestion = session?.questions[currentIndex] ?? null;
 
   useEffect(() => {
@@ -62,6 +64,8 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setDraftAnswers({});
     setResult(null);
     setQuestionState(null);
+    setAnswering(false);
+    setAnswerMessage("");
     setForm((current) => ({
       ...current,
       flowMode: initialSession.flow_mode,
@@ -93,30 +97,49 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setDraftAnswers({});
     setResult(null);
     setQuestionState(null);
+    setAnswering(false);
+    setAnswerMessage("");
   }
 
   async function handleSubmit() {
     if (!session || !currentQuestion) {
       return;
     }
-    const answered = await api.submitPracticeAnswer(session.id, {
-      session_question_id: currentQuestion.session_question_id,
-      answer: { selected_keys: selectedKeys }
-    });
-    setResult(answered);
-    setQuestionState(answered.state);
-    setSession((current) =>
-      current
-        ? {
-            ...current,
-            questions: current.questions.map((question) =>
-              question.session_question_id === currentQuestion.session_question_id
-                ? { ...question, answered: true, is_correct: answered.is_correct }
-                : question
-            )
-          }
-        : current
-    );
+    if (currentQuestion.answered) {
+      setAnswerMessage("本题已提交，请进入下一题。");
+      return;
+    }
+    if (selectedKeys.length === 0) {
+      setAnswerMessage("请先选择答案。");
+      return;
+    }
+
+    setAnswering(true);
+    setAnswerMessage("");
+    try {
+      const answered = await api.submitPracticeAnswer(session.id, {
+        session_question_id: currentQuestion.session_question_id,
+        answer: buildAnswerPayload(currentQuestion, selectedKeys)
+      });
+      setResult(answered);
+      setQuestionState(answered.state);
+      setSession((current) =>
+        current
+          ? {
+              ...current,
+              questions: current.questions.map((question) =>
+                question.session_question_id === currentQuestion.session_question_id
+                  ? { ...question, answered: true, is_correct: answered.is_correct }
+                  : question
+              )
+            }
+          : current
+      );
+    } catch {
+      setAnswerMessage("答案提交失败，请稍后重试。");
+    } finally {
+      setAnswering(false);
+    }
   }
 
   async function handleNext() {
@@ -141,6 +164,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     }
     setResult(null);
     setQuestionState(null);
+    setAnswerMessage("");
   }
 
   function moveToQuestion(nextIndex: number) {
@@ -153,6 +177,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setSelectedKeys(nextQuestion ? draftAnswers[nextQuestion.session_question_id] ?? [] : []);
     setResult(null);
     setQuestionState(null);
+    setAnswerMessage("");
   }
 
   async function handleFinish() {
@@ -167,6 +192,8 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setDraftAnswers({});
     setResult(null);
     setQuestionState(null);
+    setAnswering(false);
+    setAnswerMessage("");
   }
 
   async function handleMarkMastered(value: boolean) {
@@ -191,6 +218,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     }
     setSelectedKeys((current) => {
       const next = toggleOptionSelection(current, key, currentQuestion.question_type);
+      setAnswerMessage("");
       setDraftAnswers((answers) => ({
         ...answers,
         [currentQuestion.session_question_id]: next
@@ -391,7 +419,12 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
             {questionOptions(currentQuestion).map((option) => (
               <li key={option.key}>
                 <label className="ui-inline-checkbox" aria-label={`选项 ${option.key}`}>
-                  <input type="checkbox" checked={selectedKeys.includes(option.key)} onChange={() => toggleKey(option.key)} />
+                  <input
+                    type="checkbox"
+                    checked={selectedKeys.includes(option.key)}
+                    disabled={currentQuestion.answered || answering}
+                    onChange={() => toggleKey(option.key)}
+                  />
                   <span>
                     {option.key}. {option.text}
                   </span>
@@ -400,8 +433,13 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
             ))}
           </ul>
           <div className="ui-admin-toolbar">
-            <button type="button" className="ui-button ui-button--primary" onClick={() => void handleSubmit()}>
-              提交答案
+            <button
+              type="button"
+              className="ui-button ui-button--primary"
+              onClick={() => void handleSubmit()}
+              disabled={currentQuestion.answered || answering}
+            >
+              {currentQuestion.answered ? "已提交" : answering ? "提交中..." : "提交答案"}
             </button>
             <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleMarkMastered(!(questionState?.is_mastered ?? false))}>
               {questionState?.is_mastered ? "取消标熟" : "标熟"}
@@ -419,6 +457,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
               退出练题
             </button>
           </div>
+          {answerMessage ? <p className="ui-admin-inline-message">{answerMessage}</p> : null}
         </section>
       ) : null}
 
@@ -475,6 +514,13 @@ function toggleOptionSelection(current: string[], key: string, questionType: str
     return [key];
   }
   return [...current, key];
+}
+
+function buildAnswerPayload(question: PracticeSessionDetail["questions"][number], selectedKeys: string[]): Record<string, unknown> {
+  if (question.question_type === "true_false") {
+    return { value: selectedKeys[0] === "true" };
+  }
+  return { selected_keys: selectedKeys };
 }
 
 function isSingleSelectQuestion(questionType: string): boolean {

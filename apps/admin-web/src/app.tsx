@@ -23,7 +23,7 @@ import {
 } from "./admin-navigation";
 import { AdminWorkbench } from "./admin-workbench";
 import { AnalyticsPanel, type AnalyticsPanelApi } from "./analytics-panel";
-import { ChallengePanel } from "./challenge-panel";
+import { ChallengePanel, type ChallengePanelApi } from "./challenge-panel";
 import { ClassManagementPanel } from "./class-management-panel";
 import { CourseManagementPanel } from "./course-management-panel";
 import { DictionaryItemPanel, DictionaryPanel, type DictionaryPanelApi } from "./dictionary-panel";
@@ -64,6 +64,7 @@ interface AdminAppProps {
   analyticsApi?: AnalyticsPanelApi;
   historyApi?: HistoryPanelApi;
   profileApi?: ProfilePanelApi;
+  challengeApi?: ChallengePanelApi;
   sessionStore?: SessionStore;
 }
 
@@ -101,6 +102,7 @@ export function AdminApp({
   analyticsApi,
   historyApi,
   profileApi,
+  challengeApi,
   sessionStore
 }: AdminAppProps) {
   const [form, setForm] = useState<LoginRequest>(defaultForm);
@@ -314,6 +316,18 @@ export function AdminApp({
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [profileApi, session]);
 
+  const currentChallengeApi = useMemo<ChallengePanelApi | undefined>(() => {
+    if (challengeApi) {
+      return challengeApi;
+    }
+    if (!session || selectedPath !== "/admin/challenges") {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [challengeApi, selectedPath, session]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
@@ -515,6 +529,7 @@ export function AdminApp({
     currentAnalyticsApi,
     currentHistoryApi,
     currentProfileApi,
+    currentChallengeApi,
     onUserUpdated: (user) => {
       if (!session) {
         return;
@@ -625,6 +640,7 @@ interface RenderAdminViewArgs {
   currentAnalyticsApi?: AnalyticsPanelApi;
   currentHistoryApi?: HistoryPanelApi;
   currentProfileApi?: ProfilePanelApi;
+  currentChallengeApi?: ChallengePanelApi;
   onUserUpdated(user: ManagedUser): void;
   onNavigate(path: string): void;
 }
@@ -644,6 +660,7 @@ function renderAdminView({
   currentAnalyticsApi,
   currentHistoryApi,
   currentProfileApi,
+  currentChallengeApi,
   onUserUpdated,
   onNavigate
 }: RenderAdminViewArgs) {
@@ -682,7 +699,7 @@ function renderAdminView({
       {selectedPath === "/admin/exams" && currentExamApi ? <ExamPanel api={currentExamApi} onNavigate={onNavigate} /> : null}
       {selectedPath === "/admin/exam-papers" && hasPaperManagementApi(currentExamApi) ? <PaperManagementPanel api={currentExamApi} /> : null}
       {selectedPath === "/admin/exams/assembly" && hasPaperManagementApi(currentExamApi) ? <PaperManagementPanel api={currentExamApi} /> : null}
-      {selectedPath === "/admin/challenges" ? <ChallengePanel /> : null}
+      {selectedPath === "/admin/challenges" ? <ChallengePanel api={currentChallengeApi} /> : null}
       {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
       {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
       {selectedPath === "/admin/profile" && currentProfileApi ? (

@@ -178,6 +178,81 @@ func TestHandler_SubmitAnswerUpdatesStateAndMarksQuestion(t *testing.T) {
 	}
 }
 
+func TestHandler_SubmitAnswerRejectsEmptyDuplicateAndFinishedSession(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryPracticeRepository()
+	repo.candidates[1] = buildCandidates(2)
+	router := newPracticeTestRouter(repo, fakePracticeParser{
+		claims: auth.AccessClaims{TenantID: 1, UserID: 7, Permissions: []string{"practice:use"}, TokenType: auth.TokenTypeAccess},
+	})
+
+	createRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions", map[string]any{
+		"practice_mode":  PracticeModeSequential,
+		"source_mode":    SourceModeSingleBank,
+		"flow_mode":      FlowModeFixedCount,
+		"bank_ids":       []int64{1},
+		"question_count": 2,
+	}, "token")
+	var created practiceEnvelope[PracticeSessionDetail]
+	decodePracticeBody(t, createRec, &created)
+	firstQuestionID := created.Data.Questions[0].ID
+	secondQuestionID := created.Data.Questions[1].ID
+
+	emptyRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
+		"session_question_id": firstQuestionID,
+		"answer": map[string]any{
+			"selected_keys": []string{},
+		},
+	}, "token")
+	if emptyRec.Code != http.StatusBadRequest {
+		t.Fatalf("empty answer status = %d, body = %s", emptyRec.Code, emptyRec.Body.String())
+	}
+	if len(repo.answers) != 0 {
+		t.Fatalf("empty answer should not be saved: %+v", repo.answers)
+	}
+
+	answerRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
+		"session_question_id": firstQuestionID,
+		"answer": map[string]any{
+			"selected_keys": []string{"B"},
+		},
+	}, "token")
+	if answerRec.Code != http.StatusOK {
+		t.Fatalf("answer status = %d, body = %s", answerRec.Code, answerRec.Body.String())
+	}
+
+	duplicateRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
+		"session_question_id": firstQuestionID,
+		"answer": map[string]any{
+			"selected_keys": []string{"A"},
+		},
+	}, "token")
+	if duplicateRec.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate answer status = %d, body = %s", duplicateRec.Code, duplicateRec.Body.String())
+	}
+	if len(repo.answers) != 1 {
+		t.Fatalf("duplicate answer should not be saved: %+v", repo.answers)
+	}
+
+	finishRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/finish", nil, "token")
+	if finishRec.Code != http.StatusOK {
+		t.Fatalf("finish status = %d, body = %s", finishRec.Code, finishRec.Body.String())
+	}
+	finishedAnswerRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
+		"session_question_id": secondQuestionID,
+		"answer": map[string]any{
+			"selected_keys": []string{"B"},
+		},
+	}, "token")
+	if finishedAnswerRec.Code != http.StatusBadRequest {
+		t.Fatalf("finished answer status = %d, body = %s", finishedAnswerRec.Code, finishedAnswerRec.Body.String())
+	}
+	if len(repo.answers) != 1 {
+		t.Fatalf("finished answer should not be saved: %+v", repo.answers)
+	}
+}
+
 func TestHandler_Stage2D_ListSessionsAndResults(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -272,7 +347,7 @@ func TestHandler_Stage2D_ListSessionsAndResults(t *testing.T) {
 	}
 }
 
-func TestHandler_Stage2D_ListSessionsUsesLatestAnswerPerQuestion(t *testing.T) {
+func TestHandler_Stage2D_ListSessionsCountsFirstSubmittedAnswerPerQuestion(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
 	repo := newMemoryPracticeRepository()
@@ -291,18 +366,24 @@ func TestHandler_Stage2D_ListSessionsUsesLatestAnswerPerQuestion(t *testing.T) {
 	decodePracticeBody(t, createRec, &created)
 	sessionQuestionID := created.Data.Questions[0].ID
 
-	performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
+	firstAnswerRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
 		"session_question_id": sessionQuestionID,
 		"answer": map[string]any{
 			"selected_keys": []string{"A"},
 		},
 	}, "token")
-	performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
+	if firstAnswerRec.Code != http.StatusOK {
+		t.Fatalf("first answer status = %d, body = %s", firstAnswerRec.Code, firstAnswerRec.Body.String())
+	}
+	secondAnswerRec := performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/answer", map[string]any{
 		"session_question_id": sessionQuestionID,
 		"answer": map[string]any{
 			"selected_keys": []string{"B"},
 		},
 	}, "token")
+	if secondAnswerRec.Code != http.StatusBadRequest {
+		t.Fatalf("second answer status = %d, body = %s", secondAnswerRec.Code, secondAnswerRec.Body.String())
+	}
 	performPracticeRequest(router, http.MethodPost, "/api/v1/practice/sessions/"+strconv.FormatInt(created.Data.ID, 10)+"/finish", nil, "token")
 
 	listRec := performPracticeRequest(router, http.MethodGet, "/api/v1/practice/sessions?status=finished", nil, "token")
@@ -312,8 +393,8 @@ func TestHandler_Stage2D_ListSessionsUsesLatestAnswerPerQuestion(t *testing.T) {
 		t.Fatalf("session count = %d", len(list.Data.Items))
 	}
 	item := list.Data.Items[0]
-	if item.AnsweredCount != 1 || item.CorrectCount != 1 || item.WrongCount != 0 || item.Accuracy != 1 {
-		t.Fatalf("latest answer summary = %+v", item)
+	if item.AnsweredCount != 1 || item.CorrectCount != 0 || item.WrongCount != 1 || item.Accuracy != 0 {
+		t.Fatalf("first answer summary = %+v", item)
 	}
 }
 
@@ -890,6 +971,16 @@ func (repo *memoryPracticeRepository) GetSession(_ context.Context, scope Scope,
 		return PracticeSessionDetail{}, ErrNotFound
 	}
 	questions := append([]PracticeSessionQuestion{}, repo.sessionQuestions[id]...)
+	latestAnswers := repo.latestAnswersBySessionQuestion(id)
+	for index := range questions {
+		answer, ok := latestAnswers[questions[index].ID]
+		if !ok {
+			continue
+		}
+		questions[index].Answered = true
+		isCorrect := answer.IsCorrect
+		questions[index].IsCorrect = &isCorrect
+	}
 	return PracticeSessionDetail{PracticeSession: session, Questions: questions}, nil
 }
 

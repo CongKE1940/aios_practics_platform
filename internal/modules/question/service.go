@@ -113,10 +113,116 @@ func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64
 	return version, nil
 }
 
+func (service *Service) CreateComment(ctx context.Context, scope Scope, id int64, input QuestionCommentInput) error {
+	current, err := service.repo.GetQuestion(ctx, scope, id)
+	if err != nil {
+		return err
+	}
+	if scope.UserID <= 0 || input.QuestionVersionID <= 0 {
+		return ErrInvalidInput
+	}
+
+	input.Content = strings.TrimSpace(input.Content)
+	input.CommentType = normalizeCommentType(input.CommentType)
+	if input.Content == "" || !isAllowedCommentType(input.CommentType) {
+		return ErrInvalidInput
+	}
+	if input.ParentCommentID != nil && *input.ParentCommentID <= 0 {
+		return ErrInvalidInput
+	}
+	return service.repo.CreateComment(ctx, current.TenantID, id, scope.UserID, input)
+}
+
+func (service *Service) CreateChallenge(ctx context.Context, scope Scope, id int64, input QuestionChallengeInput) error {
+	current, err := service.repo.GetQuestion(ctx, scope, id)
+	if err != nil {
+		return err
+	}
+	if scope.UserID <= 0 || input.QuestionVersionID <= 0 {
+		return ErrInvalidInput
+	}
+
+	input.ChallengeType = strings.TrimSpace(input.ChallengeType)
+	input.Description = strings.TrimSpace(input.Description)
+	if input.Description == "" || !isAllowedChallengeType(input.ChallengeType) {
+		return ErrInvalidInput
+	}
+	attachments, err := normalizeChallengeAttachments(input.Attachments)
+	if err != nil {
+		return ErrInvalidInput
+	}
+
+	return service.repo.CreateChallenge(ctx, QuestionChallenge{
+		TenantID:          current.TenantID,
+		QuestionID:        id,
+		QuestionVersionID: input.QuestionVersionID,
+		ChallengerUserID:  scope.UserID,
+		ChallengerOrgType: ChallengerOrgType,
+		ChallengerOrgID:   current.TenantID,
+		ChallengeType:     input.ChallengeType,
+		Description:       input.Description,
+		Attachments:       attachments,
+		Status:            StatusPending,
+	})
+}
+
+func (service *Service) ListChallenges(ctx context.Context, scope Scope, filter QuestionChallengeListFilter) (PageResult[QuestionChallengeListItem], error) {
+	if !canManageQuestionChallenges(scope) {
+		return PageResult[QuestionChallengeListItem]{}, ErrForbidden
+	}
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	filter.Status = strings.TrimSpace(filter.Status)
+	if filter.Status != "" && !isAllowedChallengeReviewStatus(filter.Status) {
+		return PageResult[QuestionChallengeListItem]{}, ErrInvalidInput
+	}
+	return service.repo.ListChallenges(ctx, scopeForChallengeReview(scope), filter)
+}
+
+func (service *Service) UpdateChallengeReview(ctx context.Context, scope Scope, id int64, input QuestionChallengeReviewInput) (QuestionChallengeListItem, error) {
+	if !canManageQuestionChallenges(scope) {
+		return QuestionChallengeListItem{}, ErrForbidden
+	}
+	if id <= 0 {
+		return QuestionChallengeListItem{}, ErrInvalidInput
+	}
+	input.Status = strings.TrimSpace(input.Status)
+	input.ReviewComment = strings.TrimSpace(input.ReviewComment)
+	if !isAllowedChallengeReviewStatus(input.Status) {
+		return QuestionChallengeListItem{}, ErrInvalidInput
+	}
+	if input.ResolvedVersionID != nil && *input.ResolvedVersionID <= 0 {
+		return QuestionChallengeListItem{}, ErrInvalidInput
+	}
+	if input.NewVersion != nil {
+		if input.ResolvedVersionID != nil || !isVersionResolvingChallengeStatus(input.Status) {
+			return QuestionChallengeListItem{}, ErrInvalidInput
+		}
+		if len(input.NewVersion.Content) == 0 || len(input.NewVersion.Answer) == 0 {
+			return QuestionChallengeListItem{}, ErrInvalidInput
+		}
+		input.NewVersion.ChangeSummary = strings.TrimSpace(input.NewVersion.ChangeSummary)
+		if input.NewVersion.ChangeSummary == "" {
+			input.NewVersion.ChangeSummary = "采纳质疑修订"
+		}
+	}
+	if isVersionRequiredChallengeStatus(input.Status) && input.ResolvedVersionID == nil && input.NewVersion == nil {
+		return QuestionChallengeListItem{}, ErrInvalidInput
+	}
+	return service.repo.UpdateChallengeReview(ctx, scopeForChallengeReview(scope), id, input)
+}
+
 func normalizeListFilter(filter QuestionListFilter) QuestionListFilter {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
+}
+
+func scopeForChallengeReview(scope Scope) Scope {
+	if isSystemScope(scope) {
+		scope.TenantID = 0
+	}
+	return scope
 }
 
 func readTenantID(scope Scope) int64 {
@@ -141,6 +247,10 @@ func canManageQuestion(scope Scope, item Question) bool {
 	return item.TenantID == scope.TenantID && (isTenantManageScope(scope) || containsExactPermission(scope.Permissions, "question:manage"))
 }
 
+func canManageQuestionChallenges(scope Scope) bool {
+	return isSystemScope(scope) || isTenantManageScope(scope) || containsExactPermission(scope.Permissions, "question:manage")
+}
+
 func isSystemScope(scope Scope) bool {
 	return scope.UserType == "sys_admin" || containsExactPermission(scope.Permissions, "system:manage")
 }
@@ -161,6 +271,74 @@ func containsExactPermission(permissions []string, target string) bool {
 func isAllowedQuestionType(questionType string) bool {
 	switch strings.TrimSpace(questionType) {
 	case "single_choice", "multiple_choice", "true_false":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeCommentType(commentType string) string {
+	commentType = strings.TrimSpace(commentType)
+	if commentType == "" {
+		return "discussion"
+	}
+	return commentType
+}
+
+func isAllowedCommentType(commentType string) bool {
+	switch commentType {
+	case "discussion", "note":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedChallengeType(challengeType string) bool {
+	switch challengeType {
+	case "wrong_answer", "wrong_stem", "wrong_option", "typo", "dispute", "other":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedChallengeReviewStatus(status string) bool {
+	switch status {
+	case StatusPending, StatusReviewing, StatusResolved, StatusRejected, StatusAccepted, StatusMerged:
+		return true
+	default:
+		return false
+	}
+}
+
+func isVersionRequiredChallengeStatus(status string) bool {
+	return status == StatusAccepted || status == StatusMerged
+}
+
+func isVersionResolvingChallengeStatus(status string) bool {
+	return status == StatusAccepted || status == StatusMerged || status == StatusResolved
+}
+
+func normalizeChallengeAttachments(attachments []QuestionChallengeAttachmentInput) ([]QuestionChallengeAttachmentInput, error) {
+	if len(attachments) > 10 {
+		return nil, ErrInvalidInput
+	}
+	result := make([]QuestionChallengeAttachmentInput, 0, len(attachments))
+	for _, attachment := range attachments {
+		attachment.URL = strings.TrimSpace(attachment.URL)
+		attachment.Type = strings.TrimSpace(attachment.Type)
+		if attachment.URL == "" || !isAllowedAttachmentType(attachment.Type) {
+			return nil, ErrInvalidInput
+		}
+		result = append(result, attachment)
+	}
+	return result, nil
+}
+
+func isAllowedAttachmentType(attachmentType string) bool {
+	switch attachmentType {
+	case "image", "file":
 		return true
 	default:
 		return false

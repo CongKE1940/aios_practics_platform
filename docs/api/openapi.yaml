@@ -719,6 +719,8 @@ paths:
     post:
       tags: [Question]
       summary: 题目评论
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionCommentBody'
       responses:
         '200': { $ref: '#/components/responses/Ok' }
   /questions/{id}/challenges:
@@ -727,8 +729,40 @@ paths:
     post:
       tags: [Question]
       summary: 发起题目质疑
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionChallengeBody'
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /question-challenges:
+    get:
+      tags: [Question]
+      summary: 题目质疑列表
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, reviewing, resolved, rejected, accepted, merged]
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+      responses:
+        '200': { $ref: '#/components/responses/QuestionChallengePageOk' }
+  /question-challenges/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Question]
+      summary: 审核题目质疑
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionChallengeReviewBody'
+      responses:
+        '200': { $ref: '#/components/responses/QuestionChallengeOk' }
   /practice/sessions:
     get:
       tags: [Practice]
@@ -1161,6 +1195,22 @@ paths:
       summary: 文件资产详情
       responses:
         '200': { $ref: '#/components/responses/Ok' }
+  /files/{id}/content:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [File]
+      summary: 文件内容回放
+      responses:
+        '200':
+          description: 上传文件内容
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '302':
+          description: 远程 URL 文件重定向
   /analytics/practice-overview:
     get:
       tags: [Analytics]
@@ -1837,6 +1887,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ExamAttemptResultResponse'
+    QuestionChallengePageOk:
+      description: 题目质疑分页列表
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionChallengePageResponse'
+    QuestionChallengeOk:
+      description: 题目质疑详情
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionChallengeResponse'
   requestBodies:
     RoleBody:
       required: true
@@ -1922,6 +1984,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/QuestionVersionInput'
+    QuestionCommentBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionCommentInput'
+    QuestionChallengeBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionChallengeInput'
+    QuestionChallengeReviewBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionChallengeReviewInput'
     ImportJobBody:
       required: true
       content:
@@ -2355,6 +2435,159 @@ components:
         change_summary:
           type: string
           nullable: true
+    QuestionCommentInput:
+      type: object
+      required: [question_version_id, content]
+      properties:
+        question_version_id:
+          type: integer
+          format: int64
+        content:
+          type: string
+        comment_type:
+          type: string
+          enum: [discussion, note]
+          default: discussion
+        is_private:
+          type: boolean
+          default: false
+        parent_comment_id:
+          type: integer
+          format: int64
+          nullable: true
+    QuestionChallengeInput:
+      type: object
+      required: [question_version_id, challenge_type, description]
+      properties:
+        question_version_id:
+          type: integer
+          format: int64
+        challenge_type:
+          type: string
+          enum: [wrong_answer, wrong_stem, wrong_option, typo, dispute, other]
+        description:
+          type: string
+        attachments:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/QuestionChallengeAttachmentInput'
+    QuestionChallengeAttachmentInput:
+      type: object
+      required: [url, type]
+      properties:
+        url:
+          type: string
+        type:
+          type: string
+          enum: [image, file]
+    QuestionChallengeManagementItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        tenant_id:
+          type: integer
+          format: int64
+        question_id:
+          type: integer
+          format: int64
+        question_version_id:
+          type: integer
+          format: int64
+        challenge_type:
+          type: string
+        description:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionChallengeAttachmentInput'
+        status:
+          type: string
+          enum: [pending, reviewing, resolved, rejected, accepted, merged]
+        challenger_user_id:
+          type: integer
+          format: int64
+        challenger:
+          type: string
+        question_bank:
+          type: string
+        title:
+          type: string
+        current_version:
+          type: string
+        current_content:
+          $ref: '#/components/schemas/QuestionContentInput'
+        current_answer:
+          $ref: '#/components/schemas/QuestionAnswerInput'
+        current_analysis:
+          $ref: '#/components/schemas/QuestionAnalysisInput'
+        suggested_fix:
+          type: string
+        history_versions:
+          type: array
+          items:
+            type: string
+        review_comment:
+          type: string
+          nullable: true
+        reviewed_by:
+          type: integer
+          format: int64
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_version_id:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    QuestionChallengeReviewInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, reviewing, resolved, rejected, accepted, merged]
+        review_comment:
+          type: string
+          nullable: true
+        resolved_version_id:
+          type: integer
+          format: int64
+          nullable: true
+        new_version:
+          $ref: '#/components/schemas/QuestionVersionInput'
+    QuestionChallengePageResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/Page'
+                - type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/QuestionChallengeManagementItem'
+    QuestionChallengeResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/QuestionChallengeManagementItem'
     QuestionContentInput:
       type: object
       required: [stem]

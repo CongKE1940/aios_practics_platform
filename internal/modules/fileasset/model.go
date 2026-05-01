@@ -3,6 +3,7 @@ package fileasset
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 )
 
@@ -43,6 +44,7 @@ type UploadInput struct {
 	MimeType         string
 	FileSize         int64
 	Checksum         string
+	Content          io.Reader
 }
 
 type ImportURLInput struct {
@@ -53,4 +55,9 @@ type ImportURLInput struct {
 type Repository interface {
 	Create(ctx context.Context, asset FileAsset) (FileAsset, error)
 	GetByID(ctx context.Context, tenantID int64, id int64) (FileAsset, error)
+}
+
+type ContentStore interface {
+	Save(ctx context.Context, objectKey string, content io.Reader) error
+	Open(ctx context.Context, objectKey string) (io.ReadCloser, error)
 }

@@ -151,6 +151,89 @@ describe("PracticePanel", () => {
     });
   });
 
+  it("requires an answer before submitting and locks answered questions", async () => {
+    const api: PracticePanelApi = {
+      createPracticeSession: vi.fn(async () => ({
+        id: 509,
+        tenant_id: 1,
+        user_id: 7,
+        practice_mode: "random",
+        source_mode: "single_bank",
+        flow_mode: "fixed_count",
+        bank_scope: {},
+        bank_ids: [1],
+        exclude_mastered: false,
+        question_count: 1,
+        random_seed: 20260422,
+        round_no: 1,
+        status: "active",
+        questions: [
+          {
+            session_question_id: 9009,
+            session_id: 509,
+            question_id: 1009,
+            question_version_id: 3009,
+            display_order: 1,
+            question_type: "single_choice",
+            content: {
+              stem: { content_type: "text", text: "2+2等于几？", assets: [] },
+              options: [
+                { key: "A", content_type: "text", text: "3", assets: [] },
+                { key: "B", content_type: "text", text: "4", assets: [] }
+              ]
+            },
+            round_no: 1,
+            answered: false
+          }
+        ]
+      })),
+      getPracticeSession: vi.fn(),
+      nextPracticeQuestion: vi.fn(),
+      submitPracticeAnswer: vi.fn(async () => ({
+        is_correct: true,
+        correct_answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
+        state: {
+          id: 1,
+          tenant_id: 1,
+          user_id: 7,
+          question_id: 1009,
+          question_version_id: 3009,
+          practice_correct_count: 1,
+          practice_wrong_count: 0,
+          exam_wrong_count: 0,
+          is_mastered: false,
+          is_confused: false
+        }
+      })),
+      finishPracticeSession: vi.fn(),
+      markPracticeQuestionMastered: vi.fn(),
+      markPracticeQuestionConfused: vi.fn(),
+      listUserQuestionStates: vi.fn()
+    };
+
+    render(<PracticePanel api={api} />);
+
+    fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始练题" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("2+2等于几？")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+    expect(screen.getByText("请先选择答案。")).toBeTruthy();
+    expect(api.submitPracticeAnswer).not.toHaveBeenCalled();
+
+    fireEvent.click(optionInput("选项 B"));
+    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+
+    await waitFor(() => {
+      expect(api.submitPracticeAnswer).toHaveBeenCalledTimes(1);
+    });
+    const submittedButton = screen.getByRole("button", { name: "已提交" }) as HTMLButtonElement;
+    expect(submittedButton.disabled).toBe(true);
+  });
+
   it("creates fixed-count course practice session with default question count", async () => {
     const api: PracticePanelApi = {
       createPracticeSession: vi.fn(async () => ({
@@ -172,7 +255,23 @@ describe("PracticePanel", () => {
       })),
       getPracticeSession: vi.fn(),
       nextPracticeQuestion: vi.fn(),
-      submitPracticeAnswer: vi.fn(),
+      submitPracticeAnswer: vi.fn(async () => ({
+        is_correct: true,
+        correct_answer: { judge_mode: "boolean", correct_value: true },
+        analysis: { text: "事实判断" },
+        state: {
+          id: 1,
+          tenant_id: 1,
+          user_id: 7,
+          question_id: 1201,
+          question_version_id: 3201,
+          practice_correct_count: 1,
+          practice_wrong_count: 0,
+          exam_wrong_count: 0,
+          is_mastered: false,
+          is_confused: false
+        }
+      })),
       finishPracticeSession: vi.fn(),
       markPracticeQuestionMastered: vi.fn(),
       markPracticeQuestionConfused: vi.fn(),
@@ -422,6 +521,16 @@ describe("PracticePanel", () => {
     });
     expect(screen.getByLabelText("选项 true")).toBeTruthy();
     expect(screen.getByLabelText("选项 false")).toBeTruthy();
+
+    fireEvent.click(optionInput("选项 true"));
+    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+
+    await waitFor(() => {
+      expect(api.submitPracticeAnswer).toHaveBeenCalledWith(701, {
+        session_question_id: 9201,
+        answer: { value: true }
+      });
+    });
   });
 
   it("navigates to question feedback page from current question actions", async () => {

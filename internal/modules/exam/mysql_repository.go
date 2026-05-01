@@ -569,11 +569,11 @@ func (repo *MySQLRepository) StartAttempt(ctx context.Context, scope Scope, exam
 	} else if ok {
 		return repo.GetAttempt(ctx, scope, existing.ID)
 	}
-	paperID, err := repo.getPublishedPaperID(ctx, scope, examID)
+	startAt := time.Now().UTC()
+	paperID, err := repo.getPublishedPaperID(ctx, scope, examID, startAt)
 	if err != nil {
 		return ExamAttemptDetail{}, err
 	}
-	startAt := time.Now().UTC()
 	const query = `
 INSERT INTO exam_attempts (exam_id, paper_id, tenant_id, user_id, start_at, status)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -1506,12 +1506,12 @@ LIMIT 1
 	return item, durationMinutes, nil
 }
 
-func (repo *MySQLRepository) getPublishedPaperID(ctx context.Context, scope Scope, examID int64) (int64, error) {
+func (repo *MySQLRepository) getPublishedPaperID(ctx context.Context, scope Scope, examID int64, now time.Time) (int64, error) {
 	const query = `
 SELECT COALESCE(e.paper_id, ep.id)
 FROM exams e
 LEFT JOIN exam_papers ep ON ep.exam_id = e.id
-WHERE e.id = ? AND e.tenant_id = ? AND e.status = ? AND COALESCE(e.paper_id, ep.id) IS NOT NULL
+WHERE e.id = ? AND e.tenant_id = ? AND e.status = ? AND e.start_time <= ? AND e.end_time >= ? AND COALESCE(e.paper_id, ep.id) IS NOT NULL
 AND (
   EXISTS (
     SELECT 1
@@ -1536,7 +1536,7 @@ ORDER BY ep.id DESC
 LIMIT 1
 `
 	var paperID int64
-	if err := repo.db.QueryRowContext(ctx, query, examID, scope.TenantID, ExamStatusPublished, scope.UserID, scope.UserID, scope.UserID).Scan(&paperID); err != nil {
+	if err := repo.db.QueryRowContext(ctx, query, examID, scope.TenantID, ExamStatusPublished, now, now, scope.UserID, scope.UserID, scope.UserID).Scan(&paperID); err != nil {
 		return 0, wrapExamNotFound(err)
 	}
 	return paperID, nil

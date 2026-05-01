@@ -197,6 +197,9 @@ func (service *Service) SubmitAnswer(ctx context.Context, scope Scope, id int64,
 	if err != nil {
 		return PracticeAnswerResult{}, err
 	}
+	if detail.Status != StatusActive {
+		return PracticeAnswerResult{}, ErrInvalidInput
+	}
 	var sessionQuestion *PracticeSessionQuestion
 	for index := range detail.Questions {
 		if detail.Questions[index].ID == input.SessionQuestionID {
@@ -206,6 +209,12 @@ func (service *Service) SubmitAnswer(ctx context.Context, scope Scope, id int64,
 	}
 	if sessionQuestion == nil {
 		return PracticeAnswerResult{}, ErrNotFound
+	}
+	if sessionQuestion.Answered {
+		return PracticeAnswerResult{}, ErrInvalidInput
+	}
+	if !hasSubmittedAnswer(sessionQuestion.Answer, input.Answer) {
+		return PracticeAnswerResult{}, ErrInvalidInput
 	}
 	isCorrect, err := judgeAnswer(sessionQuestion.Answer, input.Answer)
 	if err != nil {
@@ -462,6 +471,22 @@ func sameStringSet(left []string, right []string) bool {
 		return result
 	}
 	return reflect.DeepEqual(normalize(left), normalize(right))
+}
+
+func hasSubmittedAnswer(correctAnswer map[string]any, submitted map[string]any) bool {
+	if len(submitted) == 0 {
+		return false
+	}
+	mode, _ := correctAnswer["judge_mode"].(string)
+	switch mode {
+	case "by_option_key":
+		return len(asStringSlice(submitted["selected_keys"])) > 0
+	case "boolean":
+		_, ok := asBool(submitted["value"])
+		return ok
+	default:
+		return true
+	}
 }
 
 func isNotFound(err error) bool {
