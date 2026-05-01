@@ -18,6 +18,8 @@ const (
 	StatusAccepted     = "accepted"
 	StatusMerged       = "merged"
 	SourceTypeManual   = "manual"
+	TagTypeSystem      = "system"
+	TagStatusActive    = "active"
 	CodeInvalidInput   = 40000
 	CodeForbidden      = 40300
 	CodeNotFound       = 40400
@@ -98,6 +100,11 @@ type QuestionVersionInput struct {
 	Answer        map[string]any `json:"answer" binding:"required"`
 	Analysis      map[string]any `json:"analysis"`
 	ChangeSummary string         `json:"change_summary"`
+}
+
+type QuestionTagInput struct {
+	TagIDs   []int64  `json:"tag_ids"`
+	TagNames []string `json:"tag_names"`
 }
 
 type QuestionCommentInput struct {
@@ -190,6 +197,7 @@ type Repository interface {
 	UpdateQuestion(ctx context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error)
 	ListVersions(ctx context.Context, tenantID int64, questionID int64) ([]QuestionVersion, error)
 	CreateVersion(ctx context.Context, tenantID int64, questionID int64, version QuestionVersion) (QuestionVersion, Question, error)
+	SetQuestionTags(ctx context.Context, tenantID int64, questionID int64, tagIDs []int64, tagNames []string) error
 	CreateComment(ctx context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error
 	CreateChallenge(ctx context.Context, challenge QuestionChallenge) error
 	ListChallenges(ctx context.Context, scope Scope, filter QuestionChallengeListFilter) (PageResult[QuestionChallengeListItem], error)

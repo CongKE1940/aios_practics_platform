@@ -582,7 +582,7 @@ describe("AdminApp", () => {
             import_type: body.import_type,
             template_version: body.template_version ?? "v1",
             file_asset_id: body.file_asset_id,
-            file_url: body.file_url,
+            file_url: body.file_url ?? "",
             status: "success",
             total_rows: 1,
             success_rows: 1,

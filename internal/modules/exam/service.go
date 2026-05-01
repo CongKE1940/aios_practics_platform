@@ -30,9 +30,11 @@ func (service *Service) ListExams(ctx context.Context, scope Scope, filter ExamL
 	if scope.UserType != "student" && !canManageExam(scope) {
 		return PageResult[Exam]{}, ErrForbidden
 	}
-	filter.Page = normalizePage(filter.Page)
-	filter.PageSize = normalizePageSize(filter.PageSize)
-	return service.repo.ListExams(ctx, scopeForRead(scope), filter)
+	normalized, err := normalizeExamListFilter(filter)
+	if err != nil {
+		return PageResult[Exam]{}, err
+	}
+	return service.repo.ListExams(ctx, scopeForRead(scope), normalized)
 }
 
 func (service *Service) CreateExam(ctx context.Context, scope Scope, input ExamInput) (ExamDetail, error) {
@@ -324,6 +326,28 @@ func normalizeExamInput(input ExamInput) (ExamInput, error) {
 	}
 
 	return input, nil
+}
+
+func normalizeExamListFilter(filter ExamListFilter) (ExamListFilter, error) {
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	filter.Status = strings.TrimSpace(strings.ToLower(filter.Status))
+	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	filter.TargetType = strings.TrimSpace(strings.ToLower(filter.TargetType))
+	if filter.Status != "" && filter.Status != ExamStatusDraft && filter.Status != ExamStatusPublished {
+		return ExamListFilter{}, ErrInvalidInput
+	}
+	if filter.TargetType != "" {
+		switch filter.TargetType {
+		case TargetTypeClass, TargetTypeCourse, TargetTypeUser:
+		default:
+			return ExamListFilter{}, ErrInvalidInput
+		}
+	}
+	if filter.TargetID != nil && *filter.TargetID <= 0 {
+		return ExamListFilter{}, ErrInvalidInput
+	}
+	return filter, nil
 }
 
 func normalizeStudentSelfTestInput(scope Scope, input ExamInput) ExamInput {

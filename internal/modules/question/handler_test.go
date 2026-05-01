@@ -135,6 +135,23 @@ func TestHandler_QuestionLifecycleAndVersions(t *testing.T) {
 		t.Fatalf("current_version_id changed from %+v to %+v", created.Data.CurrentVersionID, updated.Data.CurrentVersionID)
 	}
 
+	tagsRec := performQuestionRequest(
+		router,
+		http.MethodPost,
+		"/api/v1/questions/"+strconv.FormatInt(created.Data.ID, 10)+"/tags",
+		map[string]any{
+			"tag_ids":   []int64{101},
+			"tag_names": []string{"一次方程", "计算"},
+		},
+		"token",
+	)
+	if tagsRec.Code != http.StatusOK {
+		t.Fatalf("set tags status = %d, body = %s", tagsRec.Code, tagsRec.Body.String())
+	}
+	if len(repo.questionTags[created.Data.ID]) != 3 {
+		t.Fatalf("question tags = %+v", repo.questionTags[created.Data.ID])
+	}
+
 	versionsRec := performQuestionRequest(
 		router,
 		http.MethodGet,
@@ -527,6 +544,7 @@ type memoryRepository struct {
 	versions        map[int64][]QuestionVersion
 	questionBanks   map[int64]questionBankRef
 	questionBankIDs map[int64][]int64
+	questionTags    map[int64][]string
 	comments        []storedComment
 	challenges      []QuestionChallenge
 	challengeItems  map[int64]QuestionChallengeListItem
@@ -542,6 +560,7 @@ func newMemoryRepository() *memoryRepository {
 		versions:        map[int64][]QuestionVersion{},
 		questionBanks:   map[int64]questionBankRef{},
 		questionBankIDs: map[int64][]int64{},
+		questionTags:    map[int64][]string{},
 		challengeItems:  map[int64]QuestionChallengeListItem{},
 	}
 }
@@ -646,6 +665,20 @@ func (repo *memoryRepository) CreateVersion(_ context.Context, tenantID int64, q
 	question.UpdatedAt = version.CreatedAt
 	repo.questions[questionID] = question
 	return version, question, nil
+}
+
+func (repo *memoryRepository) SetQuestionTags(_ context.Context, tenantID int64, questionID int64, tagIDs []int64, tagNames []string) error {
+	question, ok := repo.questions[questionID]
+	if !ok || question.TenantID != tenantID {
+		return ErrNotFound
+	}
+	values := make([]string, 0, len(tagIDs)+len(tagNames))
+	for _, tagID := range tagIDs {
+		values = append(values, strconv.FormatInt(tagID, 10))
+	}
+	values = append(values, tagNames...)
+	repo.questionTags[questionID] = values
+	return nil
 }
 
 func (repo *memoryRepository) CreateComment(_ context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error {

@@ -52,6 +52,7 @@ type normalizedQuestionRow struct {
 	Content        map[string]any
 	Answer         map[string]any
 	Analysis       map[string]any
+	SystemTags     []string
 	NormalizedData map[string]any
 }
 
@@ -158,6 +159,7 @@ func normalizeQuestionRow(raw map[string]string) (normalizedQuestionRow, *rowFai
 		return normalizedQuestionRow{}, failure
 	}
 
+	systemTags := splitTags(raw["system_tags"])
 	content := map[string]any{
 		"stem": map[string]any{
 			"content_type": stemType,
@@ -166,7 +168,7 @@ func normalizeQuestionRow(raw map[string]string) (normalizedQuestionRow, *rowFai
 		},
 		"option_order_randomizable": true,
 		"ext": map[string]any{
-			"system_tags": splitTags(raw["system_tags"]),
+			"system_tags": systemTags,
 		},
 	}
 	if len(options) > 0 {
@@ -186,7 +188,7 @@ func normalizeQuestionRow(raw map[string]string) (normalizedQuestionRow, *rowFai
 		"stem_content":  stemContent,
 		"answer":        answer,
 		"difficulty":    difficulty,
-		"system_tags":   splitTags(raw["system_tags"]),
+		"system_tags":   systemTags,
 	}
 
 	return normalizedQuestionRow{
@@ -196,6 +198,7 @@ func normalizeQuestionRow(raw map[string]string) (normalizedQuestionRow, *rowFai
 		Content:        content,
 		Answer:         answer,
 		Analysis:       analysis,
+		SystemTags:     systemTags,
 		NormalizedData: normalized,
 	}, nil
 }

@@ -217,8 +217,12 @@ type ExamAttemptResult struct {
 }
 
 type ExamListFilter struct {
-	Page     int
-	PageSize int
+	Status     string
+	Keyword    string
+	TargetType string
+	TargetID   *int64
+	Page       int
+	PageSize   int
 }
 
 type PageResult[T any] struct {

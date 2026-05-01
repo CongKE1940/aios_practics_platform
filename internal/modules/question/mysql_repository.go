@@ -12,6 +12,16 @@ type MySQLRepository struct {
 	db *sql.DB
 }
 
+type sqlExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+type challengeReviewTarget struct {
+	TenantID         int64
+	QuestionID       int64
+	ChallengerUserID int64
+}
+
 func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
@@ -310,6 +320,48 @@ func (repo *MySQLRepository) CreateVersion(ctx context.Context, tenantID int64, 
 	return createdVersion, updatedQuestion, nil
 }
 
+func (repo *MySQLRepository) SetQuestionTags(ctx context.Context, tenantID int64, questionID int64, tagIDs []int64, tagNames []string) error {
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := repo.getQuestionForUpdate(ctx, tx, tenantID, questionID); err != nil {
+		return err
+	}
+
+	resolvedIDs := make([]int64, 0, len(tagIDs)+len(tagNames))
+	if len(tagIDs) > 0 {
+		if err := repo.ensureSystemTagIDs(ctx, tx, tenantID, tagIDs); err != nil {
+			return err
+		}
+		resolvedIDs = append(resolvedIDs, tagIDs...)
+	}
+	for _, name := range tagNames {
+		tagID, err := repo.ensureSystemTag(ctx, tx, tenantID, name)
+		if err != nil {
+			return err
+		}
+		resolvedIDs = append(resolvedIDs, tagID)
+	}
+	resolvedIDs = normalizeIDs(resolvedIDs)
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM question_tags WHERE question_id = ?`, questionID); err != nil {
+		return err
+	}
+	const insertQuery = `
+INSERT INTO question_tags (question_id, tag_id)
+VALUES (?, ?)
+`
+	for _, tagID := range resolvedIDs {
+		if _, err := tx.ExecContext(ctx, insertQuery, questionID, tagID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (repo *MySQLRepository) CreateComment(ctx context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error {
 	if err := repo.ensureQuestionVersion(ctx, questionID, input.QuestionVersionID); err != nil {
 		return err
@@ -417,8 +469,19 @@ func (repo *MySQLRepository) UpdateChallengeReview(ctx context.Context, scope Sc
 	if input.NewVersion != nil {
 		return repo.updateChallengeReviewWithNewVersion(ctx, scope, id, input)
 	}
+
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	defer tx.Rollback()
+
+	target, err := repo.getChallengeReviewTargetForUpdate(ctx, tx, scope, id)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
 	if input.ResolvedVersionID != nil {
-		if err := repo.ensureChallengeResolvedVersion(ctx, scope, id, *input.ResolvedVersionID); err != nil {
+		if err := repo.ensureQuestionVersionTx(ctx, tx, target.QuestionID, *input.ResolvedVersionID); err != nil {
 			return QuestionChallengeListItem{}, err
 		}
 	}
@@ -433,7 +496,21 @@ WHERE id = ?
 		query += " AND tenant_id = ?"
 		args = append(args, scope.TenantID)
 	}
-	if err := repo.execAffectingOne(ctx, query, args...); err != nil {
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	if rowsAffected == 0 {
+		return QuestionChallengeListItem{}, ErrNotFound
+	}
+	if err := insertChallengeReviewNotification(ctx, tx, target, id, input); err != nil {
+		return QuestionChallengeListItem{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return QuestionChallengeListItem{}, err
 	}
 	return repo.getChallengeByID(ctx, scope, id)
@@ -446,21 +523,21 @@ func (repo *MySQLRepository) updateChallengeReviewWithNewVersion(ctx context.Con
 	}
 	defer tx.Rollback()
 
-	challengeTenantID, questionID, err := repo.getChallengeQuestionForUpdate(ctx, tx, scope, id)
+	target, err := repo.getChallengeReviewTargetForUpdate(ctx, tx, scope, id)
 	if err != nil {
 		return QuestionChallengeListItem{}, err
 	}
-	current, err := repo.getQuestionForUpdate(ctx, tx, challengeTenantID, questionID)
+	current, err := repo.getQuestionForUpdate(ctx, tx, target.TenantID, target.QuestionID)
 	if err != nil {
 		return QuestionChallengeListItem{}, err
 	}
 
 	var currentVersionNo int
-	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version_no), 0) FROM question_versions WHERE question_id = ?", questionID).Scan(&currentVersionNo); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version_no), 0) FROM question_versions WHERE question_id = ?", target.QuestionID).Scan(&currentVersionNo); err != nil {
 		return QuestionChallengeListItem{}, err
 	}
 	versionNo := currentVersionNo + 1
-	versionID, err := repo.insertVersion(ctx, tx, questionID, QuestionVersion{
+	versionID, err := repo.insertVersion(ctx, tx, target.QuestionID, QuestionVersion{
 		Content:       input.NewVersion.Content,
 		Answer:        input.NewVersion.Answer,
 		Analysis:      input.NewVersion.Analysis,
@@ -473,7 +550,7 @@ func (repo *MySQLRepository) updateChallengeReviewWithNewVersion(ctx context.Con
 		return QuestionChallengeListItem{}, err
 	}
 
-	if _, err := tx.ExecContext(ctx, "UPDATE questions SET current_version_id = ? WHERE id = ? AND tenant_id = ?", versionID, questionID, challengeTenantID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE questions SET current_version_id = ? WHERE id = ? AND tenant_id = ?", versionID, target.QuestionID, target.TenantID); err != nil {
 		return QuestionChallengeListItem{}, err
 	}
 
@@ -497,6 +574,9 @@ WHERE id = ?
 	}
 	if rowsAffected == 0 {
 		return QuestionChallengeListItem{}, ErrNotFound
+	}
+	if err := insertChallengeReviewNotification(ctx, tx, target, id, input); err != nil {
+		return QuestionChallengeListItem{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return QuestionChallengeListItem{}, err
@@ -625,9 +705,104 @@ WHERE qv.id = ? AND qc.id = ?
 	return wrapNotFound(err)
 }
 
-func (repo *MySQLRepository) getChallengeQuestionForUpdate(ctx context.Context, tx *sql.Tx, scope Scope, challengeID int64) (int64, int64, error) {
+func (repo *MySQLRepository) ensureQuestionVersionTx(ctx context.Context, tx *sql.Tx, questionID int64, versionID int64) error {
+	const query = `
+SELECT id
+FROM question_versions
+WHERE id = ? AND question_id = ?
+LIMIT 1
+`
+	var id int64
+	err := tx.QueryRowContext(ctx, query, versionID, questionID).Scan(&id)
+	return wrapNotFound(err)
+}
+
+func (repo *MySQLRepository) ensureSystemTagIDs(ctx context.Context, tx *sql.Tx, tenantID int64, tagIDs []int64) error {
+	if len(tagIDs) == 0 {
+		return nil
+	}
+	args := make([]any, 0, len(tagIDs)+2)
+	args = append(args, tenantID, TagTypeSystem)
+	for _, id := range tagIDs {
+		args = append(args, id)
+	}
 	query := `
-SELECT qc.tenant_id, qc.question_id
+SELECT COUNT(*)
+FROM tags
+WHERE tenant_id = ? AND tag_type = ? AND owner_user_id IS NULL AND status = 'active' AND id IN (` + placeholders(len(tagIDs)) + `)
+`
+	var count int
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return err
+	}
+	if count != len(tagIDs) {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (repo *MySQLRepository) ensureSystemTag(ctx context.Context, tx *sql.Tx, tenantID int64, name string) (int64, error) {
+	const selectQuery = `
+SELECT id
+FROM tags
+WHERE tenant_id = ? AND tag_type = ? AND owner_user_id IS NULL AND name = ? AND status = 'active'
+LIMIT 1
+`
+	var id int64
+	err := tx.QueryRowContext(ctx, selectQuery, tenantID, TagTypeSystem, name).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+	const insertQuery = `
+INSERT INTO tags (tenant_id, tag_type, owner_user_id, name, status)
+VALUES (?, ?, NULL, ?, ?)
+`
+	result, err := tx.ExecContext(ctx, insertQuery, tenantID, TagTypeSystem, name, TagStatusActive)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func insertChallengeReviewNotification(ctx context.Context, exec sqlExecutor, target challengeReviewTarget, challengeID int64, input QuestionChallengeReviewInput) error {
+	if target.TenantID <= 0 || target.ChallengerUserID <= 0 {
+		return nil
+	}
+	content := "你提交的题目质疑已处理，处理结果：" + challengeStatusLabel(input.Status)
+	if strings.TrimSpace(input.ReviewComment) != "" {
+		content += "。审核意见：" + strings.TrimSpace(input.ReviewComment)
+	}
+	const query = `
+INSERT INTO notifications (tenant_id, recipient_user_id, category, title, content, source_type, source_id, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+	_, err := exec.ExecContext(ctx, query, target.TenantID, target.ChallengerUserID, "notice", "题目质疑已处理", content, "question_challenge", challengeID, "unread")
+	return err
+}
+
+func challengeStatusLabel(status string) string {
+	switch status {
+	case StatusAccepted:
+		return "已采纳"
+	case StatusRejected:
+		return "已驳回"
+	case StatusResolved:
+		return "已解决"
+	case StatusMerged:
+		return "已合并"
+	case StatusReviewing:
+		return "审核中"
+	default:
+		return status
+	}
+}
+
+func (repo *MySQLRepository) getChallengeReviewTargetForUpdate(ctx context.Context, tx *sql.Tx, scope Scope, challengeID int64) (challengeReviewTarget, error) {
+	query := `
+SELECT qc.tenant_id, qc.question_id, qc.challenger_user_id
 FROM question_challenges qc
 JOIN questions q ON q.id = qc.question_id
 WHERE qc.id = ? AND q.deleted_at IS NULL
@@ -638,13 +813,12 @@ WHERE qc.id = ? AND q.deleted_at IS NULL
 		args = append(args, scope.TenantID)
 	}
 	query += " FOR UPDATE"
-	var tenantID int64
-	var questionID int64
-	err := tx.QueryRowContext(ctx, query, args...).Scan(&tenantID, &questionID)
+	var target challengeReviewTarget
+	err := tx.QueryRowContext(ctx, query, args...).Scan(&target.TenantID, &target.QuestionID, &target.ChallengerUserID)
 	if err != nil {
-		return 0, 0, wrapNotFound(err)
+		return challengeReviewTarget{}, wrapNotFound(err)
 	}
-	return tenantID, questionID, nil
+	return target, nil
 }
 
 func (repo *MySQLRepository) getChallengeByID(ctx context.Context, scope Scope, id int64) (QuestionChallengeListItem, error) {

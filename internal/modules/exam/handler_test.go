@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -987,6 +988,28 @@ func (repo *memoryExamRepository) ListExams(_ context.Context, scope Scope, filt
 		}
 		if !containsPermission(scope.Permissions, "exam:publish") && item.Status != ExamStatusPublished {
 			continue
+		}
+		if filter.Status != "" && item.Status != filter.Status {
+			continue
+		}
+		if filter.Keyword != "" && !strings.Contains(item.Name, filter.Keyword) {
+			continue
+		}
+		if filter.TargetType != "" || filter.TargetID != nil {
+			matched := false
+			for _, target := range item.Targets {
+				if filter.TargetType != "" && target.TargetType != filter.TargetType {
+					continue
+				}
+				if filter.TargetID != nil && target.TargetID != *filter.TargetID {
+					continue
+				}
+				matched = true
+				break
+			}
+			if !matched {
+				continue
+			}
 		}
 		items = append(items, item.Exam)
 	}

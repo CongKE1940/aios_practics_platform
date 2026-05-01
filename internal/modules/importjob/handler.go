@@ -32,6 +32,8 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/import/jobs", handler.listJobs)
 	router.GET("/import/jobs/:id", handler.getJob)
 	router.GET("/import/jobs/:id/rows", handler.listRows)
+	router.GET("/import/jobs/:id/failure-report", handler.failureReport)
+	router.POST("/import/jobs/:id/rollback", handler.rollbackJob)
 }
 
 func (handler *Handler) downloadTemplate(ctx *gin.Context) {
@@ -106,6 +108,33 @@ func (handler *Handler) listRows(ctx *gin.Context) {
 		Page:     parseInt(ctx.Query("page")),
 		PageSize: parseInt(ctx.Query("page_size")),
 	})
+	if err != nil {
+		writeImportError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) failureReport(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	report, err := handler.service.FailureReport(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeImportError(ctx, err)
+		return
+	}
+	ctx.Header("Content-Disposition", `attachment; filename="`+report.Filename+`"`)
+	ctx.Data(http.StatusOK, "text/csv; charset=utf-8", report.Content)
+}
+
+func (handler *Handler) rollbackJob(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.RollbackJob(ctx.Request.Context(), scope, id)
 	if err != nil {
 		writeImportError(ctx, err)
 		return

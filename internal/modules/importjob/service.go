@@ -1,24 +1,45 @@
 package importjob
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"aios_practice_platform/internal/modules/fileasset"
 )
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	fileRepo  fileasset.Repository
+	fileStore fileasset.ContentStore
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+type ServiceOption func(*Service)
+
+func WithFileAssets(repo fileasset.Repository, store fileasset.ContentStore) ServiceOption {
+	return func(service *Service) {
+		service.fileRepo = repo
+		service.fileStore = store
+	}
+}
+
+func NewService(repo Repository, options ...ServiceOption) *Service {
+	service := &Service{repo: repo}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 func (service *Service) TemplateContent(importType string) ([]byte, string, error) {
@@ -44,7 +65,24 @@ func (service *Service) CreateImportJob(ctx context.Context, scope Scope, input 
 		input.TemplateVersion = "v1"
 	}
 	input.FileURL = strings.TrimSpace(input.FileURL)
-	if !isSupportedImportType(input.ImportType) || input.FileURL == "" || strings.TrimSpace(input.Content) == "" {
+	input.Content = strings.TrimSpace(input.Content)
+	if !isSupportedImportType(input.ImportType) {
+		return ImportJob{}, ErrInvalidInput
+	}
+	if input.Content == "" && input.FileAssetID != nil {
+		content, err := service.readUploadedImportContent(ctx, scope.TenantID, *input.FileAssetID)
+		if err != nil {
+			return ImportJob{}, err
+		}
+		input.Content = strings.TrimSpace(content)
+		if input.FileURL == "" {
+			input.FileURL = fmt.Sprintf("/api/v1/files/%d/content", *input.FileAssetID)
+		}
+	}
+	if input.FileURL == "" && input.FileAssetID == nil {
+		return ImportJob{}, ErrInvalidInput
+	}
+	if input.Content == "" {
 		return ImportJob{}, ErrInvalidInput
 	}
 
@@ -110,6 +148,93 @@ func (service *Service) ListRows(ctx context.Context, scope Scope, jobID int64, 
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return service.repo.ListRows(ctx, readTenantID(scope), jobID, filter)
+}
+
+func (service *Service) FailureReport(ctx context.Context, scope Scope, jobID int64) (FailureReport, error) {
+	if _, err := service.repo.GetJob(ctx, readTenantID(scope), jobID); err != nil {
+		return FailureReport{}, err
+	}
+	rows, err := service.listAllRows(ctx, readTenantID(scope), jobID, RowStatusFailed)
+	if err != nil {
+		return FailureReport{}, err
+	}
+	buffer := &bytes.Buffer{}
+	buffer.WriteString("\xEF\xBB\xBF")
+	writer := csv.NewWriter(buffer)
+	_ = writer.Write([]string{"row_no", "error_code", "error_message", "raw_data"})
+	for _, row := range rows {
+		rawJSON, _ := json.Marshal(row.RawData)
+		_ = writer.Write([]string{strconv.Itoa(row.RowNo), row.ErrorCode, row.ErrorMessage, string(rawJSON)})
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return FailureReport{}, err
+	}
+	return FailureReport{
+		Filename: fmt.Sprintf("import_job_%d_failure_report.csv", jobID),
+		Content:  buffer.Bytes(),
+	}, nil
+}
+
+func (service *Service) RollbackJob(ctx context.Context, scope Scope, jobID int64) (ImportJob, error) {
+	job, err := service.repo.GetJob(ctx, readTenantID(scope), jobID)
+	if err != nil {
+		return ImportJob{}, err
+	}
+	if job.Status != StatusSuccess && job.Status != StatusPartialSuccess {
+		return ImportJob{}, ErrInvalidInput
+	}
+	rows, err := service.listAllRows(ctx, readTenantID(scope), jobID, RowStatusSuccess)
+	if err != nil {
+		return ImportJob{}, err
+	}
+	return service.repo.RollbackJob(ctx, readTenantID(scope), jobID, rows)
+}
+
+func (service *Service) readUploadedImportContent(ctx context.Context, tenantID int64, fileAssetID int64) (string, error) {
+	if fileAssetID <= 0 || service.fileRepo == nil || service.fileStore == nil {
+		return "", ErrInvalidInput
+	}
+	asset, err := service.fileRepo.GetByID(ctx, tenantID, fileAssetID)
+	if err != nil {
+		if errors.Is(err, fileasset.ErrNotFound) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	if asset.SourceType != fileasset.SourceTypeUpload || asset.ObjectKey == "" {
+		return "", ErrInvalidInput
+	}
+	reader, err := service.fileStore.Open(ctx, asset.ObjectKey)
+	if err != nil {
+		if errors.Is(err, fileasset.ErrNotFound) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	defer reader.Close()
+	content, err := io.ReadAll(io.LimitReader(reader, 20*1024*1024+1))
+	if err != nil {
+		return "", err
+	}
+	if len(content) > 20*1024*1024 {
+		return "", ErrInvalidInput
+	}
+	return string(content), nil
+}
+
+func (service *Service) listAllRows(ctx context.Context, tenantID int64, jobID int64, status string) ([]ImportJobRow, error) {
+	result := make([]ImportJobRow, 0)
+	for page := 1; ; page++ {
+		rows, err := service.repo.ListRows(ctx, tenantID, jobID, ImportJobRowFilter{Status: status, Page: page, PageSize: 100})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, rows.Items...)
+		if len(result) >= rows.Total || len(rows.Items) == 0 {
+			return result, nil
+		}
+	}
 }
 
 func readTenantID(scope Scope) int64 {
@@ -205,6 +330,7 @@ func (service *Service) importQuestionRow(ctx context.Context, scope Scope, row 
 		Answer:         normalized.Answer,
 		Analysis:       normalized.Analysis,
 		BankIDs:        []int64{bank.ID},
+		SystemTags:     append([]string{}, normalized.SystemTags...),
 		SourceType:     SourceTypeImport,
 		StructureHash:  buildStructureHash(normalized.QuestionType, normalized.Content, normalized.Answer),
 		NormalizedData: normalized.NormalizedData,

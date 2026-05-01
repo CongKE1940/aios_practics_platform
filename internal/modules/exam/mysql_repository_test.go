@@ -62,6 +62,49 @@ ORDER BY e.id DESC
 	}
 }
 
+func TestMySQLRepositoryListExamsAppliesManagementFilters(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	now := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
+	targetID := int64(101)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at
+FROM exams e
+WHERE e.tenant_id = ?
+ AND e.owner_org_type <> ?
+ AND e.status = ?
+ AND e.name LIKE ?
+ AND EXISTS (SELECT 1 FROM exam_targets et_filter WHERE et_filter.exam_id = e.id AND et_filter.target_type = ? AND et_filter.target_id = ?)
+ ORDER BY e.id DESC
+`)).
+		WithArgs(int64(7), OwnerOrgTypeUser, ExamStatusPublished, "%数学%", TargetTypeClass, targetID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "owner_org_type", "owner_org_id", "creator_id", "name", "exam_mode", "status", "start_time", "end_time", "duration_minutes", "total_score", "paper_id", "created_at", "updated_at"}).
+			AddRow(int64(101), int64(7), "school", int64(7), int64(9), "数学周测", "fixed", ExamStatusPublished, now, now.Add(time.Hour), 60, "0.00", nil, now, now))
+
+	result, err := repo.ListExams(context.Background(), Scope{TenantID: 7, Permissions: []string{"exam:publish"}}, ExamListFilter{
+		Status:     ExamStatusPublished,
+		Keyword:    "数学",
+		TargetType: TargetTypeClass,
+		TargetID:   &targetID,
+		Page:       1,
+		PageSize:   20,
+	})
+	if err != nil {
+		t.Fatalf("ListExams() error = %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Name != "数学周测" {
+		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositoryCreateExamAndGetExamDetailPersistTargetsAndFixedQuestions(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -469,7 +512,7 @@ func TestMySQLRepositorySaveAttemptAnswerUpsertsByDisplayOrder(t *testing.T) {
 
 	repo := NewMySQLRepository(db)
 	now := time.Now().UTC().Add(-10 * time.Minute)
-	expectAttemptByID(mock, 801, 9, 10001, 701, now, ExamAttemptStatusInProgress)
+	expectAttemptForSubmit(mock, 801, 9, 10001, 701, now, now.Add(90*time.Minute), ExamAttemptStatusInProgress, 90)
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT question_id, question_version_id, order_no, score
 FROM exam_paper_questions
@@ -496,6 +539,29 @@ ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), question_id = VALUES(ques
 	}
 	if result.QuestionID != 101 || result.DisplayOrder != 1 {
 		t.Fatalf("result = %+v", result)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
+func TestMySQLRepositorySaveAttemptAnswerRejectsAfterExamEnd(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startedAt := time.Now().UTC().Add(-2 * time.Hour)
+	expectAttemptForSubmit(mock, 801, 9, 10001, 701, startedAt, startedAt.Add(time.Hour), ExamAttemptStatusInProgress, 180)
+
+	_, err = repo.SaveAttemptAnswer(context.Background(), Scope{TenantID: 9, UserID: 10001}, 801, SaveAttemptAnswerInput{
+		DisplayOrder: 1,
+		Answer:       map[string]any{"selected_keys": []string{"A"}},
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet() error = %v", err)
@@ -558,15 +624,15 @@ func TestMySQLRepositorySubmitAttemptJudgesAndUpdatesExamWrongCount(t *testing.T
 	repo := NewMySQLRepository(db)
 	now := time.Now().UTC().Add(-10 * time.Minute)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
+SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes, e.end_time
 FROM exam_attempts ea
 JOIN exams e ON e.id = ea.exam_id
 WHERE ea.id = ? AND ea.tenant_id = ? AND ea.user_id = ?
 LIMIT 1
 `)).
 		WithArgs(int64(801), int64(9), int64(10001)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at", "duration_minutes"}).
-			AddRow(int64(801), int64(301), int64(701), int64(9), int64(10001), now, nil, ExamAttemptStatusInProgress, "0.00", "0.00", "0.00", now, now, 90))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at", "duration_minutes", "end_time"}).
+			AddRow(int64(801), int64(301), int64(701), int64(9), int64(10001), now, nil, ExamAttemptStatusInProgress, "0.00", "0.00", "0.00", now, now, 90, now.Add(90*time.Minute)))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json, q.question_type
 FROM exam_attempt_answers eaa
@@ -612,6 +678,46 @@ ON DUPLICATE KEY UPDATE question_version_id = VALUES(question_version_id), exam_
 	}
 }
 
+func TestMySQLRepositorySubmitAttemptUsesExamEndAsTimeoutBoundary(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New() error = %v", err)
+	}
+	defer db.Close()
+
+	repo := NewMySQLRepository(db)
+	startedAt := time.Now().UTC().Add(-2 * time.Hour)
+	expectAttemptForSubmit(mock, 801, 9, 10001, 701, startedAt, startedAt.Add(time.Hour), ExamAttemptStatusInProgress, 180)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json, q.question_type
+FROM exam_attempt_answers eaa
+JOIN exam_attempts ea ON ea.id = eaa.attempt_id
+JOIN exam_paper_questions epq ON epq.paper_id = ea.paper_id AND epq.order_no = eaa.display_order
+JOIN question_versions qv ON qv.id = eaa.question_version_id
+JOIN questions q ON q.id = eaa.question_id
+WHERE eaa.attempt_id = ?
+ORDER BY eaa.display_order ASC
+`)).
+		WithArgs(int64(801)).
+		WillReturnRows(sqlmock.NewRows([]string{"attempt_id", "question_id", "question_version_id", "display_order", "answer_json", "score", "answer_json", "question_type"}))
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE exam_attempts SET status = ?, submit_at = ?, objective_score = ?, final_score = ? WHERE id = ? AND tenant_id = ? AND user_id = ? AND status = ?`)).
+		WithArgs(ExamAttemptStatusTimeout, sqlmock.AnyArg(), "0.00", "0.00", int64(801), int64(9), int64(10001), ExamAttemptStatusInProgress).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result, err := repo.SubmitAttempt(context.Background(), Scope{TenantID: 9, UserID: 10001}, 801)
+	if err != nil {
+		t.Fatalf("SubmitAttempt() error = %v", err)
+	}
+	if result.Attempt.Status != ExamAttemptStatusTimeout {
+		t.Fatalf("status = %s", result.Attempt.Status)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet() error = %v", err)
+	}
+}
+
 func TestMySQLRepositorySubmitAttemptKeepsSubjectiveQuestionPendingReview(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -622,15 +728,15 @@ func TestMySQLRepositorySubmitAttemptKeepsSubjectiveQuestionPendingReview(t *tes
 	repo := NewMySQLRepository(db)
 	now := time.Now().UTC().Add(-10 * time.Minute)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
+SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes, e.end_time
 FROM exam_attempts ea
 JOIN exams e ON e.id = ea.exam_id
 WHERE ea.id = ? AND ea.tenant_id = ? AND ea.user_id = ?
 LIMIT 1
 `)).
 		WithArgs(int64(801), int64(9), int64(10001)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at", "duration_minutes"}).
-			AddRow(int64(801), int64(301), int64(701), int64(9), int64(10001), now, nil, ExamAttemptStatusInProgress, "0.00", "0.00", "0.00", now, now, 90))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at", "duration_minutes", "end_time"}).
+			AddRow(int64(801), int64(301), int64(701), int64(9), int64(10001), now, nil, ExamAttemptStatusInProgress, "0.00", "0.00", "0.00", now, now, 90, now.Add(90*time.Minute)))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT eaa.attempt_id, eaa.question_id, eaa.question_version_id, eaa.display_order, eaa.answer_json, epq.score, qv.answer_json, q.question_type
 FROM exam_attempt_answers eaa
@@ -929,4 +1035,17 @@ LIMIT 1
 		WithArgs(attemptID, tenantID, userID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at"}).
 			AddRow(attemptID, int64(301), paperID, tenantID, userID, now, nil, status, "0.00", "0.00", "0.00", now, now))
+}
+
+func expectAttemptForSubmit(mock sqlmock.Sqlmock, attemptID int64, tenantID int64, userID int64, paperID int64, startedAt time.Time, endTime time.Time, status string, durationMinutes int) {
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes, e.end_time
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id
+WHERE ea.id = ? AND ea.tenant_id = ? AND ea.user_id = ?
+LIMIT 1
+`)).
+		WithArgs(attemptID, tenantID, userID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "exam_id", "paper_id", "tenant_id", "user_id", "start_at", "submit_at", "status", "objective_score", "subjective_score", "final_score", "created_at", "updated_at", "duration_minutes", "end_time"}).
+			AddRow(attemptID, int64(301), paperID, tenantID, userID, startedAt, nil, status, "0.00", "0.00", "0.00", startedAt, startedAt, durationMinutes, endTime))
 }

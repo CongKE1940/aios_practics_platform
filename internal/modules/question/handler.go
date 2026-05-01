@@ -34,6 +34,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.PUT("/questions/:id", handler.updateQuestion)
 	router.GET("/questions/:id/versions", handler.listVersions)
 	router.POST("/questions/:id/versions", handler.createVersion)
+	router.POST("/questions/:id/tags", handler.setQuestionTags)
 	router.POST("/questions/:id/comments", handler.createComment)
 	router.POST("/questions/:id/challenges", handler.createChallenge)
 }
@@ -129,6 +130,23 @@ func (handler *Handler) createVersion(ctx *gin.Context) {
 		return
 	}
 	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) setQuestionTags(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	var input QuestionTagInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	if err := handler.service.SetQuestionTags(ctx.Request.Context(), scope, id, input); err != nil {
+		writeQuestionError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(true, ctx.GetHeader("X-Request-Id")))
 }
 
 func (handler *Handler) createComment(ctx *gin.Context) {

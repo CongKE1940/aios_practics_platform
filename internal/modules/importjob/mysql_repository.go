@@ -290,10 +290,102 @@ VALUES (?, ?)
 			return 0, err
 		}
 	}
+	for _, tagName := range normalizeTagNames(question.SystemTags) {
+		tagID, err := repo.ensureSystemTag(ctx, tx, question.TenantID, tagName)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO question_tags (question_id, tag_id) VALUES (?, ?)", questionID, tagID); err != nil {
+			return 0, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return questionID, nil
+}
+
+func (repo *MySQLRepository) RollbackJob(ctx context.Context, tenantID int64, id int64, rows []ImportJobRow) (ImportJob, error) {
+	tx, err := repo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ImportJob{}, err
+	}
+	defer tx.Rollback()
+
+	for index := len(rows) - 1; index >= 0; index-- {
+		row := rows[index]
+		if row.TargetEntityID == nil {
+			continue
+		}
+		switch row.TargetEntityType {
+		case TargetQuestion:
+			if _, err := tx.ExecContext(ctx, `UPDATE questions SET status = 'disabled', deleted_at = NOW(3) WHERE id = ? AND tenant_id = ? AND source_type = ? AND deleted_at IS NULL`, *row.TargetEntityID, tenantID, SourceTypeImport); err != nil {
+				return ImportJob{}, err
+			}
+		case TargetQuestionBank:
+			if _, err := tx.ExecContext(ctx, `UPDATE question_banks SET status = 'disabled', deleted_at = NOW(3) WHERE id = ? AND tenant_id = ? AND source_type = ? AND deleted_at IS NULL`, *row.TargetEntityID, tenantID, SourceTypeImport); err != nil {
+				return ImportJob{}, err
+			}
+		}
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE import_jobs SET status = ?, finished_at = NOW(3) WHERE id = ? AND tenant_id = ?`, StatusRolledBack, id, tenantID)
+	if err != nil {
+		return ImportJob{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return ImportJob{}, err
+	}
+	if affected == 0 {
+		return ImportJob{}, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return ImportJob{}, err
+	}
+	return repo.GetJob(ctx, tenantID, id)
+}
+
+func (repo *MySQLRepository) ensureSystemTag(ctx context.Context, tx *sql.Tx, tenantID int64, name string) (int64, error) {
+	const selectQuery = `
+SELECT id
+FROM tags
+WHERE tenant_id = ? AND tag_type = 'system' AND owner_user_id IS NULL AND name = ? AND status = 'active'
+LIMIT 1
+`
+	var id int64
+	err := tx.QueryRowContext(ctx, selectQuery, tenantID, name).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+	const insertQuery = `
+INSERT INTO tags (tenant_id, tag_type, owner_user_id, name, status)
+VALUES (?, 'system', NULL, ?, 'active')
+`
+	result, err := tx.ExecContext(ctx, insertQuery, tenantID, name)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func normalizeTagNames(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		name := strings.TrimSpace(value)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, name)
+	}
+	return result
 }
 
 func scanImportJob(rows *sql.Rows) (ImportJob, error) {

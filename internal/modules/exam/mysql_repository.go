@@ -98,6 +98,30 @@ func teacherExamAccessArgs(teacherID int64) []any {
 	return []any{teacherID, teacherID, teacherID, teacherID, teacherID, teacherID}
 }
 
+func appendExamListFilterSQL(query string, args []any, filter ExamListFilter, statusAlreadyApplied bool) (string, []any) {
+	if filter.Status != "" && !statusAlreadyApplied {
+		query += " AND e.status = ?\n"
+		args = append(args, filter.Status)
+	}
+	if filter.Keyword != "" {
+		query += " AND e.name LIKE ?\n"
+		args = append(args, "%"+filter.Keyword+"%")
+	}
+	if filter.TargetType != "" || filter.TargetID != nil {
+		query += " AND EXISTS (SELECT 1 FROM exam_targets et_filter WHERE et_filter.exam_id = e.id"
+		if filter.TargetType != "" {
+			query += " AND et_filter.target_type = ?"
+			args = append(args, filter.TargetType)
+		}
+		if filter.TargetID != nil {
+			query += " AND et_filter.target_id = ?"
+			args = append(args, *filter.TargetID)
+		}
+		query += ")\n"
+	}
+	return query, args
+}
+
 func (repo *MySQLRepository) ListExams(ctx context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error) {
 	if repo == nil || repo.db == nil {
 		return PageResult[Exam]{}, ErrRepositoryUnavailable
@@ -123,6 +147,7 @@ FROM exams e
 		query += " AND " + teacherExamAccessCondition("e") + "\n"
 		args = append(args, teacherExamAccessArgs(scope.UserID)...)
 	}
+	query, args = appendExamListFilterSQL(query, args, filter, false)
 	query += " ORDER BY e.id DESC"
 	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -145,7 +170,10 @@ FROM exams e
 }
 
 func (repo *MySQLRepository) listStudentExams(ctx context.Context, scope Scope, filter ExamListFilter) (PageResult[Exam], error) {
-	const query = `
+	if filter.Status != "" && filter.Status != ExamStatusPublished {
+		return pageOf([]Exam{}, filter.Page, filter.PageSize), nil
+	}
+	query := `
 SELECT e.id, e.tenant_id, e.owner_org_type, e.owner_org_id, e.creator_id, e.name, e.exam_mode, e.status, e.start_time, e.end_time, e.duration_minutes, e.total_score, e.paper_id, e.created_at, e.updated_at
 FROM exams e
 WHERE e.tenant_id = ? AND e.status = ?
@@ -169,9 +197,11 @@ AND (
     WHERE et.exam_id = e.id AND et.target_type = 'course' AND tcca.tenant_id = e.tenant_id AND tcca.is_current = 1 AND tcca.status = 'active' AND scm.tenant_id = e.tenant_id AND scm.student_id = ? AND scm.is_current = 1 AND scm.status = 'active'
   )
 )
-ORDER BY e.id DESC
 `
-	rows, err := repo.db.QueryContext(ctx, query, scope.TenantID, ExamStatusPublished, scope.UserID, scope.UserID, scope.UserID)
+	args := []any{scope.TenantID, ExamStatusPublished, scope.UserID, scope.UserID, scope.UserID}
+	query, args = appendExamListFilterSQL(query, args, filter, true)
+	query += "ORDER BY e.id DESC\n"
+	rows, err := repo.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return PageResult[Exam]{}, err
 	}
@@ -612,11 +642,14 @@ func (repo *MySQLRepository) SaveAttemptAnswer(ctx context.Context, scope Scope,
 	if repo == nil || repo.db == nil {
 		return ExamAttemptAnswer{}, ErrRepositoryUnavailable
 	}
-	attempt, err := repo.getAttemptByID(ctx, scope, attemptID)
+	attempt, durationMinutes, examEndTime, err := repo.getAttemptForSubmit(ctx, scope, attemptID)
 	if err != nil {
 		return ExamAttemptAnswer{}, err
 	}
 	if attempt.Status != ExamAttemptStatusInProgress {
+		return ExamAttemptAnswer{}, ErrForbidden
+	}
+	if isAttemptPastDeadline(attempt, durationMinutes, examEndTime, time.Now().UTC()) {
 		return ExamAttemptAnswer{}, ErrForbidden
 	}
 	question, err := repo.getPaperQuestionByDisplayOrder(ctx, attempt.PaperID, input.DisplayOrder)
@@ -649,7 +682,7 @@ func (repo *MySQLRepository) SubmitAttempt(ctx context.Context, scope Scope, att
 	if repo == nil || repo.db == nil {
 		return ExamAttemptResult{}, ErrRepositoryUnavailable
 	}
-	attempt, durationMinutes, err := repo.getAttemptForSubmit(ctx, scope, attemptID)
+	attempt, durationMinutes, examEndTime, err := repo.getAttemptForSubmit(ctx, scope, attemptID)
 	if err != nil {
 		return ExamAttemptResult{}, err
 	}
@@ -662,7 +695,7 @@ func (repo *MySQLRepository) SubmitAttempt(ctx context.Context, scope Scope, att
 	}
 	submitAt := time.Now().UTC()
 	status := ExamAttemptStatusSubmitted
-	if attempt.StartAt != nil && durationMinutes > 0 && submitAt.After(attempt.StartAt.Add(time.Duration(durationMinutes)*time.Minute)) {
+	if isAttemptPastDeadline(attempt, durationMinutes, examEndTime, submitAt) {
 		status = ExamAttemptStatusTimeout
 	}
 
@@ -1489,21 +1522,22 @@ LIMIT 1
 	return item, nil
 }
 
-func (repo *MySQLRepository) getAttemptForSubmit(ctx context.Context, scope Scope, attemptID int64) (ExamAttempt, int, error) {
+func (repo *MySQLRepository) getAttemptForSubmit(ctx context.Context, scope Scope, attemptID int64) (ExamAttempt, int, time.Time, error) {
 	const query = `
-SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes
+SELECT ea.id, ea.exam_id, ea.paper_id, ea.tenant_id, ea.user_id, ea.start_at, ea.submit_at, ea.status, ea.objective_score, ea.subjective_score, ea.final_score, ea.created_at, ea.updated_at, e.duration_minutes, e.end_time
 FROM exam_attempts ea
 JOIN exams e ON e.id = ea.exam_id
 WHERE ea.id = ? AND ea.tenant_id = ? AND ea.user_id = ?
 LIMIT 1
 `
 	var durationMinutes int
+	var examEndTime time.Time
 	row := repo.db.QueryRowContext(ctx, query, attemptID, scope.TenantID, scope.UserID)
-	item, err := scanAttemptWithDuration(row, &durationMinutes)
+	item, err := scanAttemptWithDurationAndEndTime(row, &durationMinutes, &examEndTime)
 	if err != nil {
-		return ExamAttempt{}, 0, wrapExamNotFound(err)
+		return ExamAttempt{}, 0, time.Time{}, wrapExamNotFound(err)
 	}
-	return item, durationMinutes, nil
+	return item, durationMinutes, examEndTime, nil
 }
 
 func (repo *MySQLRepository) getPublishedPaperID(ctx context.Context, scope Scope, examID int64, now time.Time) (int64, error) {
@@ -1858,6 +1892,44 @@ func scanAttemptWithDuration(scanner interface{ Scan(dest ...any) error }, durat
 	}
 	applyAttemptNullableTimes(&item, startAt, submitAt)
 	return item, nil
+}
+
+func scanAttemptWithDurationAndEndTime(scanner interface{ Scan(dest ...any) error }, durationMinutes *int, examEndTime *time.Time) (ExamAttempt, error) {
+	var item ExamAttempt
+	var startAt sql.NullTime
+	var submitAt sql.NullTime
+	err := scanner.Scan(
+		&item.ID,
+		&item.ExamID,
+		&item.PaperID,
+		&item.TenantID,
+		&item.UserID,
+		&startAt,
+		&submitAt,
+		&item.Status,
+		&item.ObjectiveScore,
+		&item.SubjectiveScore,
+		&item.FinalScore,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+		durationMinutes,
+		examEndTime,
+	)
+	if err != nil {
+		return ExamAttempt{}, err
+	}
+	applyAttemptNullableTimes(&item, startAt, submitAt)
+	return item, nil
+}
+
+func isAttemptPastDeadline(attempt ExamAttempt, durationMinutes int, examEndTime time.Time, now time.Time) bool {
+	if !examEndTime.IsZero() && now.After(examEndTime) {
+		return true
+	}
+	if attempt.StartAt != nil && durationMinutes > 0 && now.After(attempt.StartAt.Add(time.Duration(durationMinutes)*time.Minute)) {
+		return true
+	}
+	return false
 }
 
 func scanAttemptFields(scanner interface{ Scan(dest ...any) error }, item *ExamAttempt, startAt *sql.NullTime, submitAt *sql.NullTime) error {

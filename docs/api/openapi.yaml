@@ -711,6 +711,8 @@ paths:
     post:
       tags: [Question]
       summary: 设置题目标签
+      requestBody:
+        $ref: '#/components/requestBodies/QuestionTagBody'
       responses:
         '200': { $ref: '#/components/responses/Ok' }
   /questions/{id}/comments:
@@ -918,6 +920,16 @@ paths:
           name: keyword
           schema:
             type: string
+        - in: query
+          name: target_type
+          schema:
+            type: string
+            enum: [class, course, user]
+        - in: query
+          name: target_id
+          schema:
+            type: integer
+            format: int64
         - in: query
           name: page
           schema:
@@ -1141,6 +1153,27 @@ paths:
             type: integer
       responses:
         '200': { $ref: '#/components/responses/ImportJobRowPageOk' }
+  /import/jobs/{id}/failure-report:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Import]
+      summary: 下载导入失败报告
+      responses:
+        '200':
+          description: CSV 失败报告
+          content:
+            text/csv:
+              schema:
+                type: string
+  /import/jobs/{id}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Import]
+      summary: 回滚导入成功写入的数据
+      responses:
+        '200': { $ref: '#/components/responses/ImportJobOk' }
   /import/templates/{type}:
     parameters:
       - in: path
@@ -1984,6 +2017,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/QuestionVersionInput'
+    QuestionTagBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/QuestionTagInput'
     QuestionCommentBody:
       required: true
       content:
@@ -2435,6 +2474,18 @@ components:
         change_summary:
           type: string
           nullable: true
+    QuestionTagInput:
+      type: object
+      properties:
+        tag_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        tag_names:
+          type: array
+          items:
+            type: string
     QuestionCommentInput:
       type: object
       required: [question_version_id, content]
@@ -2655,7 +2706,7 @@ components:
       additionalProperties: true
     ImportJobInput:
       type: object
-      required: [import_type, file_url, content]
+      required: [import_type]
       properties:
         import_type:
           type: string
@@ -2672,7 +2723,7 @@ components:
           example: /api/v1/files/1/content
         content:
           type: string
-          description: 阶段 2B 同步导入使用的 CSV 文本内容
+          description: 可直接传 CSV 文本；未传时后端会读取 file_asset_id 对应的上传文件
     ImportJob:
       type: object
       required: [id, tenant_id, import_type, template_version, file_url, status, total_rows, success_rows, failed_rows, operator_id]
@@ -2696,7 +2747,7 @@ components:
           type: string
         status:
           type: string
-          enum: [uploaded, parsing, validating, importing, success, partial_success, failed]
+          enum: [uploaded, parsing, validating, importing, success, partial_success, failed, rolled_back]
         total_rows:
           type: integer
         success_rows:

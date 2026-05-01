@@ -60,11 +60,16 @@ func main() {
 		menuHandler := rbac.NewMenuHandler(issuer)
 		dictionaryHandler := dictionary.NewHandler(dictionary.NewService(dictionary.NewMySQLRepository(db)), issuer)
 		rbacAdminHandler := rbac.NewAdminHandler(rbac.NewAdminService(rbac.NewMySQLAdminRepository(db)), issuer)
+		fileRepo := fileasset.NewMySQLRepository(db)
+		fileStore := fileasset.NewLocalContentStore(cfg.FileStorage.Dir)
 		fileHandler := fileasset.NewHandler(
-			fileasset.NewService(fileasset.NewMySQLRepository(db), fileasset.NewLocalContentStore(cfg.FileStorage.Dir)),
+			fileasset.NewService(fileRepo, fileStore),
 			issuer,
 		)
-		importHandler := importjob.NewHandler(importjob.NewService(importjob.NewMySQLRepository(db)), issuer)
+		importHandler := importjob.NewHandler(
+			importjob.NewService(importjob.NewMySQLRepository(db), importjob.WithFileAssets(fileRepo, fileStore)),
+			issuer,
+		)
 		orgHandler := org.NewHandler(
 			org.NewService(org.NewMySQLRepository(db)),
 			issuer,

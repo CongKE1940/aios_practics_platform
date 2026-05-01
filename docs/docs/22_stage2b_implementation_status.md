@@ -9,10 +9,12 @@
 
 后端新增：
 - `GET /api/v1/import/templates/{type}`：下载 `question`、`question_bank`、`exam` 三类 CSV 模板。
-- `POST /api/v1/import/jobs`：以 JSON 请求创建同步导入任务。
+- `POST /api/v1/import/jobs`：以 JSON 请求创建同步导入任务，支持直接 CSV 内容或通过 `file_asset_id` 读取上传文件。
 - `GET /api/v1/import/jobs`：查看导入任务列表。
 - `GET /api/v1/import/jobs/{id}`：查看导入任务详情。
 - `GET /api/v1/import/jobs/{id}/rows`：查看行级导入结果。
+- `GET /api/v1/import/jobs/{id}/failure-report`：下载失败行 CSV 报告。
+- `POST /api/v1/import/jobs/{id}/rollback`：软回滚导入成功写入的数据。
 
 管理端新增：
 - `/admin/imports` 导入中心。
@@ -34,15 +36,15 @@ SDK 新增：
 3. 题目导入按当前租户题库名称查找题库，题库不存在时记录行级错误。
 4. 成功行写入业务表，失败行写入 `import_job_rows`。
 5. 导入任务和行级结果均按 `tenant_id` 隔离，跨租户访问返回 404。
-6. `exam` 当前仅支持模板下载，不做导入落库。
+6. 题目 `system_tags` 会自动写入系统标签和 `question_tags`，可支撑按知识点随机组卷。
+7. `exam` 当前仅支持模板下载，不做导入落库。
 
 ## 3. 当前限制
 
-1. 导入处理为同步执行，尚未接入异步队列。
+1. 导入处理仍为同步执行，尚未接入异步队列。
 2. 当前仅解析 CSV，不支持 xlsx。
-3. 阶段 2B 的 `content` 字段是临时同步导入内容来源；后续对象存储稳定后改为服务端根据 `file_asset_id` 读取文件内容。
-4. 题目 `system_tags` 仅进入行级归一化数据，暂不写入标签表。
-5. 导入失败报告文件、撤销和批量回滚未纳入本阶段。
+3. `exam` 当前仅支持模板下载，不做导入落库。
+4. 回滚采用软删除/禁用策略，尚未提供细粒度预演与冲突确认。
 
 ## 4. 已执行验证
 
@@ -70,4 +72,4 @@ pnpm build
 3. 用户题目状态更新。
 4. 错题、熟题、疑惑题基础闭环。
 
-对象存储内容回放、xlsx 导入、异步导入队列和考试导入建议作为后续独立增强。
+xlsx 导入、异步导入队列和考试导入建议作为后续独立增强。

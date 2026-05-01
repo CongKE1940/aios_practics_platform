@@ -147,9 +147,23 @@ func (handler *Handler) listExams(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	var targetID *int64
+	if value := strings.TrimSpace(ctx.Query("target_id")); value != "" {
+		parsed := parseInt(value)
+		if parsed <= 0 {
+			ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+			return
+		}
+		id := int64(parsed)
+		targetID = &id
+	}
 	result, err := handler.service.ListExams(ctx.Request.Context(), scope, ExamListFilter{
-		Page:     parseInt(ctx.Query("page")),
-		PageSize: parseInt(ctx.Query("page_size")),
+		Status:     ctx.Query("status"),
+		Keyword:    ctx.Query("keyword"),
+		TargetType: ctx.Query("target_type"),
+		TargetID:   targetID,
+		Page:       parseInt(ctx.Query("page")),
+		PageSize:   parseInt(ctx.Query("page_size")),
 	})
 	if err != nil {
 		writeExamError(ctx, err)

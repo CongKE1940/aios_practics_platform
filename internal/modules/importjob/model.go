@@ -19,6 +19,7 @@ const (
 	StatusSuccess        = "success"
 	StatusPartialSuccess = "partial_success"
 	StatusFailed         = "failed"
+	StatusRolledBack     = "rolled_back"
 
 	RowStatusSuccess = "success"
 	RowStatusFailed  = "failed"
@@ -99,8 +100,8 @@ type ImportJobInput struct {
 	ImportType      string `json:"import_type" binding:"required"`
 	TemplateVersion string `json:"template_version"`
 	FileAssetID     *int64 `json:"file_asset_id"`
-	FileURL         string `json:"file_url" binding:"required"`
-	Content         string `json:"content" binding:"required"`
+	FileURL         string `json:"file_url"`
+	Content         string `json:"content"`
 }
 
 type ImportJobListFilter struct {
@@ -153,9 +154,15 @@ type ImportedQuestion struct {
 	Answer         map[string]any
 	Analysis       map[string]any
 	BankIDs        []int64
+	SystemTags     []string
 	SourceType     string
 	StructureHash  string
 	NormalizedData map[string]any
+}
+
+type FailureReport struct {
+	Filename string
+	Content  []byte
 }
 
 type Repository interface {
@@ -168,6 +175,7 @@ type Repository interface {
 	FindQuestionBankByName(ctx context.Context, tenantID int64, name string) (QuestionBankRef, error)
 	CreateQuestionBank(ctx context.Context, bank ImportedQuestionBank) (int64, error)
 	CreateQuestion(ctx context.Context, question ImportedQuestion) (int64, error)
+	RollbackJob(ctx context.Context, tenantID int64, id int64, rows []ImportJobRow) (ImportJob, error)
 }
 
 func pageOf[T any](items []T, page int, pageSize int) PageResult[T] {

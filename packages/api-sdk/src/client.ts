@@ -79,6 +79,7 @@ export interface ApiClient {
   updateQuestion(id: number, body: QuestionUpdateInput): Promise<Question>;
   listQuestionVersions(id: number): Promise<QuestionVersion[]>;
   createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
+  setQuestionTags(id: number, body: QuestionTagInput): Promise<boolean>;
   createQuestionComment(id: number, body: QuestionCommentInput): Promise<boolean>;
   createQuestionChallenge(id: number, body: QuestionChallengeInput): Promise<boolean>;
   listQuestionChallenges(query?: QuestionChallengeListQuery): Promise<PageResult<QuestionChallengeManagementItem>>;
@@ -99,6 +100,8 @@ export interface ApiClient {
   listImportJobs(query?: ImportJobListQuery): Promise<PageResult<ImportJob>>;
   getImportJob(id: number): Promise<ImportJob>;
   listImportJobRows(id: number, query?: ImportJobRowListQuery): Promise<PageResult<ImportJobRow>>;
+  downloadImportFailureReport(id: number): Promise<string>;
+  rollbackImportJob(id: number): Promise<ImportJob>;
   createPracticeSession(body: PracticeSessionInput): Promise<PracticeSessionDetail>;
   listPracticeSessions(query?: PracticeSessionListQuery): Promise<PageResult<PracticeSessionListItem>>;
   getPracticeSession(id: number): Promise<PracticeSessionDetail>;
@@ -1149,6 +1152,11 @@ export interface QuestionVersionInput {
   change_summary?: string | null;
 }
 
+export interface QuestionTagInput {
+  tag_ids?: number[];
+  tag_names?: string[];
+}
+
 export interface NoticeInput {
   title: string;
   content: string;
@@ -1168,8 +1176,8 @@ export interface ImportJobInput {
   import_type: ImportJobType | string;
   template_version?: string;
   file_asset_id?: number | null;
-  file_url: string;
-  content: string;
+  file_url?: string;
+  content?: string;
 }
 
 export interface PracticeSessionInput {
@@ -1691,6 +1699,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     listQuestionVersions: (id) => request(fetcher, options, `/questions/${id}/versions`, { method: "GET" }),
     createQuestionVersion: (id, body) =>
       request(fetcher, options, `/questions/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
+    setQuestionTags: (id, body) =>
+      request(fetcher, options, `/questions/${id}/tags`, { method: "POST", body: JSON.stringify(body) }),
     createQuestionComment: (id, body) =>
       request(fetcher, options, `/questions/${id}/comments`, { method: "POST", body: JSON.stringify(body) }),
     createQuestionChallenge: (id, body) =>
@@ -1721,6 +1731,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     getImportJob: (id) => request(fetcher, options, `/import/jobs/${id}`, { method: "GET" }),
     listImportJobRows: (id, query) =>
       request(fetcher, options, buildPath(`/import/jobs/${id}/rows`, query), { method: "GET" }),
+    downloadImportFailureReport: (id) =>
+      rawTextRequest(fetcher, options, `/import/jobs/${id}/failure-report`, { method: "GET" }),
+    rollbackImportJob: (id) =>
+      request(fetcher, options, `/import/jobs/${id}/rollback`, { method: "POST" }),
     createPracticeSession: (body) =>
       request(fetcher, options, "/practice/sessions", { method: "POST", body: JSON.stringify(body) }),
     listPracticeSessions: (query) =>

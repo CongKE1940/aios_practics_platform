@@ -113,6 +113,22 @@ func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64
 	return version, nil
 }
 
+func (service *Service) SetQuestionTags(ctx context.Context, scope Scope, id int64, input QuestionTagInput) error {
+	current, err := service.repo.GetQuestion(ctx, scope, id)
+	if err != nil {
+		return err
+	}
+	if !canManageQuestion(scope, current) {
+		return ErrForbidden
+	}
+	if hasNonPositiveID(input.TagIDs) {
+		return ErrInvalidInput
+	}
+	tagIDs := normalizeIDs(input.TagIDs)
+	tagNames := normalizeTagNames(input.TagNames)
+	return service.repo.SetQuestionTags(ctx, current.TenantID, id, tagIDs, tagNames)
+}
+
 func (service *Service) CreateComment(ctx context.Context, scope Scope, id int64, input QuestionCommentInput) error {
 	current, err := service.repo.GetQuestion(ctx, scope, id)
 	if err != nil {
@@ -216,6 +232,23 @@ func normalizeListFilter(filter QuestionListFilter) QuestionListFilter {
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
 	return filter
+}
+
+func normalizeTagNames(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		name := strings.TrimSpace(value)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		result = append(result, name)
+	}
+	return result
 }
 
 func scopeForChallengeReview(scope Scope) Scope {

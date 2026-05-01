@@ -124,6 +124,9 @@ func TestHandler_QuestionImportCreatesQuestionAndRecordsUnknownBank(t *testing.T
 	if question.Content["stem"].(map[string]any)["text"] != "1+1等于几？" {
 		t.Fatalf("question content = %+v", question.Content)
 	}
+	if len(question.SystemTags) != 1 || question.SystemTags[0] != "计算" {
+		t.Fatalf("system tags = %+v", question.SystemTags)
+	}
 
 	rowsRec := performImportRequest(router, http.MethodGet, "/api/v1/import/jobs/"+strconv.FormatInt(created.Data.ID, 10)+"/rows?status=failed", nil, "token")
 	var rows importEnvelope[PageResult[ImportJobRow]]
@@ -133,6 +136,21 @@ func TestHandler_QuestionImportCreatesQuestionAndRecordsUnknownBank(t *testing.T
 	}
 	if rows.Data.Items[0].ErrorCode != ErrorBankNotFound {
 		t.Fatalf("failed row error = %+v", rows.Data.Items[0])
+	}
+
+	reportRec := performImportRequest(router, http.MethodGet, "/api/v1/import/jobs/"+strconv.FormatInt(created.Data.ID, 10)+"/failure-report", nil, "token")
+	if reportRec.Code != http.StatusOK || !strings.Contains(reportRec.Body.String(), ErrorBankNotFound) {
+		t.Fatalf("failure report status = %d, body = %s", reportRec.Code, reportRec.Body.String())
+	}
+
+	rollbackRec := performImportRequest(router, http.MethodPost, "/api/v1/import/jobs/"+strconv.FormatInt(created.Data.ID, 10)+"/rollback", nil, "token")
+	if rollbackRec.Code != http.StatusOK {
+		t.Fatalf("rollback status = %d, body = %s", rollbackRec.Code, rollbackRec.Body.String())
+	}
+	var rolledBack importEnvelope[ImportJob]
+	decodeImportBody(t, rollbackRec, &rolledBack)
+	if rolledBack.Data.Status != StatusRolledBack {
+		t.Fatalf("rollback job = %+v", rolledBack.Data)
 	}
 }
 
@@ -330,6 +348,17 @@ func (repo *memoryImportRepository) CreateQuestion(_ context.Context, question I
 	question.ID = id
 	repo.createdQuestions = append(repo.createdQuestions, question)
 	return id, nil
+}
+
+func (repo *memoryImportRepository) RollbackJob(_ context.Context, tenantID int64, id int64, rows []ImportJobRow) (ImportJob, error) {
+	job, ok := repo.jobs[id]
+	if !ok || job.TenantID != tenantID {
+		return ImportJob{}, ErrNotFound
+	}
+	_ = rows
+	job.Status = StatusRolledBack
+	repo.jobs[id] = job
+	return job, nil
 }
 
 func performImportRequest(router http.Handler, method string, path string, body any, token string) *httptest.ResponseRecorder {
