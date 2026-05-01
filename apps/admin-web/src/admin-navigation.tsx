@@ -9,6 +9,13 @@ interface AdminMenuTreeProps {
   onSelect(path: string): void;
 }
 
+const adminWorkbenchMenu: MenuItem = {
+  id: -1,
+  name: "工作台",
+  path: "/admin/workbench",
+  children: []
+};
+
 export function AdminMenuTree({ menus, selectedPath, onSelect }: AdminMenuTreeProps) {
   return (
     <nav aria-label="管理菜单" className="ui-nav-tree">
@@ -108,9 +115,17 @@ function AdminMenuNode({ menu, selectedPath, onSelect, depth = 0 }: AdminMenuNod
 }
 
 export function normalizeAdminNavigationMenus(menus: MenuItem[]): MenuItem[] {
+  const normalizedMenus = normalizeAdminMenuTree(menus);
+  if (normalizedMenus.some((menu) => menuContainsPath(menu, adminWorkbenchMenu.path))) {
+    return normalizedMenus;
+  }
+  return [adminWorkbenchMenu, ...normalizedMenus];
+}
+
+function normalizeAdminMenuTree(menus: MenuItem[]): MenuItem[] {
   return menus.map((menu) => ({
     ...menu,
-    children: normalizeAdminNavigationMenus(menu.children ?? [])
+    children: normalizeAdminMenuTree(menu.children ?? [])
   }));
 }
 

@@ -86,7 +86,9 @@ export function AdminWorkbench({
   questionBankApi,
   userApi,
   userType,
-  userDisplayName
+  userDisplayName,
+  menus = [],
+  onSelect
 }: AdminWorkbenchProps) {
   const fallbackApi = useMemo(() => createWorkbenchApi(), []);
   const resolvedUserType = useMemo(() => resolveWorkbenchUserType(userType, userDisplayName), [userType, userDisplayName]);
@@ -138,6 +140,26 @@ export function AdminWorkbench({
   ]);
 
   const cards = buildDashboardCards(stats, resolvedUserType === "sys_admin");
+  const quickEntries = useMemo(
+    () =>
+      flattenMenuItems(Array.isArray(menus) ? (menus as MenuLike[]) : [])
+        .filter((item) => item.path && item.path !== "/admin/workbench")
+        .slice(0, 5),
+    [menus]
+  );
+  const organizationRows = [
+    { label: "学校/组织", value: stats.organizationCount },
+    { label: "年级", value: stats.gradeCount },
+    { label: "班级", value: stats.classCount }
+  ];
+  const contentRows = [
+    { label: "题库", value: stats.questionBankCount },
+    { label: "题目", value: stats.questionCount },
+    { label: "考试", value: stats.examCount },
+    { label: "公告", value: stats.noticeCount }
+  ];
+  const memberTotal = Math.max(1, stats.teacherCount + stats.studentCount);
+  const noticeTotal = Math.max(1, stats.noticeReadCount + stats.noticeUnreadCount);
 
   return (
     <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin" style={workbenchStyle} aria-busy={loading}>
@@ -156,7 +178,97 @@ export function AdminWorkbench({
           </article>
         ))}
       </div>
-      <div role="separator" aria-label="工作台内容分割线" style={contentDividerStyle} />
+      <div style={visualGridStyle}>
+        <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="组织结构分布">
+          <header className="ui-admin-chart-card__header">
+            <div>
+              <span className="ui-kicker">Structure</span>
+              <h3>组织结构分布</h3>
+            </div>
+            <strong>{formatNumber(stats.organizationCount + stats.gradeCount + stats.classCount)}</strong>
+          </header>
+          <BarChart rows={organizationRows} loading={loading} />
+        </section>
+
+        <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="成员构成">
+          <header className="ui-admin-chart-card__header">
+            <div>
+              <span className="ui-kicker">Members</span>
+              <h3>成员构成</h3>
+            </div>
+            <strong>{formatNumber(stats.memberCount)}</strong>
+          </header>
+          <div style={donutLayoutStyle}>
+            <div
+              role="img"
+              aria-label={`教师 ${stats.teacherCount} 人，学生 ${stats.studentCount} 人`}
+              style={buildDonutStyle([
+                { value: stats.teacherCount, color: "#3d79f2" },
+                { value: stats.studentCount, color: "#14b8a6" }
+              ])}
+            >
+              <span style={donutCenterStyle}>{loading ? "--" : `${Math.round((stats.teacherCount / memberTotal) * 100)}%`}</span>
+            </div>
+            <div style={legendListStyle}>
+              <LegendItem color="#3d79f2" label="教师" value={formatNumber(stats.teacherCount)} />
+              <LegendItem color="#14b8a6" label="学生" value={formatNumber(stats.studentCount)} />
+            </div>
+          </div>
+        </section>
+
+        <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="内容与考试规模">
+          <header className="ui-admin-chart-card__header">
+            <div>
+              <span className="ui-kicker">Content</span>
+              <h3>内容与考试规模</h3>
+            </div>
+            <strong>{formatPercent(stats.passRate)}</strong>
+          </header>
+          <BarChart rows={contentRows} loading={loading} />
+        </section>
+
+        <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="通知处理进度">
+          <header className="ui-admin-chart-card__header">
+            <div>
+              <span className="ui-kicker">Notice</span>
+              <h3>通知处理进度</h3>
+            </div>
+            <strong>{formatNumber(stats.noticeCount)}</strong>
+          </header>
+          <div className="ui-admin-progress-list">
+            <ProgressRow label="已读" value={stats.noticeReadCount} total={noticeTotal} loading={loading} />
+            <ProgressRow label="未读" value={stats.noticeUnreadCount} total={noticeTotal} loading={loading} />
+            <ProgressRow label="考试通过率" value={stats.passRate} total={100} suffix="%" loading={loading} />
+          </div>
+        </section>
+      </div>
+
+      {quickEntries.length > 0 ? (
+        <section className="ui-admin-chart-card" style={quickPanelStyle} aria-label="常用入口">
+          <header className="ui-admin-chart-card__header">
+            <div>
+              <span className="ui-kicker">Launchpad</span>
+              <h3>常用入口</h3>
+            </div>
+          </header>
+          <div style={quickButtonGridStyle}>
+            {quickEntries.map((entry) => (
+              <button
+                key={`${entry.id}-${entry.path}`}
+                type="button"
+                className="ui-quick-button"
+                aria-label={`快捷进入${entry.name}`}
+                onClick={() => entry.path && onSelect?.(entry.path)}
+              >
+                <span className="ui-quick-button__icon" aria-hidden="true">
+                  {entry.name.slice(0, 1)}
+                </span>
+                <strong>{entry.name}</strong>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -341,6 +453,99 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
   ];
 }
 
+interface MenuLike {
+  id: number;
+  name: string;
+  path: string;
+  children: MenuLike[];
+}
+
+function flattenMenuItems(menus: MenuLike[]): MenuLike[] {
+  const items: MenuLike[] = [];
+  for (const menu of menus) {
+    items.push(menu);
+    if (menu.children.length > 0) {
+      items.push(...flattenMenuItems(menu.children));
+    }
+  }
+  return items;
+}
+
+function BarChart({ rows, loading }: { rows: Array<{ label: string; value: number }>; loading: boolean }) {
+  const maxValue = Math.max(1, ...rows.map((row) => row.value));
+  return (
+    <div className="ui-admin-bar-chart">
+      {rows.map((row) => (
+        <div key={row.label} className="ui-admin-bar-row">
+          <header>
+            <span>{row.label}</span>
+            <strong>{loading ? "--" : formatNumber(row.value)}</strong>
+          </header>
+          <div className="ui-admin-bar-track">
+            <div className="ui-admin-bar-fill" style={{ width: `${loading ? 18 : Math.max(8, (row.value / maxValue) * 100)}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProgressRow({
+  label,
+  value,
+  total,
+  suffix = "",
+  loading
+}: {
+  label: string;
+  value: number;
+  total: number;
+  suffix?: string;
+  loading: boolean;
+}) {
+  const percent = total > 0 ? Math.max(0, Math.min(100, (value / total) * 100)) : 0;
+  return (
+    <div className="ui-admin-progress-row">
+      <header>
+        <span>{label}</span>
+        <strong>{loading ? "--" : `${formatNumber(value)}${suffix}`}</strong>
+      </header>
+      <div className="ui-admin-progress-track">
+        <div className="ui-admin-progress-fill" style={{ width: `${loading ? 18 : percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function LegendItem({ color, label, value }: { color: string; label: string; value: string }) {
+  return (
+    <div style={legendItemStyle}>
+      <span style={{ ...legendDotStyle, background: color }} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function buildDonutStyle(segments: Array<{ value: number; color: string }>): CSSProperties {
+  const total = segments.reduce((sum, segment) => sum + Math.max(0, segment.value), 0);
+  if (total <= 0) {
+    return { ...donutStyle, background: "conic-gradient(#e2e8f0 0deg 360deg)" };
+  }
+
+  let cursor = 0;
+  const gradient = segments
+    .filter((segment) => segment.value > 0)
+    .map((segment) => {
+      const start = cursor;
+      const end = cursor + (segment.value / total) * 360;
+      cursor = end;
+      return `${segment.color} ${start}deg ${end}deg`;
+    })
+    .join(", ");
+  return { ...donutStyle, background: `conic-gradient(${gradient})` };
+}
+
 function renderWorkbenchIcon(icon: WorkbenchIconName) {
   const commonProps = {
     width: 28,
@@ -490,9 +695,79 @@ const statContentStyle: CSSProperties = {
   overflow: "hidden"
 };
 
-const contentDividerStyle: CSSProperties = {
-  height: 1,
-  width: "100%",
-  marginTop: 22,
-  background: "rgba(15, 23, 42, 0.12)"
+const visualGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 14,
+  marginTop: 16
+};
+
+const visualPanelStyle: CSSProperties = {
+  display: "grid",
+  alignContent: "start",
+  gap: 16,
+  minHeight: 250,
+  padding: 20,
+  borderRadius: 20
+};
+
+const donutLayoutStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "132px minmax(0, 1fr)",
+  alignItems: "center",
+  gap: 20
+};
+
+const donutStyle: CSSProperties = {
+  position: "relative",
+  width: 132,
+  height: 132,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center"
+};
+
+const donutCenterStyle: CSSProperties = {
+  display: "grid",
+  placeItems: "center",
+  width: 78,
+  height: 78,
+  borderRadius: "50%",
+  background: "rgba(255, 255, 255, 0.92)",
+  color: "#214382",
+  fontWeight: 800
+};
+
+const legendListStyle: CSSProperties = {
+  display: "grid",
+  gap: 12
+};
+
+const legendItemStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "12px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 10,
+  color: "#4f6998",
+  fontSize: 13
+};
+
+const legendDotStyle: CSSProperties = {
+  width: 10,
+  height: 10,
+  borderRadius: 999
+};
+
+const quickPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 16,
+  marginTop: 14,
+  padding: 20,
+  borderRadius: 20
+};
+
+const quickButtonGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+  gap: 12
 };

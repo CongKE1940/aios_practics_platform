@@ -586,8 +586,14 @@ export function AdminApp({
           {selectedPath === "" || selectedPath === "/admin/workbench" ? (
             <AdminWorkbench
               analyticsApi={currentAnalyticsApi}
+              examApi={currentExamApi}
               noticeApi={currentNoticeApi}
+              organizationApi={organizationApi}
+              questionApi={currentQuestionApi}
+              questionBankApi={currentQuestionBankApi}
+              userApi={currentUserApi}
               menus={session.menus}
+              userType={session.user.user_type}
               userDisplayName={session.user.display_name}
               onSelect={setSelectedPath}
             />
