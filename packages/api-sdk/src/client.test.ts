@@ -82,6 +82,40 @@ describe("createApiClient", () => {
     );
   });
 
+  it("changes initial password before token login", async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      return new Response(JSON.stringify({ code: 0, message: "ok", data: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    });
+
+    const client = createApiClient({
+      baseUrl: "http://localhost:8080/api/v1",
+      fetch: fetchMock
+    });
+
+    await expect(
+      client.changeInitialPassword({
+        tenant_code: "demo_school",
+        username: "admin",
+        old_password: "Init@123456",
+        new_password: "Safe@123456"
+      })
+    ).resolves.toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/auth/change-initial-password");
+    expect(init?.body).toBe(
+      JSON.stringify({
+        tenant_code: "demo_school",
+        username: "admin",
+        old_password: "Init@123456",
+        new_password: "Safe@123456"
+      })
+    );
+  });
+
   it("requests login organization options without authentication", async () => {
     const fetchMock = vi.fn<FetchLike>(async () => {
       return new Response(
@@ -2226,6 +2260,7 @@ describe("createApiClient", () => {
                   teacher_id: 701,
                   class_id: 301,
                   course_id: 10,
+                  assignment_type: "course_teacher",
                   change_type: "assign",
                   effective_from: "2026-04-23T11:00:00+08:00",
                   operator_id: 1,
@@ -2251,6 +2286,7 @@ describe("createApiClient", () => {
               teacher_id: 701,
               class_id: 301,
               course_id: 10,
+              assignment_type: "course_teacher",
               change_type: "assign",
               effective_from: "2026-04-23T11:00:00+08:00",
               operator_id: 1,
@@ -2282,6 +2318,7 @@ describe("createApiClient", () => {
       teacher_id: 701,
       class_id: 301,
       course_id: 10,
+      assignment_type: "course_teacher",
       change_type: "assign",
       effective_at: "2026-04-23T11:00:00+08:00"
     });

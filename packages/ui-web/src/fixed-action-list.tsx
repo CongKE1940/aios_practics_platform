@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
+import { canAccess } from "@aios/shared-utils";
+
 export type FixedActionListRowId = string | number;
 
 export interface FixedActionListColumn<TRow> {
@@ -34,6 +36,12 @@ export interface FixedActionListProps<TRow> {
   exportLabel?: string;
   detailLabel?: string;
   editLabel?: string;
+  permissions?: readonly string[];
+  createRequiredPermissions?: readonly string[];
+  deleteRequiredPermissions?: readonly string[];
+  exportRequiredPermissions?: readonly string[];
+  detailRequiredPermissions?: readonly string[];
+  editRequiredPermissions?: readonly string[];
   rowCheckboxLabel?(row: TRow): string;
 }
 
@@ -61,6 +69,12 @@ export function FixedActionList<TRow>({
   exportLabel = "导出",
   detailLabel = "详情",
   editLabel = "编辑",
+  permissions = [],
+  createRequiredPermissions,
+  deleteRequiredPermissions,
+  exportRequiredPermissions,
+  detailRequiredPermissions,
+  editRequiredPermissions,
   rowCheckboxLabel
 }: FixedActionListProps<TRow>) {
   const selectedSet = new Set(selectedRowIds);
@@ -72,6 +86,11 @@ export function FixedActionList<TRow>({
   const normalizedCurrentPage = Math.min(Math.max(1, currentPage ?? 1), normalizedPageCount);
   const showPagination = Boolean(onPageChange && currentPage && pageCount);
   const isEmpty = rows.length === 0;
+  const canCreate = Boolean(onCreate && canAccess(permissions, createRequiredPermissions));
+  const canDelete = Boolean(onDelete && canAccess(permissions, deleteRequiredPermissions));
+  const canExport = Boolean(onExport && canAccess(permissions, exportRequiredPermissions));
+  const canDetail = Boolean(onDetail && canAccess(permissions, detailRequiredPermissions));
+  const canEdit = Boolean(onEdit && canAccess(permissions, editRequiredPermissions));
 
   function handleToggleAll() {
     if (!onSelectionChange) {
@@ -109,20 +128,26 @@ export function FixedActionList<TRow>({
   return (
     <div className="ui-fixed-action-list" aria-label={ariaLabel} style={{ ...listStyle, height: listHeight, minHeight: listMinHeight }}>
       <div className="ui-admin-actions-bar__group" style={actionsStyle}>
-        <button type="button" className="ui-button ui-button--primary" onClick={onCreate} disabled={!onCreate}>
-          {createLabel}
-        </button>
-        <button
-          type="button"
-          className="ui-button ui-button--ghost"
-          onClick={() => onDelete?.(selectedRowIds)}
-          disabled={!onDelete || selectedRowIds.length === 0}
-        >
-          {deleteLabel}
-        </button>
-        <button type="button" className="ui-button ui-button--ghost" onClick={onExport} disabled={!onExport}>
-          {exportLabel}
-        </button>
+        {canCreate ? (
+          <button type="button" className="ui-button ui-button--primary" onClick={onCreate}>
+            {createLabel}
+          </button>
+        ) : null}
+        {canDelete ? (
+          <button
+            type="button"
+            className="ui-button ui-button--ghost"
+            onClick={() => onDelete?.(selectedRowIds)}
+            disabled={selectedRowIds.length === 0}
+          >
+            {deleteLabel}
+          </button>
+        ) : null}
+        {canExport ? (
+          <button type="button" className="ui-button ui-button--ghost" onClick={onExport}>
+            {exportLabel}
+          </button>
+        ) : null}
       </div>
 
       <div style={tableWrapStyle}>
@@ -170,12 +195,16 @@ export function FixedActionList<TRow>({
                     ))}
                     <td style={actionCellStyle}>
                       <div className="ui-admin-table__actions" style={actionButtonsStyle}>
-                        <button type="button" className="ui-admin-link" onClick={() => onDetail?.(row)} disabled={!onDetail}>
-                          {detailLabel}
-                        </button>
-                        <button type="button" className="ui-admin-link" onClick={() => onEdit?.(row)} disabled={!onEdit}>
-                          {editLabel}
-                        </button>
+                        {canDetail ? (
+                          <button type="button" className="ui-admin-link" onClick={() => onDetail?.(row)}>
+                            {detailLabel}
+                          </button>
+                        ) : null}
+                        {canEdit ? (
+                          <button type="button" className="ui-admin-link" onClick={() => onEdit?.(row)}>
+                            {editLabel}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

@@ -11,6 +11,12 @@ export function canAccess(userPermissions: readonly string[], requiredPermission
   }
 
   const permissionSet = new Set(userPermissions);
+  if (permissionSet.has("system:manage")) {
+    return true;
+  }
+  if (permissionSet.has("tenant:manage") && !requiredPermissions.includes("system:manage")) {
+    return true;
+  }
   return requiredPermissions.every((permission) => permissionSet.has(permission));
 }
 

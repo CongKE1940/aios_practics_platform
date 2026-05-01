@@ -16,6 +16,12 @@ describe("canAccess", () => {
     expect(canAccess(["user.read", "role.read"], ["user.read", "role.read"])).toBe(true);
     expect(canAccess(["user.read"], ["user.read", "role.read"])).toBe(false);
   });
+
+  it("treats system and tenant management as scoped super permissions", () => {
+    expect(canAccess(["system:manage"], ["role:manage"])).toBe(true);
+    expect(canAccess(["tenant:manage"], ["role:manage"])).toBe(true);
+    expect(canAccess(["tenant:manage"], ["system:manage"])).toBe(false);
+  });
 });
 
 describe("filterMenuByPermissions", () => {

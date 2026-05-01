@@ -29,12 +29,15 @@ export class ApiError extends Error {
   }
 }
 
+export const PASSWORD_CHANGE_REQUIRED_CODE = 40103;
+
 export interface ApiClient {
   get<TData>(path: string, init?: RequestInit): Promise<TData>;
   post<TData, TBody = unknown>(path: string, body?: TBody, init?: RequestInit): Promise<TData>;
   put<TData, TBody = unknown>(path: string, body?: TBody, init?: RequestInit): Promise<TData>;
   listLoginOrganizations(): Promise<LoginOrganization[]>;
   login(body: LoginRequest): Promise<LoginResponse>;
+  changeInitialPassword(body: ChangeInitialPasswordRequest): Promise<boolean>;
   refresh(body: RefreshRequest): Promise<LoginResponse>;
   me(): Promise<CurrentUser>;
   logout(): Promise<boolean>;
@@ -150,9 +153,13 @@ export interface ApiClient {
   assignRolePermissions(id: number, body: RolePermissionsInput): Promise<RoleItem>;
   listUsers(query?: ManagedUserListQuery): Promise<PageResult<ManagedUser>>;
   createUser(body: ManagedUserInput): Promise<ManagedUser>;
+  getMyProfile(): Promise<ManagedUser>;
+  updateMyProfile(body: UserProfileInput): Promise<ManagedUser>;
+  changeMyPassword(body: ChangeMyPasswordInput): Promise<ManagedUser>;
   getUser(id: number): Promise<ManagedUser>;
   updateUser(id: number, body: ManagedUserInput): Promise<ManagedUser>;
   assignUserRoles(id: number, body: UserRolesInput): Promise<ManagedUser>;
+  resetUserPassword(id: number): Promise<ManagedUser>;
   disableUser(id: number): Promise<ManagedUser>;
 }
 
@@ -160,6 +167,13 @@ export interface LoginRequest {
   tenant_code: string;
   username: string;
   password: string;
+}
+
+export interface ChangeInitialPasswordRequest {
+  tenant_code: string;
+  username: string;
+  old_password: string;
+  new_password: string;
 }
 
 export interface LoginOrganization {
@@ -186,6 +200,7 @@ export interface CurrentUser {
   tenant_id: number;
   display_name: string;
   user_type: string;
+  must_change_password?: boolean;
   roles: string[];
   permissions?: string[];
 }
@@ -202,6 +217,17 @@ export interface PageResult<TItem> {
   page: number;
   page_size: number;
   total: number;
+}
+
+export interface DefaultOrganizationAdmin {
+  tenant_id: number;
+  tenant_code: string;
+  user_id: number;
+  username: string;
+  display_name: string;
+  user_type: string;
+  role_id?: number;
+  initial_password?: string;
 }
 
 export interface DictionaryItem {
@@ -231,6 +257,7 @@ export interface School {
   code: string;
   name: string;
   status: string;
+  default_admin?: DefaultOrganizationAdmin | null;
 }
 
 export interface Grade {
@@ -916,7 +943,8 @@ export interface TeacherAssignmentHistoryItem {
   tenant_id: number;
   teacher_id: number;
   class_id: number;
-  course_id: number;
+  course_id?: number | null;
+  assignment_type: string;
   change_type: string;
   effective_from: string;
   effective_to?: string | null;
@@ -935,7 +963,8 @@ export interface StudentTransitionInput {
 export interface TeacherAssignmentChangeInput {
   teacher_id: number;
   class_id: number;
-  course_id: number;
+  course_id?: number;
+  assignment_type?: string;
   change_type: string;
   effective_at: string;
 }
@@ -1014,6 +1043,8 @@ export interface ManagedUser {
   display_name: string;
   user_type: string;
   status: string;
+  must_change_password?: boolean;
+  initial_password?: string;
   role_ids?: number[];
 }
 
@@ -1051,6 +1082,7 @@ export interface QuestionBankInput {
   name: string;
   course_id?: number | null;
   description?: string | null;
+  visibility_grants?: QuestionBankVisibilityGrant[];
 }
 
 export interface QuestionBankVisibilityInput {
@@ -1297,6 +1329,17 @@ export interface ManagedUserInput {
   role_ids?: number[];
 }
 
+export interface UserProfileInput {
+  display_name: string;
+  phone?: string | null;
+  email?: string | null;
+}
+
+export interface ChangeMyPasswordInput {
+  old_password: string;
+  new_password: string;
+}
+
 export interface UserRolesInput {
   role_ids: number[];
 }
@@ -1495,6 +1538,7 @@ export interface TeacherAssignmentHistoryListQuery {
   teacher_id?: number;
   class_id?: number;
   course_id?: number;
+  assignment_type?: string;
   page?: number;
   page_size?: number;
 }
@@ -1525,6 +1569,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       }),
     login: (body) =>
       request(fetcher, options, "/auth/login", {
+        method: "POST",
+        body: JSON.stringify(body)
+      }),
+    changeInitialPassword: (body) =>
+      request(fetcher, options, "/auth/change-initial-password", {
         method: "POST",
         body: JSON.stringify(body)
       }),
@@ -1719,11 +1768,17 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/roles/${id}/permissions`, { method: "PUT", body: JSON.stringify(body) }),
     listUsers: (query) => request(fetcher, options, buildPath("/users", query), { method: "GET" }),
     createUser: (body) => request(fetcher, options, "/users", { method: "POST", body: JSON.stringify(body) }),
+    getMyProfile: () => request(fetcher, options, "/users/me", { method: "GET" }),
+    updateMyProfile: (body) =>
+      request(fetcher, options, "/users/me", { method: "PUT", body: JSON.stringify(body) }),
+    changeMyPassword: (body) =>
+      request(fetcher, options, "/users/me/password", { method: "PUT", body: JSON.stringify(body) }),
     getUser: (id) => request(fetcher, options, `/users/${id}`, { method: "GET" }),
     updateUser: (id, body) =>
       request(fetcher, options, `/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     assignUserRoles: (id, body) =>
       request(fetcher, options, `/users/${id}/roles`, { method: "PUT", body: JSON.stringify(body) }),
+    resetUserPassword: (id) => request(fetcher, options, `/users/${id}/reset-password`, { method: "POST" }),
     disableUser: (id) => request(fetcher, options, `/users/${id}/disable`, { method: "POST" })
   };
 }
