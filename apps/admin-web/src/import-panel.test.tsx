@@ -67,9 +67,10 @@ describe("ImportPanel", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "导入中心" })).toBeTruthy();
     });
-    expect(screen.getByText("partial_success")).toBeTruthy();
+    expect(screen.getByText("部分成功")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "下载题目模板" }));
+    fireEvent.change(screen.getByLabelText("导入类型"), { target: { value: "question" } });
+    fireEvent.click(screen.getByRole("button", { name: "下载模板" }));
     await waitFor(() => {
       expect(api.downloadImportTemplate).toHaveBeenCalledWith("question");
     });

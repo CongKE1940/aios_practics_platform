@@ -1,0 +1,2 @@
+username,display_name,phone,email,role_codes,initial_password,status
+admin_demo,示例管理员,13800000001,admin@example.com,school_admin,Aios@123456,active

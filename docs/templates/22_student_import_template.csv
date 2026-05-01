@@ -1,0 +1,2 @@
+username,display_name,student_no,phone,email,school_code,grade_code,class_code,role_codes,initial_password,entered_at,status
+student_demo,示例学生,S001,13800000003,student@example.com,school_demo,g2026,c101,,Aios@123456,2026-09-01,active

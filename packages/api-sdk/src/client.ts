@@ -479,8 +479,17 @@ export interface FileAsset {
   status: string;
 }
 
-export type ImportTemplateType = "question" | "question_bank" | "exam";
-export type ImportJobType = "question" | "question_bank";
+export type ImportTemplateType =
+  | "org_structure"
+  | "admin"
+  | "teacher"
+  | "course"
+  | "student"
+  | "question"
+  | "question_bank"
+  | "exam"
+  | "exam_paper";
+export type ImportJobType = ImportTemplateType;
 
 export interface ImportJob {
   id: number;

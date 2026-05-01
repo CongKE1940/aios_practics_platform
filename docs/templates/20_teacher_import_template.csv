@@ -1,0 +1,2 @@
+username,display_name,teacher_no,phone,email,school_code,grade_code,class_code,course_code,is_head_teacher,role_codes,initial_password,hired_at,status
+teacher_demo,示例教师,T001,13800000002,teacher@example.com,school_demo,g2026,c101,math,true,,Aios@123456,2026-05-01,active

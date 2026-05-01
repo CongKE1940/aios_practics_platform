@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -54,11 +56,15 @@ func TestHandler_TemplateDownloadAndQuestionBankImport(t *testing.T) {
 
 	var created importEnvelope[ImportJob]
 	decodeImportBody(t, createRec, &created)
-	if created.Data.Status != StatusPartialSuccess {
-		t.Fatalf("job status = %q", created.Data.Status)
+	if created.Data.Status != StatusUploaded {
+		t.Fatalf("created job status = %q", created.Data.Status)
 	}
-	if created.Data.TotalRows != 2 || created.Data.SuccessRows != 1 || created.Data.FailedRows != 1 {
-		t.Fatalf("job counters = %+v", created.Data)
+	processed := waitForImportJobStatus(t, repo, 1, created.Data.ID, StatusPartialSuccess)
+	if processed.Status != StatusPartialSuccess {
+		t.Fatalf("job status = %q", processed.Status)
+	}
+	if processed.TotalRows != 2 || processed.SuccessRows != 1 || processed.FailedRows != 1 {
+		t.Fatalf("job counters = %+v", processed)
 	}
 	if len(repo.createdBanks) != 1 {
 		t.Fatalf("created bank count = %d", len(repo.createdBanks))
@@ -111,9 +117,7 @@ func TestHandler_QuestionImportCreatesQuestionAndRecordsUnknownBank(t *testing.T
 
 	var created importEnvelope[ImportJob]
 	decodeImportBody(t, createRec, &created)
-	if created.Data.Status != StatusPartialSuccess {
-		t.Fatalf("job status = %q", created.Data.Status)
-	}
+	created.Data = waitForImportJobStatus(t, repo, 1, created.Data.ID, StatusPartialSuccess)
 	if len(repo.createdQuestions) != 1 {
 		t.Fatalf("created question count = %d", len(repo.createdQuestions))
 	}
@@ -151,6 +155,53 @@ func TestHandler_QuestionImportCreatesQuestionAndRecordsUnknownBank(t *testing.T
 	decodeImportBody(t, rollbackRec, &rolledBack)
 	if rolledBack.Data.Status != StatusRolledBack {
 		t.Fatalf("rollback job = %+v", rolledBack.Data)
+	}
+}
+
+func TestHandler_AsyncImportsExpandedDimensions(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryImportRepository()
+	repo.roles[1] = map[string]int64{"school_admin": 7}
+	router := newImportTestRouter(repo, fakeImportParser{
+		claims: auth.AccessClaims{
+			UserID:      9,
+			TenantID:    1,
+			Permissions: []string{"import:manage"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	templateRec := performImportRequest(router, http.MethodGet, "/api/v1/import/templates/org_structure", nil, "token")
+	if templateRec.Code != http.StatusOK || !strings.Contains(templateRec.Body.String(), "school_code") {
+		t.Fatalf("template status = %d, body = %s", templateRec.Code, templateRec.Body.String())
+	}
+
+	orgJob := createImportJobAndWait(t, router, repo, map[string]any{
+		"import_type": ImportTypeOrgStructure,
+		"file_url":    "/api/v1/files/org.csv",
+		"content":     "object_type,school_code,school_name,grade_code,grade_name,grade_level,school_year,class_code,class_name,class_no,status\nschool,school_demo,示例学校,g2026,一年级,1,2026,c101,一年级一班,1,active\n",
+	})
+	if orgJob.SuccessRows != 1 {
+		t.Fatalf("org job = %+v", orgJob)
+	}
+
+	adminJob := createImportJobAndWait(t, router, repo, map[string]any{
+		"import_type": ImportTypeAdmin,
+		"file_url":    "/api/v1/files/admin.csv",
+		"content":     "username,display_name,phone,email,role_codes,initial_password,status\nadmin_demo,示例管理员,13800000001,admin@example.com,school_admin,Aios@123456,active\n",
+	})
+	if adminJob.SuccessRows != 1 || len(repo.createdUsers) != 1 || repo.createdUsers[0].UserType != "school_admin" {
+		t.Fatalf("admin import users = %+v job=%+v", repo.createdUsers, adminJob)
+	}
+
+	paperJob := createImportJobAndWait(t, router, repo, map[string]any{
+		"import_type": ImportTypeExamPaper,
+		"file_url":    "/api/v1/files/paper.csv",
+		"content":     "paper_name,paper_type,question_id,question_version_id,score,display_order,status\n示例试卷,fixed,1,,5,1,draft\n",
+	})
+	if paperJob.SuccessRows != 1 || len(repo.createdPapers) != 1 {
+		t.Fatalf("paper import = %+v job=%+v", repo.createdPapers, paperJob)
 	}
 }
 
@@ -231,39 +282,85 @@ func newImportTestRouter(repo *memoryImportRepository, parser fakeImportParser) 
 }
 
 type memoryImportRepository struct {
+	mu               sync.Mutex
 	nextJobID        int64
 	nextRowID        int64
+	nextSchoolID     int64
+	nextGradeID      int64
+	nextClassID      int64
+	nextCourseID     int64
+	nextUserID       int64
+	nextPaperID      int64
 	nextBankID       int64
 	nextQuestionID   int64
 	jobs             map[int64]ImportJob
 	rows             map[int64][]ImportJobRow
+	schools          map[int64]map[string]int64
+	grades           map[int64]map[string]int64
+	classes          map[int64]map[string]int64
 	courses          map[int64]map[string]CourseRef
 	banks            map[int64]map[string]QuestionBankRef
+	roles            map[int64]map[string]int64
 	createdBanks     []ImportedQuestionBank
 	createdQuestions []ImportedQuestion
+	createdUsers     []ImportedUser
+	createdPapers    []ImportedExamPaperQuestion
 }
 
 func newMemoryImportRepository() *memoryImportRepository {
 	return &memoryImportRepository{
 		nextJobID:      1,
 		nextRowID:      1,
+		nextSchoolID:   10,
+		nextGradeID:    20,
+		nextClassID:    30,
+		nextCourseID:   40,
+		nextUserID:     50,
+		nextPaperID:    60,
 		nextBankID:     1000,
 		nextQuestionID: 2000,
 		jobs:           map[int64]ImportJob{},
 		rows:           map[int64][]ImportJobRow{},
+		schools:        map[int64]map[string]int64{},
+		grades:         map[int64]map[string]int64{},
+		classes:        map[int64]map[string]int64{},
 		courses:        map[int64]map[string]CourseRef{},
 		banks:          map[int64]map[string]QuestionBankRef{},
+		roles:          map[int64]map[string]int64{},
 	}
 }
 
 func (repo *memoryImportRepository) CreateJob(_ context.Context, job ImportJob) (ImportJob, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	job.ID = repo.nextJobID
 	repo.nextJobID++
 	repo.jobs[job.ID] = job
 	return job, nil
 }
 
+func (repo *memoryImportRepository) UpdateJobStatus(_ context.Context, tenantID int64, id int64, status string, errorSummary string, startedAt *time.Time, finishedAt *time.Time) (ImportJob, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	job, ok := repo.jobs[id]
+	if !ok || job.TenantID != tenantID {
+		return ImportJob{}, ErrNotFound
+	}
+	job.Status = status
+	job.ErrorSummary = errorSummary
+	if startedAt != nil {
+		job.StartedAt = startedAt
+	}
+	if finishedAt != nil {
+		job.FinishedAt = finishedAt
+	}
+	repo.jobs[id] = job
+	return job, nil
+}
+
 func (repo *memoryImportRepository) UpdateJobWithRows(_ context.Context, job ImportJob, rows []ImportJobRow) (ImportJob, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	if _, ok := repo.jobs[job.ID]; !ok {
 		return ImportJob{}, ErrNotFound
 	}
@@ -278,6 +375,8 @@ func (repo *memoryImportRepository) UpdateJobWithRows(_ context.Context, job Imp
 }
 
 func (repo *memoryImportRepository) ListJobs(_ context.Context, tenantID int64, filter ImportJobListFilter) (PageResult[ImportJob], error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	items := make([]ImportJob, 0)
 	for _, job := range repo.jobs {
 		if job.TenantID != tenantID {
@@ -295,6 +394,8 @@ func (repo *memoryImportRepository) ListJobs(_ context.Context, tenantID int64, 
 }
 
 func (repo *memoryImportRepository) GetJob(_ context.Context, tenantID int64, id int64) (ImportJob, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	job, ok := repo.jobs[id]
 	if !ok || job.TenantID != tenantID {
 		return ImportJob{}, ErrNotFound
@@ -303,8 +404,11 @@ func (repo *memoryImportRepository) GetJob(_ context.Context, tenantID int64, id
 }
 
 func (repo *memoryImportRepository) ListRows(_ context.Context, tenantID int64, jobID int64, filter ImportJobRowFilter) (PageResult[ImportJobRow], error) {
-	if _, err := repo.GetJob(context.Background(), tenantID, jobID); err != nil {
-		return PageResult[ImportJobRow]{}, err
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	job, ok := repo.jobs[jobID]
+	if !ok || job.TenantID != tenantID {
+		return PageResult[ImportJobRow]{}, ErrNotFound
 	}
 	items := make([]ImportJobRow, 0)
 	for _, row := range repo.rows[jobID] {
@@ -317,6 +421,8 @@ func (repo *memoryImportRepository) ListRows(_ context.Context, tenantID int64, 
 }
 
 func (repo *memoryImportRepository) FindCourseByName(_ context.Context, tenantID int64, name string) (CourseRef, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	if item, ok := repo.courses[tenantID][name]; ok {
 		return item, nil
 	}
@@ -324,13 +430,126 @@ func (repo *memoryImportRepository) FindCourseByName(_ context.Context, tenantID
 }
 
 func (repo *memoryImportRepository) FindQuestionBankByName(_ context.Context, tenantID int64, name string) (QuestionBankRef, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	if item, ok := repo.banks[tenantID][name]; ok {
 		return item, nil
 	}
 	return QuestionBankRef{}, ErrNotFound
 }
 
+func (repo *memoryImportRepository) UpsertOrgStructure(_ context.Context, item ImportedOrgStructure) (ImportTarget, map[string]any, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	normalized := cloneTestMap(item.NormalizedData)
+	if repo.schools[item.TenantID] == nil {
+		repo.schools[item.TenantID] = map[string]int64{}
+	}
+	schoolID := repo.schools[item.TenantID][item.SchoolCode]
+	if schoolID == 0 {
+		schoolID = repo.nextSchoolID
+		repo.nextSchoolID++
+		repo.schools[item.TenantID][item.SchoolCode] = schoolID
+	}
+	normalized["school_id"] = schoolID
+	target := ImportTarget{EntityType: TargetSchool, EntityID: schoolID}
+	if item.GradeCode != "" {
+		gradeKey := item.SchoolCode + "/" + item.GradeCode
+		if repo.grades[item.TenantID] == nil {
+			repo.grades[item.TenantID] = map[string]int64{}
+		}
+		gradeID := repo.grades[item.TenantID][gradeKey]
+		if gradeID == 0 {
+			gradeID = repo.nextGradeID
+			repo.nextGradeID++
+			repo.grades[item.TenantID][gradeKey] = gradeID
+		}
+		normalized["grade_id"] = gradeID
+		target = ImportTarget{EntityType: TargetGrade, EntityID: gradeID}
+		if item.ClassCode != "" {
+			classKey := gradeKey + "/" + item.ClassCode
+			if repo.classes[item.TenantID] == nil {
+				repo.classes[item.TenantID] = map[string]int64{}
+			}
+			classID := repo.classes[item.TenantID][classKey]
+			if classID == 0 {
+				classID = repo.nextClassID
+				repo.nextClassID++
+				repo.classes[item.TenantID][classKey] = classID
+			}
+			normalized["class_id"] = classID
+			target = ImportTarget{EntityType: TargetClass, EntityID: classID}
+		}
+	}
+	return target, normalized, nil
+}
+
+func (repo *memoryImportRepository) UpsertCourse(_ context.Context, item ImportedCourse) (ImportTarget, map[string]any, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	if repo.courses[item.TenantID] == nil {
+		repo.courses[item.TenantID] = map[string]CourseRef{}
+	}
+	course := repo.courses[item.TenantID][item.Name]
+	if course.ID == 0 {
+		course = CourseRef{ID: repo.nextCourseID, Name: item.Name}
+		repo.nextCourseID++
+	}
+	repo.courses[item.TenantID][item.Name] = course
+	repo.courses[item.TenantID][item.Code] = course
+	normalized := cloneTestMap(item.NormalizedData)
+	normalized["course_id"] = course.ID
+	return ImportTarget{EntityType: TargetCourse, EntityID: course.ID}, normalized, nil
+}
+
+func (repo *memoryImportRepository) FindRoleIDsByCodes(_ context.Context, tenantID int64, codes []string) ([]int64, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	ids := make([]int64, 0, len(codes))
+	for _, code := range codes {
+		if code == "" {
+			continue
+		}
+		id := repo.roles[tenantID][code]
+		if id == 0 {
+			return nil, ErrNotFound
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (repo *memoryImportRepository) UpsertUser(_ context.Context, user ImportedUser) (ImportTarget, map[string]any, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	id := repo.nextUserID
+	repo.nextUserID++
+	repo.createdUsers = append(repo.createdUsers, user)
+	normalized := cloneTestMap(user.NormalizedData)
+	normalized["user_id"] = id
+	normalized["user_type"] = user.UserType
+	return ImportTarget{EntityType: TargetUser, EntityID: id}, normalized, nil
+}
+
+func (repo *memoryImportRepository) UpsertExamPaperQuestion(_ context.Context, item ImportedExamPaperQuestion) (ImportTarget, map[string]any, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	id := repo.nextPaperID
+	repo.nextPaperID++
+	repo.createdPapers = append(repo.createdPapers, item)
+	normalized := cloneTestMap(item.NormalizedData)
+	normalized["paper_id"] = id
+	if item.QuestionVersionID != nil {
+		normalized["question_version_id"] = *item.QuestionVersionID
+	} else {
+		normalized["question_version_id"] = int64(1)
+	}
+	return ImportTarget{EntityType: TargetExamPaper, EntityID: id}, normalized, nil
+}
+
 func (repo *memoryImportRepository) CreateQuestionBank(_ context.Context, bank ImportedQuestionBank) (int64, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	id := repo.nextBankID
 	repo.nextBankID++
 	bank.ID = id
@@ -343,6 +562,8 @@ func (repo *memoryImportRepository) CreateQuestionBank(_ context.Context, bank I
 }
 
 func (repo *memoryImportRepository) CreateQuestion(_ context.Context, question ImportedQuestion) (int64, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	id := repo.nextQuestionID
 	repo.nextQuestionID++
 	question.ID = id
@@ -351,6 +572,8 @@ func (repo *memoryImportRepository) CreateQuestion(_ context.Context, question I
 }
 
 func (repo *memoryImportRepository) RollbackJob(_ context.Context, tenantID int64, id int64, rows []ImportJobRow) (ImportJob, error) {
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
 	job, ok := repo.jobs[id]
 	if !ok || job.TenantID != tenantID {
 		return ImportJob{}, ErrNotFound
@@ -389,4 +612,41 @@ func decodeImportBody[T any](t *testing.T, rec *httptest.ResponseRecorder, targe
 	if err := json.Unmarshal(rec.Body.Bytes(), target); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
+}
+
+func waitForImportJobStatus(t *testing.T, repo *memoryImportRepository, tenantID int64, id int64, status string) ImportJob {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		job, err := repo.GetJob(context.Background(), tenantID, id)
+		if err == nil && job.Status == status {
+			return job
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	job, err := repo.GetJob(context.Background(), tenantID, id)
+	if err != nil {
+		t.Fatalf("job not found: %v", err)
+	}
+	t.Fatalf("job status = %q, want %q", job.Status, status)
+	return ImportJob{}
+}
+
+func createImportJobAndWait(t *testing.T, router http.Handler, repo *memoryImportRepository, body map[string]any) ImportJob {
+	t.Helper()
+	rec := performImportRequest(router, http.MethodPost, "/api/v1/import/jobs", body, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var created importEnvelope[ImportJob]
+	decodeImportBody(t, rec, &created)
+	return waitForImportJobStatus(t, repo, 1, created.Data.ID, StatusSuccess)
+}
+
+func cloneTestMap(value map[string]any) map[string]any {
+	result := make(map[string]any, len(value))
+	for key, item := range value {
+		result[key] = item
+	}
+	return result
 }

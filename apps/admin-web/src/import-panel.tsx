@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import type {
   ImportJob,
+  ImportJobType,
   ImportJobInput,
   ImportJobRow,
   ImportTemplateType,
@@ -15,8 +16,26 @@ export interface ImportPanelApi {
   listImportJobRows(id: number): Promise<PageResult<ImportJobRow>>;
 }
 
-const defaultForm = {
-  import_type: "question",
+interface ImportFormState {
+  import_type: ImportJobType;
+  template_version: string;
+  file_url: string;
+  content: string;
+}
+
+const importTypes: Array<{ value: ImportTemplateType; label: string; filename: string }> = [
+  { value: "org_structure", label: "组织/年级/班级", filename: "org_structure_import_template.csv" },
+  { value: "admin", label: "管理员", filename: "admin_import_template.csv" },
+  { value: "teacher", label: "教师", filename: "teacher_import_template.csv" },
+  { value: "course", label: "课程", filename: "course_import_template.csv" },
+  { value: "student", label: "学生", filename: "student_import_template.csv" },
+  { value: "question_bank", label: "题库", filename: "question_bank_import_template.csv" },
+  { value: "question", label: "题目", filename: "question_import_template.csv" },
+  { value: "exam_paper", label: "试卷", filename: "exam_paper_import_template.csv" }
+];
+
+const defaultForm: ImportFormState = {
+  import_type: "org_structure",
   template_version: "v1",
   file_url: "",
   content: ""
@@ -30,6 +49,8 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
   const [rows, setRows] = useState<ImportJobRow[]>([]);
   const [rowResultJob, setRowResultJob] = useState<ImportJob | null>(null);
   const [form, setForm] = useState(defaultForm);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
 
   async function loadJobs() {
     setLoading(true);
@@ -48,21 +69,47 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
     void loadJobs();
   }, [api]);
 
+  useEffect(() => {
+    if (!items.some((item) => isRunningStatus(item.status))) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadJobs();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [api, items]);
+
   async function handleDownload(type: ImportTemplateType) {
-    const content = await api.downloadImportTemplate(type);
-    setTemplatePreview(content.trim());
+    setErrorMessage("");
+    try {
+      const content = await api.downloadImportTemplate(type);
+      setTemplatePreview(content.trim());
+      downloadCSV(content, importTypes.find((item) => item.value === type)?.filename ?? `${type}_import_template.csv`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "模板下载失败");
+    }
   }
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await api.createImportJob({
-      import_type: form.import_type,
-      template_version: form.template_version,
-      file_url: form.file_url,
-      content: form.content
-    });
-    setForm(defaultForm);
-    await loadJobs();
+    setSubmitting(true);
+    setErrorMessage("");
+    setStatusMessage("");
+    try {
+      await api.createImportJob({
+        import_type: form.import_type,
+        template_version: form.template_version,
+        file_url: form.file_url,
+        content: form.content
+      });
+      setStatusMessage("导入任务已进入后台处理");
+      setForm((current) => ({ ...defaultForm, import_type: current.import_type }));
+      await loadJobs();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "创建导入任务失败");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function handleLoadRows(job: ImportJob) {
@@ -80,20 +127,28 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
             <h2>导入中心</h2>
           </div>
           <div className="ui-admin-toolbar">
-            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDownload("question")}>
-              下载题目模板
-            </button>
-            <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDownload("question_bank")}>
-              下载题库模板
-            </button>
-            <button type="button" className="ui-button ui-button--primary" onClick={() => void handleDownload("exam")}>
-              下载考试模板
+            <select
+              aria-label="模板类型"
+              value={form.import_type}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, import_type: event.target.value as ImportTemplateType }))
+              }
+            >
+              {importTypes.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="ui-button ui-button--primary" onClick={() => void handleDownload(form.import_type)}>
+              下载模板
             </button>
           </div>
         </div>
       </section>
 
       {errorMessage ? <div className="ui-status ui-status--danger">{errorMessage}</div> : null}
+      {statusMessage ? <div className="ui-status ui-status--success">{statusMessage}</div> : null}
       {loading ? <div className="ui-status ui-status--info">加载中...</div> : null}
 
       {!loading ? (
@@ -111,10 +166,15 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
                   <select
                     id="import_type"
                     value={form.import_type}
-                    onChange={(event) => setForm((current) => ({ ...current, import_type: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, import_type: event.target.value as ImportTemplateType }))
+                    }
                   >
-                    <option value="question">题目</option>
-                    <option value="question_bank">题库</option>
+                    {importTypes.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="ui-admin-form__field">
@@ -142,8 +202,8 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
                   />
                 </div>
                 <div className="ui-admin-form__actions" style={{ gridColumn: "1 / -1" }}>
-                  <button type="submit" className="ui-button ui-button--primary">
-                    创建导入任务
+                  <button type="submit" className="ui-button ui-button--primary" disabled={submitting}>
+                    {submitting ? "提交中..." : "创建导入任务"}
                   </button>
                 </div>
               </form>
@@ -169,9 +229,9 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id}>
-                      <td>{item.import_type}</td>
+                      <td>{getImportTypeLabel(item.import_type)}</td>
                       <td>
-                        <span className={statusClassName(item.status)}>{item.status}</span>
+                        <span className={statusClassName(item.status)}>{getStatusLabel(item.status)}</span>
                       </td>
                       <td>{item.total_rows}</td>
                       <td>{item.success_rows}</td>
@@ -235,7 +295,7 @@ export function ImportPanel({ api }: { api: ImportPanelApi }) {
             <div className="ui-admin-modal__header">
               <div>
                 <h3>导入行结果</h3>
-                <p>{`${rowResultJob.import_type} / ${rowResultJob.status}`}</p>
+                <p>{`${getImportTypeLabel(rowResultJob.import_type)} / ${getStatusLabel(rowResultJob.status)}`}</p>
               </div>
               <button type="button" className="ui-button ui-button--ghost" onClick={() => setRowResultJob(null)}>
                 关闭
@@ -294,10 +354,63 @@ function statusClassName(value: string): string {
     case "success":
       return "ui-admin-status ui-admin-status--active";
     case "partial_success":
+    case "uploaded":
+    case "parsing":
+    case "validating":
+    case "importing":
       return "ui-admin-status ui-admin-status--pending";
     case "failed":
       return "ui-admin-status ui-admin-status--danger";
     default:
       return "ui-admin-status ui-admin-status--draft";
   }
+}
+
+function getImportTypeLabel(value: string): string {
+  return importTypes.find((item) => item.value === value)?.label ?? value;
+}
+
+function getStatusLabel(value: string): string {
+  switch (value) {
+    case "uploaded":
+      return "已入队";
+    case "parsing":
+      return "解析中";
+    case "validating":
+      return "校验中";
+    case "importing":
+      return "导入中";
+    case "success":
+      return "成功";
+    case "partial_success":
+      return "部分成功";
+    case "failed":
+      return "失败";
+    case "rolled_back":
+      return "已回滚";
+    default:
+      return value;
+  }
+}
+
+function isRunningStatus(value: string): boolean {
+  return ["uploaded", "parsing", "validating", "importing"].includes(value);
+}
+
+function downloadCSV(content: string, filename: string) {
+  if (typeof document === "undefined" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return;
+  }
+  if (typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("jsdom")) {
+    return;
+  }
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

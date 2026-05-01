@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"aios_practice_platform/internal/modules/fileasset"
 )
 
@@ -69,24 +71,16 @@ func (service *Service) CreateImportJob(ctx context.Context, scope Scope, input 
 	if !isSupportedImportType(input.ImportType) {
 		return ImportJob{}, ErrInvalidInput
 	}
-	if input.Content == "" && input.FileAssetID != nil {
-		content, err := service.readUploadedImportContent(ctx, scope.TenantID, *input.FileAssetID)
-		if err != nil {
-			return ImportJob{}, err
-		}
-		input.Content = strings.TrimSpace(content)
-		if input.FileURL == "" {
-			input.FileURL = fmt.Sprintf("/api/v1/files/%d/content", *input.FileAssetID)
-		}
-	}
 	if input.FileURL == "" && input.FileAssetID == nil {
 		return ImportJob{}, ErrInvalidInput
 	}
-	if input.Content == "" {
+	if input.Content == "" && input.FileAssetID == nil {
 		return ImportJob{}, ErrInvalidInput
 	}
+	if input.FileURL == "" && input.FileAssetID != nil {
+		input.FileURL = fmt.Sprintf("/api/v1/files/%d/content", *input.FileAssetID)
+	}
 
-	now := time.Now()
 	job, err := service.repo.CreateJob(ctx, ImportJob{
 		TenantID:        scope.TenantID,
 		ImportType:      input.ImportType,
@@ -95,21 +89,59 @@ func (service *Service) CreateImportJob(ctx context.Context, scope Scope, input 
 		FileURL:         input.FileURL,
 		Status:          StatusUploaded,
 		OperatorID:      scope.UserID,
-		StartedAt:       &now,
 	})
 	if err != nil {
 		return ImportJob{}, err
 	}
 
-	rows := make([]ImportJobRow, 0)
-	parsedRows, err := parseCSVRows(input.ImportType, input.Content)
+	go service.processImportJob(context.Background(), scope, job, input)
+	return job, nil
+}
+
+func (service *Service) processImportJob(ctx context.Context, scope Scope, job ImportJob, input ImportJobInput) {
+	defer func() {
+		if recover() != nil {
+			finished := time.Now()
+			_, _ = service.repo.UpdateJobStatus(ctx, job.TenantID, job.ID, StatusFailed, "导入任务处理异常", job.StartedAt, &finished)
+		}
+	}()
+
+	started := time.Now()
+	current, err := service.repo.UpdateJobStatus(ctx, job.TenantID, job.ID, StatusParsing, "", &started, nil)
 	if err != nil {
-		finished := time.Now()
-		job.Status = StatusFailed
-		job.ErrorSummary = "CSV 模板解析失败"
-		job.FinishedAt = &finished
-		return service.repo.UpdateJobWithRows(ctx, job, rows)
+		return
 	}
+	job = current
+
+	content := strings.TrimSpace(input.Content)
+	if content == "" && input.FileAssetID != nil {
+		content, err = service.readUploadedImportContent(ctx, scope.TenantID, *input.FileAssetID)
+		if err != nil {
+			service.failImportJob(ctx, job, "读取导入文件失败")
+			return
+		}
+		content = strings.TrimSpace(content)
+		if input.FileURL == "" {
+			input.FileURL = fmt.Sprintf("/api/v1/files/%d/content", *input.FileAssetID)
+		}
+	}
+	if content == "" {
+		service.failImportJob(ctx, job, "导入内容不能为空")
+		return
+	}
+
+	rows := make([]ImportJobRow, 0)
+	parsedRows, err := parseCSVRows(input.ImportType, content)
+	if err != nil {
+		service.failImportJob(ctx, job, "CSV 模板解析失败")
+		return
+	}
+
+	current, err = service.repo.UpdateJobStatus(ctx, job.TenantID, job.ID, StatusImporting, "", nil, nil)
+	if err != nil {
+		return
+	}
+	job = current
 
 	for _, dataRow := range parsedRows {
 		row := service.importRow(ctx, scope, job.ID, input.ImportType, dataRow)
@@ -126,12 +158,31 @@ func (service *Service) CreateImportJob(ctx context.Context, scope Scope, input 
 		}
 	}
 	job.Status = finalStatus(job.TotalRows, job.SuccessRows, job.FailedRows)
-	if job.FailedRows > 0 {
+	if job.TotalRows == 0 {
+		job.ErrorSummary = "没有可导入数据"
+	} else if job.FailedRows > 0 {
 		job.ErrorSummary = strconv.Itoa(job.FailedRows) + " 行导入失败"
 	}
 	finished := time.Now()
 	job.FinishedAt = &finished
-	return service.repo.UpdateJobWithRows(ctx, job, rows)
+	_, _ = service.repo.UpdateJobWithRows(ctx, job, rows)
+}
+
+func (service *Service) failImportJob(ctx context.Context, job ImportJob, message string) {
+	finished := time.Now()
+	_, _ = service.repo.UpdateJobWithRows(ctx, ImportJob{
+		ID:              job.ID,
+		TenantID:        job.TenantID,
+		ImportType:      job.ImportType,
+		TemplateVersion: job.TemplateVersion,
+		FileAssetID:     job.FileAssetID,
+		FileURL:         job.FileURL,
+		Status:          StatusFailed,
+		ErrorSummary:    message,
+		OperatorID:      job.OperatorID,
+		StartedAt:       job.StartedAt,
+		FinishedAt:      &finished,
+	}, []ImportJobRow{})
 }
 
 func (service *Service) ListJobs(ctx context.Context, scope Scope, filter ImportJobListFilter) (PageResult[ImportJob], error) {
@@ -257,13 +308,149 @@ func (service *Service) importRow(ctx context.Context, scope Scope, jobID int64,
 		Status:  RowStatusFailed,
 	}
 	switch importType {
+	case ImportTypeOrgStructure:
+		return service.importOrgStructureRow(ctx, scope, row, dataRow.Raw)
+	case ImportTypeAdmin:
+		return service.importAdminRow(ctx, scope, row, dataRow.Raw)
+	case ImportTypeTeacher:
+		return service.importTeacherRow(ctx, scope, row, dataRow.Raw)
+	case ImportTypeCourse:
+		return service.importCourseRow(ctx, scope, row, dataRow.Raw)
+	case ImportTypeStudent:
+		return service.importStudentRow(ctx, scope, row, dataRow.Raw)
 	case ImportTypeQuestionBank:
 		return service.importQuestionBankRow(ctx, scope, row, dataRow.Raw)
 	case ImportTypeQuestion:
 		return service.importQuestionRow(ctx, scope, row, dataRow.Raw)
+	case ImportTypeExam, ImportTypeExamPaper:
+		return service.importExamPaperRow(ctx, scope, row, dataRow.Raw)
 	default:
 		return failRow(row, ErrorUnsupportedImport, "导入类型不支持")
 	}
+}
+
+func (service *Service) importOrgStructureRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
+	normalized, failure := normalizeOrgStructureRow(raw)
+	if failure != nil {
+		return failRow(row, failure.Code, failure.Message)
+	}
+	target, normalizedData, err := service.repo.UpsertOrgStructure(ctx, ImportedOrgStructure{
+		TenantID:       scope.TenantID,
+		ObjectType:     normalized.ObjectType,
+		SchoolCode:     normalized.SchoolCode,
+		SchoolName:     normalized.SchoolName,
+		GradeCode:      normalized.GradeCode,
+		GradeName:      normalized.GradeName,
+		GradeLevel:     normalized.GradeLevel,
+		SchoolYear:     normalized.SchoolYear,
+		ClassCode:      normalized.ClassCode,
+		ClassName:      normalized.ClassName,
+		ClassNo:        normalized.ClassNo,
+		Status:         normalized.Status,
+		NormalizedData: normalized.NormalizedData,
+	})
+	if err != nil {
+		return failBusinessRow(row, err, "组织结构写入失败")
+	}
+	row.Status = RowStatusSuccess
+	row.NormalizedData = normalizedData
+	row.TargetEntityType = target.EntityType
+	row.TargetEntityID = &target.EntityID
+	return row
+}
+
+func (service *Service) importCourseRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
+	normalized, failure := normalizeCourseRow(raw)
+	if failure != nil {
+		return failRow(row, failure.Code, failure.Message)
+	}
+	target, normalizedData, err := service.repo.UpsertCourse(ctx, ImportedCourse{
+		TenantID:       scope.TenantID,
+		Code:           normalized.Code,
+		Name:           normalized.Name,
+		StartAt:        normalized.StartAt,
+		EndAt:          normalized.EndAt,
+		Description:    normalized.Description,
+		Status:         normalized.Status,
+		NormalizedData: normalized.NormalizedData,
+	})
+	if err != nil {
+		return failBusinessRow(row, err, "课程写入失败")
+	}
+	row.Status = RowStatusSuccess
+	row.NormalizedData = normalizedData
+	row.TargetEntityType = target.EntityType
+	row.TargetEntityID = &target.EntityID
+	return row
+}
+
+func (service *Service) importAdminRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
+	normalized, failure := normalizeAdminRow(raw)
+	if failure != nil {
+		return failRow(row, failure.Code, failure.Message)
+	}
+	return service.importUserRow(ctx, scope, row, normalized, "school_admin")
+}
+
+func (service *Service) importTeacherRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
+	normalized, failure := normalizeTeacherRow(raw)
+	if failure != nil {
+		return failRow(row, failure.Code, failure.Message)
+	}
+	return service.importUserRow(ctx, scope, row, normalized, "teacher")
+}
+
+func (service *Service) importStudentRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
+	normalized, failure := normalizeStudentRow(raw)
+	if failure != nil {
+		return failRow(row, failure.Code, failure.Message)
+	}
+	return service.importUserRow(ctx, scope, row, normalized, "student")
+}
+
+func (service *Service) importUserRow(ctx context.Context, scope Scope, row ImportJobRow, normalized normalizedUserRow, userType string) ImportJobRow {
+	roleIDs, err := service.repo.FindRoleIDsByCodes(ctx, scope.TenantID, normalized.RoleCodes)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return failRow(row, ErrorRoleNotFound, "角色不存在")
+		}
+		return failRow(row, ErrorBusinessWriteError, "角色查询失败")
+	}
+	password := normalized.InitialPassword
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return failRow(row, ErrorBusinessWriteError, "初始密码加密失败")
+	}
+	target, normalizedData, err := service.repo.UpsertUser(ctx, ImportedUser{
+		TenantID:       scope.TenantID,
+		Username:       normalized.Username,
+		DisplayName:    normalized.DisplayName,
+		Phone:          normalized.Phone,
+		Email:          normalized.Email,
+		UserType:       userType,
+		Status:         normalized.Status,
+		RoleCodes:      normalized.RoleCodes,
+		RoleIDs:        roleIDs,
+		PasswordHash:   string(passwordHash),
+		ResetPassword:  true,
+		SchoolCode:     normalized.SchoolCode,
+		GradeCode:      normalized.GradeCode,
+		ClassCode:      normalized.ClassCode,
+		CourseCode:     normalized.CourseCode,
+		TeacherNo:      normalized.TeacherNo,
+		StudentNo:      normalized.StudentNo,
+		IsHeadTeacher:  normalized.IsHeadTeacher,
+		EffectiveAt:    normalized.EffectiveAt,
+		NormalizedData: normalized.NormalizedData,
+	})
+	if err != nil {
+		return failBusinessRow(row, err, "用户写入失败")
+	}
+	row.Status = RowStatusSuccess
+	row.NormalizedData = normalizedData
+	row.TargetEntityType = target.EntityType
+	row.TargetEntityID = &target.EntityID
+	return row
 }
 
 func (service *Service) importQuestionBankRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
@@ -345,11 +532,55 @@ func (service *Service) importQuestionRow(ctx context.Context, scope Scope, row 
 	return row
 }
 
+func (service *Service) importExamPaperRow(ctx context.Context, scope Scope, row ImportJobRow, raw map[string]string) ImportJobRow {
+	normalized, failure := normalizeExamPaperRow(raw)
+	if failure != nil {
+		return failRow(row, failure.Code, failure.Message)
+	}
+	target, normalizedData, err := service.repo.UpsertExamPaperQuestion(ctx, ImportedExamPaperQuestion{
+		TenantID:          scope.TenantID,
+		CreatorID:         scope.UserID,
+		PaperName:         normalized.PaperName,
+		PaperType:         normalized.PaperType,
+		QuestionID:        normalized.QuestionID,
+		QuestionVersionID: normalized.QuestionVersionID,
+		Score:             normalized.Score,
+		DisplayOrder:      normalized.DisplayOrder,
+		Status:            normalized.Status,
+		NormalizedData:    normalized.NormalizedData,
+	})
+	if err != nil {
+		return failBusinessRow(row, err, "试卷写入失败")
+	}
+	row.Status = RowStatusSuccess
+	row.NormalizedData = normalizedData
+	row.TargetEntityType = target.EntityType
+	row.TargetEntityID = &target.EntityID
+	return row
+}
+
 func failRow(row ImportJobRow, code string, message string) ImportJobRow {
 	row.Status = RowStatusFailed
 	row.ErrorCode = code
 	row.ErrorMessage = message
 	return row
+}
+
+func failBusinessRow(row ImportJobRow, err error, fallback string) ImportJobRow {
+	switch {
+	case errors.Is(err, ErrMissingSchool):
+		return failRow(row, ErrorSchoolNotFound, "学校/组织不存在")
+	case errors.Is(err, ErrMissingGrade):
+		return failRow(row, ErrorGradeNotFound, "年级不存在")
+	case errors.Is(err, ErrMissingClass):
+		return failRow(row, ErrorClassNotFound, "班级不存在")
+	case errors.Is(err, ErrMissingCourse):
+		return failRow(row, ErrorCourseNotFound, "课程不存在")
+	case errors.Is(err, ErrMissingQuestion):
+		return failRow(row, ErrorQuestionNotFound, "题目或题目版本不存在")
+	default:
+		return failRow(row, ErrorBusinessWriteError, fallback)
+	}
 }
 
 func finalStatus(totalRows int, successRows int, failedRows int) string {
@@ -374,12 +605,22 @@ func buildStructureHash(questionType string, content map[string]any, answer map[
 
 func templateFileName(importType string) (string, bool) {
 	switch importType {
+	case ImportTypeOrgStructure:
+		return "18_org_structure_import_template.csv", true
+	case ImportTypeAdmin:
+		return "19_admin_import_template.csv", true
+	case ImportTypeTeacher:
+		return "20_teacher_import_template.csv", true
+	case ImportTypeCourse:
+		return "21_course_import_template.csv", true
+	case ImportTypeStudent:
+		return "22_student_import_template.csv", true
 	case ImportTypeQuestion:
 		return "15_question_import_template.csv", true
 	case ImportTypeQuestionBank:
 		return "16_bank_import_template.csv", true
-	case ImportTypeExam:
-		return "17_exam_import_template.csv", true
+	case ImportTypeExam, ImportTypeExamPaper:
+		return "23_exam_paper_import_template.csv", true
 	default:
 		return "", false
 	}

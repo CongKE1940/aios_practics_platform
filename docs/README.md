@@ -79,6 +79,12 @@
 - `templates/15_question_import_template.csv`：题目导入模板
 - `templates/16_bank_import_template.csv`：题库导入模板
 - `templates/17_exam_import_template.csv`：试卷/考试导入模板
+- `templates/18_org_structure_import_template.csv`：组织、年级、班级导入模板
+- `templates/19_admin_import_template.csv`：管理员导入模板
+- `templates/20_teacher_import_template.csv`：教师导入模板
+- `templates/21_course_import_template.csv`：课程导入模板
+- `templates/22_student_import_template.csv`：学生导入模板
+- `templates/23_exam_paper_import_template.csv`：试卷导入模板
 - `docs/19_open_questions_and_risks.md`：需你补充确认的开放问题
 
 ## 如何把这套文档交给 AI

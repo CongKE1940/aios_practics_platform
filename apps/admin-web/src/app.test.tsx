@@ -625,7 +625,7 @@ describe("AdminApp", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "导入中心" })).toBeTruthy();
     });
-    expect(screen.getAllByText("question_bank").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("题库").length).toBeGreaterThan(0);
   });
 
   it("opens analytics panel after selecting analytics menu", async () => {

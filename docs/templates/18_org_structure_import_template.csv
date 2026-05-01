@@ -1,0 +1,2 @@
+object_type,school_code,school_name,grade_code,grade_name,grade_level,school_year,class_code,class_name,class_no,status
+school,school_demo,示例学校,g2026,一年级,1,2026,c101,一年级一班,1,active
