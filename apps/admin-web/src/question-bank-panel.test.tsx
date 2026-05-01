@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
@@ -52,7 +52,21 @@ describe("QuestionBankPanel", () => {
         status: "active",
         source_type: "manual"
       })),
-      assignQuestionBankVisibility: vi.fn(async () => true)
+      assignQuestionBankVisibility: vi.fn(async () => true),
+      listCourses: vi.fn(async () => ({
+        items: [
+          {
+            id: 10,
+            tenant_id: 1,
+            code: "math_1",
+            name: "高一数学",
+            status: "active"
+          }
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1
+      }))
     };
 
     render(<QuestionBankPanel api={api} />);
@@ -62,11 +76,12 @@ describe("QuestionBankPanel", () => {
     });
     expect(screen.getAllByText("高一数学基础题库").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "新增题库" }));
-    fireEvent.change(screen.getByLabelText("题库名称"), { target: { value: "高一数学提升题库" } });
-    fireEvent.change(screen.getByLabelText("课程ID"), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText("题库说明"), { target: { value: "函数与导数" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "新增题库" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "新增" }));
+    const createModal = within(screen.getByLabelText("题库管理弹层"));
+    fireEvent.change(createModal.getByLabelText("题库名称"), { target: { value: "高一数学提升题库" } });
+    fireEvent.change(createModal.getByLabelText("绑定课程"), { target: { value: "10" } });
+    fireEvent.change(createModal.getByLabelText("题库说明"), { target: { value: "函数与导数" } });
+    fireEvent.click(createModal.getByRole("button", { name: "新增题库" }));
 
     await waitFor(() => {
       expect(api.createQuestionBank).toHaveBeenCalledWith({

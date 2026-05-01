@@ -78,6 +78,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   const [loading, setLoading] = useState(true);
   const [modalLoading, setModalLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [createdAdmin, setCreatedAdmin] = useState<NonNullable<SchoolOrganization["default_admin"]> | null>(null);
   const [schools, setSchools] = useState<SchoolOrganization[]>([]);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
@@ -192,6 +193,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
   }
 
   function openCreateModal() {
+    setCreatedAdmin(null);
     setForm(defaultSchoolForm);
     setModal({ type: "create" });
   }
@@ -252,7 +254,8 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
       setErrorMessage("当前接口暂不支持编辑学校或组织基础信息。 ");
       return;
     } else if (isSystemAdmin) {
-      await api.createSchool(payload);
+      const created = await api.createSchool(payload);
+      setCreatedAdmin(created.default_admin ?? null);
     }
 
     closeModal();
@@ -342,8 +345,18 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
 
   return (
     <section aria-label="学校与组织管理面板" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>学校与组织管理</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="学校与组织数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
+      ) : null}
+      {createdAdmin ? (
+        <ToastNotice
+          tone="success"
+          title="默认管理员已创建"
+          description={`登录组织：${createdAdmin.tenant_code}；账号：${createdAdmin.username}；初始密码：${createdAdmin.initial_password || "请在用户管理中重置"}`}
+          durationMs={0}
+          onClose={() => setCreatedAdmin(null)}
+        />
       ) : null}
 
       <section className="ui-admin-card" aria-label="学校与组织数据展示区" style={dataRegionStyle} aria-busy={loading || modalLoading}>
@@ -604,6 +617,7 @@ function statusClassName(status: string): string { if (["active", "published", "
 function formatStatusLabel(status: string): string { switch (status) { case "active": return "启用"; case "disabled": case "inactive": return "停用"; default: return status; } }
 
 const pageStyle: CSSProperties = { minHeight: "100%", gap: 0 };
+const visuallyHiddenStyle: CSSProperties = { position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 };
 const dataRegionStyle: CSSProperties = { display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: 14, minHeight: "100%", padding: 22 };
 const filterFormStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(240px, 360px) minmax(160px, 220px) minmax(180px, 240px) auto", alignItems: "end", gap: 14, margin: 0 };
 const queryActionsStyle: CSSProperties = { alignItems: "center", paddingBottom: 1, whiteSpace: "nowrap" };

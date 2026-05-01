@@ -292,6 +292,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
 
   return (
     <section aria-label="考试管理面板" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>考试管理</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="考试数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
@@ -671,7 +672,7 @@ function buildFormFromDetail(detail: ExamDetail): ExamFormState {
       .join("\n"),
     paper_rules_text: (detail.paper_rules ?? [])
       .map((item) =>
-        [item.question_type, formatScore(item.score_per_question), item.question_count, item.bank_ids?.join("|") ?? ""].join(":")
+        [item.question_type, formatScore(item.score_per_question), item.question_count, item.bank_ids?.join("|") ?? "", item.course_id ?? ""].join(":")
       )
       .join("\n")
   };
@@ -725,7 +726,7 @@ function parsePaperRules(value: string): ExamPaperRule[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [questionType, scorePerQuestion, questionCount, bankIDText] = line.split(":").map((part) => part.trim());
+      const [questionType, scorePerQuestion, questionCount, bankIDText, courseIDText] = line.split(":").map((part) => part.trim());
       const bankIDs = bankIDText
         ? bankIDText
             .split("|")
@@ -736,7 +737,8 @@ function parsePaperRules(value: string): ExamPaperRule[] {
         question_type: questionType,
         score_per_question: Number(scorePerQuestion),
         question_count: Number(questionCount),
-        bank_ids: bankIDs
+        bank_ids: bankIDs,
+        course_id: parsePositiveInteger(courseIDText ?? "") ?? undefined
       };
     })
     .filter(
@@ -924,6 +926,18 @@ function statusClassName(value?: string | null): string {
 const pageStyle: CSSProperties = {
   minHeight: "100%",
   gap: 0
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {

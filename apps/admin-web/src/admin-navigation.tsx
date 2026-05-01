@@ -16,17 +16,6 @@ export function AdminMenuTree({ menus, selectedPath, onSelect }: AdminMenuTreePr
         <strong>管理导航</strong>
       </div>
       <ul>
-        <li>
-          <button
-            type="button"
-            className={["ui-nav-tree__item", selectedPath === "" ? "is-active" : ""].filter(Boolean).join(" ")}
-            aria-pressed={selectedPath === ""}
-            onClick={() => onSelect("")}
-          >
-            <NavigationItemIcon name="工作台" path="/admin/workbench" />
-            <span>工作台</span>
-          </button>
-        </li>
         {menus.map((menu) => (
           <AdminMenuNode key={menu.id} menu={menu} selectedPath={selectedPath} onSelect={onSelect} />
         ))}
@@ -118,102 +107,11 @@ function AdminMenuNode({ menu, selectedPath, onSelect, depth = 0 }: AdminMenuNod
   );
 }
 
-export function normalizeAdminNavigationMenus(menus: MenuItem[], permissions: string[] = []): MenuItem[] {
-  const items = flattenMenuItems(menus);
-  const entriesByPath = new Map<string, MenuItem>();
-
-  for (const item of items) {
-    if (item.path && !entriesByPath.has(item.path)) {
-      entriesByPath.set(item.path, item);
-    }
-  }
-
-  const menu = (path: string, fallbackName: string, fallbackId: number): MenuItem => {
-    const existing = entriesByPath.get(path);
-    return {
-      id: existing?.id ?? fallbackId,
-      name: fallbackName,
-      path,
-      children: []
-    };
-  };
-
-  const result: MenuItem[] = [];
-
-  result.push({
-    id: 10_000,
-    name: "组织管理",
-    path: "",
-    children: [
-      menu("/admin/org/schools", "学校管理", 10_001),
-      menu("/admin/org/grades", "年级管理", 10_002),
-      menu("/admin/org/classes", "班级管理", 10_003)
-    ]
-  });
-
-  const fixedPaths = new Set([
-    "/admin/org",
-    "/admin/org/schools",
-    "/admin/org/grades",
-    "/admin/org/classes",
-    "/admin/users",
-    "/admin/roles",
-    "/admin/dictionaries",
-    "/admin/analytics",
-    "/admin/history"
-  ]);
-
-  const topLevelPaths = [
-    ["/admin/courses", "课程管理", 20_001],
-    ["/admin/question-banks", "题库管理", 20_002],
-    ["/admin/questions", "题目管理", 20_003],
-    ["/admin/questions/editor", "题目编辑器", 20_004],
-    ["/admin/imports", "导入中心", 20_005],
-    ["/admin/exams", "考试管理", 20_006],
-    ["/admin/exam-papers", "试卷管理", 20_007],
-    ["/admin/exams/assembly", "试卷组卷", 20_010],
-    ["/admin/challenges", "质疑处理", 20_008],
-    ["/admin/notices", "公告通知", 20_009]
-  ] as const;
-
-  for (const [path, name, id] of topLevelPaths) {
-    const exists = entriesByPath.has(path);
-    const permissionFallback =
-      ((path.startsWith("/admin/exams") || path === "/admin/exam-papers") && permissions.includes("exam:manage")) ||
-      (path === "/admin/challenges" && permissions.includes("question:manage"));
-    if (exists || permissionFallback) {
-      result.push(menu(path, name, id));
-      fixedPaths.add(path);
-    }
-  }
-
-  result.push({
-    id: 30_000,
-    name: "系统管理",
-    path: "",
-    children: [
-      menu("/admin/users", "用户管理", 30_001),
-      menu("/admin/roles", "角色权限", 30_002),
-      menu("/admin/dictionaries", "字典管理", 30_003),
-      menu("/admin/analytics", "数据看板", 30_004),
-      menu("/admin/history", "快照历史", 30_005)
-    ]
-  });
-
-  for (const original of menus) {
-    if (original.path && fixedPaths.has(original.path)) {
-      continue;
-    }
-    if (original.children.some((child) => child.path && fixedPaths.has(child.path))) {
-      continue;
-    }
-    if (original.name === "系统管理" || original.name === "组织管理") {
-      continue;
-    }
-    result.push(original);
-  }
-
-  return result;
+export function normalizeAdminNavigationMenus(menus: MenuItem[]): MenuItem[] {
+  return menus.map((menu) => ({
+    ...menu,
+    children: normalizeAdminNavigationMenus(menu.children ?? [])
+  }));
 }
 
 export function resolveAdminNavigationBreadcrumb(selectedPath: string, menus: MenuItem[]): string[] {
@@ -235,6 +133,8 @@ export function resolveAdminPageTitle(selectedPath: string): string {
   }
 
   switch (selectedPath) {
+    case "/admin/workbench":
+      return "工作台";
     case "/admin/org":
     case "/admin/org/schools":
       return "学校管理";
@@ -272,6 +172,12 @@ export function resolveAdminPageTitle(selectedPath: string): string {
       return "数据看板";
     case "/admin/history":
       return "快照历史";
+    case "/admin/profile":
+      return "个人信息";
+    case "/admin/system/config":
+      return "系统配置";
+    case "/admin/tenant/roles":
+      return "租户角色配置";
     default:
       return "当前视图";
   }
@@ -281,8 +187,10 @@ export function getAdminUserTypeLabel(userType: LoginResponse["user"]["user_type
   switch (userType) {
     case "sys_admin":
       return "平台管理员";
+    case "tenant_admin":
+      return "租户管理员";
     case "school_admin":
-      return "学校管理员";
+      return "学校/组织管理员";
     case "teacher":
       return "教师";
     case "student":
@@ -290,19 +198,6 @@ export function getAdminUserTypeLabel(userType: LoginResponse["user"]["user_type
     default:
       return userType;
   }
-}
-
-function flattenMenuItems(menus: MenuItem[]): MenuItem[] {
-  const items: MenuItem[] = [];
-
-  for (const menu of menus) {
-    items.push(menu);
-    if (menu.children.length > 0) {
-      items.push(...flattenMenuItems(menu.children));
-    }
-  }
-
-  return items;
 }
 
 function menuContainsPath(menu: MenuItem, targetPath: string): boolean {

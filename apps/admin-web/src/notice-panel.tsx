@@ -227,6 +227,7 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
 
   return (
     <section aria-label="公告通知面板" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>公告通知</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="公告通知数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
@@ -598,6 +599,18 @@ function formatScopeJson(value: Record<string, unknown>): string {
 const pageStyle: CSSProperties = {
   minHeight: "100%",
   gap: 0
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {

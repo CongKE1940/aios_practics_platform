@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { QuestionPanel, type QuestionPanelApi } from "./question-panel";
@@ -87,6 +87,25 @@ describe("QuestionPanel", () => {
         change_summary: body.change_summary,
         is_published: true,
         created_by: 1
+      })),
+      listQuestionBanks: vi.fn(async () => ({
+        items: [
+          {
+            id: 1,
+            tenant_id: 1,
+            owner_org_type: "school",
+            owner_org_id: 1,
+            creator_id: 1,
+            course_id: null,
+            name: "题库-1",
+            description: "",
+            status: "active",
+            source_type: "manual"
+          }
+        ],
+        page: 1,
+        page_size: 100,
+        total: 1
       }))
     };
 
@@ -95,17 +114,18 @@ describe("QuestionPanel", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "题目管理" })).toBeTruthy();
     });
-    expect(screen.getAllByText("single_choice").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("单选题").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("button", { name: "新增题目" }));
-    fireEvent.change(screen.getByLabelText("题型"), { target: { value: "single_choice" } });
-    fireEvent.change(screen.getByLabelText("难度"), { target: { value: "medium" } });
-    fireEvent.change(screen.getByLabelText("题库ID"), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("题干"), { target: { value: "1+1等于几？" } });
-    fireEvent.change(screen.getByLabelText("选项A"), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("选项B"), { target: { value: "2" } });
-    fireEvent.change(screen.getByLabelText("正确答案"), { target: { value: "B" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "新增题目" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "新增" }));
+    const createModal = within(screen.getByLabelText("题目管理弹层"));
+    fireEvent.change(createModal.getByLabelText("题型"), { target: { value: "single_choice" } });
+    fireEvent.change(createModal.getByLabelText("难度"), { target: { value: "medium" } });
+    fireEvent.change(createModal.getByLabelText("所属题库"), { target: { value: "1" } });
+    fireEvent.change(createModal.getByLabelText("题干"), { target: { value: "1+1等于几？" } });
+    fireEvent.change(createModal.getByLabelText("选项 A"), { target: { value: "1" } });
+    fireEvent.change(createModal.getByLabelText("选项 B"), { target: { value: "2" } });
+    fireEvent.change(createModal.getByLabelText("正确答案"), { target: { value: "B" } });
+    fireEvent.click(createModal.getByRole("button", { name: "新增题目" }));
 
     await waitFor(() => {
       expect(api.createQuestion).toHaveBeenCalled();

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import {
+  ApiError,
+  PASSWORD_CHANGE_REQUIRED_CODE,
   createApiClient,
+  type ChangeInitialPasswordRequest,
   type LoginOrganization,
   type LoginRequest,
   type LoginResponse,
+  type ManagedUser,
   type MenuItem
 } from "@aios/api-sdk";
 import { AppShell, EmptyState, SidebarUserMenu, StatusNotice } from "@aios/ui-web";
@@ -30,6 +34,7 @@ import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
 import { type OrganizationApi } from "./organization-panel";
 import { PaperManagementPanel, type PaperManagementApi } from "./paper-assembly-panel";
+import { ProfilePanel, type ProfilePanelApi } from "./profile-panel";
 import { QuestionBankPanel, type QuestionBankPanelApi } from "./question-bank-panel";
 import { QuestionEditorPanel } from "./question-editor-panel";
 import { QuestionPanel, type QuestionPanelApi } from "./question-panel";
@@ -40,6 +45,7 @@ import { UserPanel, type UserPanelApi } from "./user-panel";
 interface AuthApi {
   listLoginOrganizations(): Promise<LoginOrganization[]>;
   login(body: LoginRequest): Promise<LoginResponse>;
+  changeInitialPassword?(body: ChangeInitialPasswordRequest): Promise<boolean>;
   logout(): Promise<boolean>;
   menus(accessToken: string): Promise<MenuItem[]>;
 }
@@ -57,6 +63,7 @@ interface AdminAppProps {
   dictionaryApi?: DictionaryPanelApi;
   analyticsApi?: AnalyticsPanelApi;
   historyApi?: HistoryPanelApi;
+  profileApi?: ProfilePanelApi;
   sessionStore?: SessionStore;
 }
 
@@ -93,6 +100,7 @@ export function AdminApp({
   dictionaryApi,
   analyticsApi,
   historyApi,
+  profileApi,
   sessionStore
 }: AdminAppProps) {
   const [form, setForm] = useState<LoginRequest>(defaultForm);
@@ -100,11 +108,14 @@ export function AdminApp({
   const [session, setSession] = useState<SessionState | null>(() => normalizeSession(store.load()));
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [selectedPath, setSelectedPath] = useState("");
+  const [selectedPath, setSelectedPath] = useState("/admin/workbench");
   const [organizations, setOrganizations] = useState<LoginOrganization[]>([]);
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [passwordChangeState, setPasswordChangeState] = useState<ChangeInitialPasswordRequest | null>(null);
+  const [passwordChangeConfirm, setPasswordChangeConfirm] = useState("");
+  const [passwordChanging, setPasswordChanging] = useState(false);
 
   const api = useMemo<AuthApi>(() => {
     if (authApi) {
@@ -117,6 +128,7 @@ export function AdminApp({
     return {
       listLoginOrganizations: () => anonymous.listLoginOrganizations(),
       login: (body) => anonymous.login(body),
+      changeInitialPassword: (body) => anonymous.changeInitialPassword(body),
       logout: async () => true,
       menus: (accessToken) => createApiClient({ baseUrl, accessToken }).menus("admin")
     };
@@ -290,6 +302,18 @@ export function AdminApp({
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [historyApi, session]);
 
+  const currentProfileApi = useMemo<ProfilePanelApi | undefined>(() => {
+    if (profileApi) {
+      return profileApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [profileApi, session]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
@@ -297,29 +321,84 @@ export function AdminApp({
 
     try {
       const result = await api.login(form);
-      const menus = normalizeAdminMenus(await api.menus(result.access_token), result.user.permissions ?? []);
-      const nextSession = {
-        accessToken: result.access_token,
-        refreshToken: result.refresh_token,
-        expiresIn: result.expires_in,
-        menus,
-        user: result.user
-      };
-      store.save(nextSession);
-      setSession(nextSession);
-      setSelectedPath("");
+      await applyLoginResult(result);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "登录失败");
+      if (isPasswordChangeRequired(error)) {
+        setPasswordChangeState({
+          tenant_code: form.tenant_code,
+          username: form.username,
+          old_password: form.password,
+          new_password: ""
+        });
+        setPasswordChangeConfirm("");
+        setErrorMessage("");
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "登录失败");
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleInitialPasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!passwordChangeState) {
+      return;
+    }
+    if (!api.changeInitialPassword) {
+      setErrorMessage("当前接口暂不支持初始密码修改。");
+      return;
+    }
+    if (passwordChangeState.new_password !== passwordChangeConfirm) {
+      setErrorMessage("两次输入的新密码不一致。");
+      return;
+    }
+    if (passwordChangeState.new_password.length < 8 || passwordChangeState.new_password === passwordChangeState.old_password) {
+      setErrorMessage("新密码至少 8 位，且不能与初始密码相同。");
+      return;
+    }
+
+    setPasswordChanging(true);
+    setErrorMessage("");
+    try {
+      await api.changeInitialPassword(passwordChangeState);
+      const result = await api.login({
+        tenant_code: passwordChangeState.tenant_code,
+        username: passwordChangeState.username,
+        password: passwordChangeState.new_password
+      });
+      setPasswordChangeState(null);
+      setPasswordChangeConfirm("");
+      setForm((current) => ({ ...current, password: "" }));
+      await applyLoginResult(result);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "初始密码修改失败");
+    } finally {
+      setPasswordChanging(false);
+    }
+  }
+
+  async function applyLoginResult(result: LoginResponse) {
+    const menus = normalizeAdminMenus(await api.menus(result.access_token));
+    const nextSession = {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      expiresIn: result.expires_in,
+      menus,
+      user: result.user
+    };
+    store.save(nextSession);
+    setSession(nextSession);
+    setSelectedPath("/admin/workbench");
   }
 
   async function handleLogout() {
     await api.logout();
     store.clear();
     setSession(null);
-    setSelectedPath("");
+    setSelectedPath("/admin/workbench");
+    setPasswordChangeState(null);
+    setPasswordChangeConfirm("");
     setForm((current) => ({ ...current, password: "" }));
   }
 
@@ -331,7 +410,11 @@ export function AdminApp({
           <span className="ui-auth-hero__sr">AIOS 管理端登录背景</span>
         </section>
         <section className="ui-auth-card">
-          <form onSubmit={handleSubmit} aria-label="登录表单" className="ui-auth-form">
+          <form
+            onSubmit={(event) => (passwordChangeState ? void handleInitialPasswordChange(event) : void handleSubmit(event))}
+            aria-label="登录表单"
+            className="ui-auth-form"
+          >
             <header className="ui-auth-form__header">
               <img src={brandIcon} alt="" className="ui-brand-mark" />
               <h1>欢迎回来</h1>
@@ -377,29 +460,49 @@ export function AdminApp({
               />
             </div>
             {errorMessage ? <StatusNotice tone="danger" title="登录失败" description={errorMessage} /> : null}
-            <button
-              type="submit"
-              className="ui-button ui-button--primary"
-              disabled={submitting || organizationsLoading || !form.tenant_code}
-            >
-              {submitting ? "登录中..." : "登录"}
-            </button>
-            <footer className="ui-auth-form__footer">
-              <button type="button" className="ui-auth-link">
-                学习端入口
-              </button>
-              <button type="button" className="ui-auth-link">
-                忘记密码？
-              </button>
-            </footer>
+            {passwordChangeState ? (
+              <InitialPasswordChangeFields
+                state={passwordChangeState}
+                confirmPassword={passwordChangeConfirm}
+                submitting={passwordChanging}
+                onStateChange={setPasswordChangeState}
+                onConfirmPasswordChange={setPasswordChangeConfirm}
+                onBack={() => {
+                  setPasswordChangeState(null);
+                  setPasswordChangeConfirm("");
+                  setForm((current) => ({ ...current, password: "" }));
+                  setErrorMessage("");
+                }}
+              />
+            ) : (
+              <>
+                <button
+                  type="submit"
+                  className="ui-button ui-button--primary"
+                  disabled={submitting || organizationsLoading || !form.tenant_code}
+                >
+                  {submitting ? "登录中..." : "登录"}
+                </button>
+                <footer className="ui-auth-form__footer">
+                  <button type="button" className="ui-auth-link">
+                    学习端入口
+                  </button>
+                  <button type="button" className="ui-auth-link">
+                    忘记密码？
+                  </button>
+                </footer>
+              </>
+            )}
           </form>
         </section>
       </main>
     );
   }
 
+  const canOpenSelectedPath = canOpenAdminPath(session.menus, selectedPath);
   const currentView = renderAdminView({
     selectedPath,
+    currentUser: session.user,
     organizationApi,
     currentUserApi,
     currentRbacApi,
@@ -411,6 +514,22 @@ export function AdminApp({
     currentExamApi,
     currentAnalyticsApi,
     currentHistoryApi,
+    currentProfileApi,
+    onUserUpdated: (user) => {
+      if (!session) {
+        return;
+      }
+      const nextSession = {
+        ...session,
+        user: {
+          ...session.user,
+          display_name: user.display_name,
+          must_change_password: user.must_change_password
+        }
+      };
+      store.save(nextSession);
+      setSession(nextSession);
+    },
     onNavigate: setSelectedPath
   });
   const breadcrumb = resolveAdminNavigationBreadcrumb(selectedPath, session.menus);
@@ -445,6 +564,7 @@ export function AdminApp({
             <SidebarUserMenu
               displayName={session.user.display_name}
               userTypeLabel={getUserTypeLabel(session.user.user_type)}
+              onProfile={() => setSelectedPath("/admin/profile")}
               onLogout={handleLogout}
             />
           </>
@@ -463,7 +583,7 @@ export function AdminApp({
         }
       >
         <div className="ui-admin-route">
-          {selectedPath === "" ? (
+          {selectedPath === "" || selectedPath === "/admin/workbench" ? (
             <AdminWorkbench
               analyticsApi={currentAnalyticsApi}
               noticeApi={currentNoticeApi}
@@ -471,8 +591,10 @@ export function AdminApp({
               userDisplayName={session.user.display_name}
               onSelect={setSelectedPath}
             />
-          ) : isKnownAdminPath(selectedPath) ? (
+          ) : isKnownAdminPath(selectedPath) && canOpenSelectedPath ? (
             currentView
+          ) : isKnownAdminPath(selectedPath) ? (
+            <EmptyState title="无权限访问该页面。" description="" />
           ) : (
             <EmptyState title="请选择左侧功能入口。" description="" />
           )}
@@ -484,6 +606,7 @@ export function AdminApp({
 
 interface RenderAdminViewArgs {
   selectedPath: string;
+  currentUser: LoginResponse["user"];
   organizationApi?: OrganizationApi;
   currentUserApi?: UserPanelApi;
   currentRbacApi?: RbacPanelApi;
@@ -495,11 +618,14 @@ interface RenderAdminViewArgs {
   currentExamApi?: ExamPanelApi;
   currentAnalyticsApi?: AnalyticsPanelApi;
   currentHistoryApi?: HistoryPanelApi;
+  currentProfileApi?: ProfilePanelApi;
+  onUserUpdated(user: ManagedUser): void;
   onNavigate(path: string): void;
 }
 
 function renderAdminView({
   selectedPath,
+  currentUser,
   organizationApi,
   currentUserApi,
   currentRbacApi,
@@ -511,6 +637,8 @@ function renderAdminView({
   currentExamApi,
   currentAnalyticsApi,
   currentHistoryApi,
+  currentProfileApi,
+  onUserUpdated,
   onNavigate
 }: RenderAdminViewArgs) {
   return (
@@ -520,8 +648,16 @@ function renderAdminView({
       {selectedPath === "/admin/org/grades" && organizationApi ? <GradeManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/org/classes" && organizationApi ? <ClassManagementPanel api={organizationApi} /> : null}
       {selectedPath === "/admin/courses" && organizationApi ? <CourseManagementPanel api={organizationApi} /> : null}
-      {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} /> : null}
-      {selectedPath === "/admin/roles" && currentRbacApi ? <RbacPanel api={currentRbacApi} /> : null}
+      {selectedPath === "/admin/users" && currentUserApi ? <UserPanel api={currentUserApi} currentUser={currentUser} /> : null}
+      {selectedPath === "/admin/roles" && currentRbacApi ? (
+        <RbacPanel api={currentRbacApi} currentUser={currentUser} title="角色权限" />
+      ) : null}
+      {selectedPath === "/admin/system/config" && currentRbacApi ? (
+        <RbacPanel api={currentRbacApi} currentUser={currentUser} title="系统配置" />
+      ) : null}
+      {selectedPath === "/admin/tenant/roles" && currentRbacApi ? (
+        <RbacPanel api={currentRbacApi} currentUser={currentUser} title="租户角色配置" />
+      ) : null}
       {selectedPath === "/admin/dictionaries" && currentDictionaryApi ? (
         <DictionaryPanel api={currentDictionaryApi} onNavigate={onNavigate} />
       ) : null}
@@ -543,12 +679,16 @@ function renderAdminView({
       {selectedPath === "/admin/challenges" ? <ChallengePanel /> : null}
       {selectedPath === "/admin/analytics" && currentAnalyticsApi ? <AnalyticsPanel api={currentAnalyticsApi} /> : null}
       {selectedPath === "/admin/history" && currentHistoryApi ? <HistoryPanel api={currentHistoryApi} /> : null}
+      {selectedPath === "/admin/profile" && currentProfileApi ? (
+        <ProfilePanel api={currentProfileApi} onUserUpdated={onUserUpdated} />
+      ) : null}
     </>
   );
 }
 
 function isKnownAdminPath(selectedPath: string): boolean {
   return [
+    "/admin/workbench",
     "/admin/org",
     "/admin/org/schools",
     "/admin/org/grades",
@@ -567,8 +707,65 @@ function isKnownAdminPath(selectedPath: string): boolean {
     "/admin/exams/assembly",
     "/admin/challenges",
     "/admin/analytics",
-    "/admin/history"
+    "/admin/history",
+    "/admin/profile",
+    "/admin/system/config",
+    "/admin/tenant/roles"
   ].includes(selectedPath) || selectedPath.startsWith("/admin/dictionaries/");
+}
+
+function isPasswordChangeRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.code === PASSWORD_CHANGE_REQUIRED_CODE;
+}
+
+interface InitialPasswordChangeFieldsProps {
+  state: ChangeInitialPasswordRequest;
+  confirmPassword: string;
+  submitting: boolean;
+  onStateChange(state: ChangeInitialPasswordRequest): void;
+  onConfirmPasswordChange(value: string): void;
+  onBack(): void;
+}
+
+function InitialPasswordChangeFields({
+  state,
+  confirmPassword,
+  submitting,
+  onStateChange,
+  onConfirmPasswordChange,
+  onBack
+}: InitialPasswordChangeFieldsProps) {
+  return (
+    <div className="ui-auth-form__stack" aria-label="初始密码修改">
+      <StatusNotice tone="warning" title="需要修改初始密码" description="当前账号使用一次性密码，修改后才能进入系统。" />
+      <div className="ui-field">
+        <label htmlFor="initial_new_password">新密码</label>
+        <input
+          id="initial_new_password"
+          name="initial_new_password"
+          type="password"
+          value={state.new_password}
+          onChange={(event) => onStateChange({ ...state, new_password: event.target.value })}
+        />
+      </div>
+      <div className="ui-field">
+        <label htmlFor="initial_confirm_password">确认新密码</label>
+        <input
+          id="initial_confirm_password"
+          name="initial_confirm_password"
+          type="password"
+          value={confirmPassword}
+          onChange={(event) => onConfirmPasswordChange(event.target.value)}
+        />
+      </div>
+      <button type="submit" className="ui-button ui-button--primary" disabled={submitting}>
+        {submitting ? "修改中..." : "修改密码并登录"}
+      </button>
+      <button type="button" className="ui-button ui-button--ghost" disabled={submitting} onClick={onBack}>
+        返回登录
+      </button>
+    </div>
+  );
 }
 
 function hasPaperManagementApi(api?: ExamPanelApi): api is ExamPanelApi & PaperManagementApi {
@@ -594,8 +791,10 @@ function getUserTypeLabel(userType: LoginResponse["user"]["user_type"]): string 
   switch (userType) {
     case "sys_admin":
       return "平台管理员";
+    case "tenant_admin":
+      return "租户管理员";
     case "school_admin":
-      return "学校管理员";
+      return "学校/组织管理员";
     case "teacher":
       return "教师";
     case "student":
@@ -651,10 +850,32 @@ function normalizeSession(session: SessionState | null): SessionState | null {
 
   return {
     ...session,
-    menus: normalizeAdminMenus(session.menus, session.user.permissions ?? [])
+    menus: normalizeAdminMenus(session.menus)
   };
 }
 
-function normalizeAdminMenus(menus: MenuItem[], permissions: string[] = []): MenuItem[] {
-  return normalizeAdminNavigationMenus(menus, permissions);
+function normalizeAdminMenus(menus: MenuItem[]): MenuItem[] {
+  return normalizeAdminNavigationMenus(menus);
+}
+
+function canOpenAdminPath(menus: MenuItem[], selectedPath: string): boolean {
+  if (selectedPath === "" || selectedPath === "/admin/workbench" || selectedPath === "/admin/profile") {
+    return true;
+  }
+  if (selectedPath.startsWith("/admin/dictionaries/")) {
+    return hasMenuPath(menus, "/admin/dictionaries");
+  }
+  return hasMenuPath(menus, selectedPath);
+}
+
+function hasMenuPath(menus: MenuItem[], selectedPath: string): boolean {
+  for (const menu of menus) {
+    if (menu.path === selectedPath) {
+      return true;
+    }
+    if (hasMenuPath(menu.children, selectedPath)) {
+      return true;
+    }
+  }
+  return false;
 }

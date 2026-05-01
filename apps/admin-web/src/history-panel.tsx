@@ -31,6 +31,7 @@ const defaultAssignmentForm = {
   teacher_id: "",
   class_id: "",
   course_id: "",
+  assignment_type: "course_teacher",
   change_type: "assign",
   effective_at: ""
 };
@@ -118,7 +119,8 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
       await api.createTeacherAssignmentChange({
         teacher_id: Number(assignmentForm.teacher_id),
         class_id: Number(assignmentForm.class_id),
-        course_id: Number(assignmentForm.course_id),
+        course_id: assignmentForm.assignment_type === "course_teacher" ? Number(assignmentForm.course_id) : undefined,
+        assignment_type: assignmentForm.assignment_type,
         change_type: assignmentForm.change_type,
         effective_at: normalizeDateTimeValue(assignmentForm.effective_at) ?? assignmentForm.effective_at
       });
@@ -241,10 +243,28 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
                   />
                 </div>
                 <div className="ui-admin-form__field">
+                  <label htmlFor="assignment_type">教师角色</label>
+                  <select
+                    id="assignment_type"
+                    value={assignmentForm.assignment_type}
+                    onChange={(event) =>
+                      setAssignmentForm((current) => ({
+                        ...current,
+                        assignment_type: event.target.value,
+                        course_id: event.target.value === "head_teacher" ? "" : current.course_id
+                      }))
+                    }
+                  >
+                    <option value="course_teacher">课程老师</option>
+                    <option value="head_teacher">班主任</option>
+                  </select>
+                </div>
+                <div className="ui-admin-form__field">
                   <label htmlFor="assignment_course_id">课程 ID</label>
                   <input
                     id="assignment_course_id"
                     value={assignmentForm.course_id}
+                    disabled={assignmentForm.assignment_type === "head_teacher"}
                     onChange={(event) => setAssignmentForm((current) => ({ ...current, course_id: event.target.value }))}
                   />
                 </div>
@@ -332,9 +352,9 @@ export function HistoryPanel({ api }: { api: HistoryPanelApi }) {
                     ))}
                     {teacherAssignments.map((item) => (
                       <tr key={`assignment-${item.id}`}>
-                        <td>任课变更</td>
+                        <td>{item.assignment_type === "head_teacher" ? "班主任变更" : "任课变更"}</td>
                         <td>{item.teacher_id}</td>
-                        <td>{`${item.class_id} / ${item.course_id}`}</td>
+                        <td>{item.course_id ? `${item.class_id} / ${item.course_id}` : `${item.class_id} / 全班`}</td>
                         <td>{item.change_type}</td>
                       </tr>
                     ))}

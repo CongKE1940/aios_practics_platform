@@ -58,7 +58,7 @@ describe("AdminApp", () => {
               name: "组织管理",
               path: "/admin/org",
               children: [
-                { id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] },
+                { id: 11, name: "学校管理", path: "/admin/org/schools", children: [] },
                 { id: 12, name: "年级管理", path: "/admin/org/grades", children: [] }
               ]
             },
@@ -87,14 +87,15 @@ describe("AdminApp", () => {
       expect(screen.getAllByText("系统管理员").length).toBeGreaterThan(0);
     });
     expect(sessionStore.savedSession?.user.display_name).toBe("系统管理员");
-    expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+    openAdminUserMenu();
+    expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeTruthy();
     expect(screen.getByText("智慧教育平台")).toBeTruthy();
     expect(screen.getByLabelText("管理菜单")).toBeTruthy();
     expect(screen.getByRole("button", { name: "组织管理" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "学校与组织管理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "学校管理" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "公告通知" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "工作台" })).toBeTruthy();
-    expect(screen.getByText("待处理事项")).toBeTruthy();
+    expect(screen.getByText("成员数")).toBeTruthy();
   });
 
   it("returns to login form after logout", async () => {
@@ -123,7 +124,7 @@ describe("AdminApp", () => {
               id: 1,
               name: "组织管理",
               path: "/admin/org",
-              children: [{ id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] }]
+              children: [{ id: 11, name: "学校管理", path: "/admin/org/schools", children: [] }]
             }
           ]
         }}
@@ -139,10 +140,11 @@ describe("AdminApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "系统管理员账号菜单" })).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    openAdminUserMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "登录" })).toBeTruthy();
@@ -162,7 +164,7 @@ describe("AdminApp", () => {
               id: 1,
               name: "组织管理",
               path: "/admin/org",
-              children: [{ id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] }]
+              children: [{ id: 11, name: "学校管理", path: "/admin/org/schools", children: [] }]
             }
           ],
           user: {
@@ -179,7 +181,7 @@ describe("AdminApp", () => {
 
     expect(screen.getAllByText("系统管理员").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "组织管理" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "学校与组织管理" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "学校管理" })).toBeTruthy();
   });
 
   it("opens school organization panel after selecting organization submenu", async () => {
@@ -213,7 +215,7 @@ describe("AdminApp", () => {
               id: 1,
               name: "组织管理",
               path: "/admin/org",
-              children: [{ id: 11, name: "学校与组织管理", path: "/admin/org/schools", children: [] }]
+              children: [{ id: 11, name: "学校管理", path: "/admin/org/schools", children: [] }]
             }
           ],
           user: {
@@ -228,7 +230,7 @@ describe("AdminApp", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "学校与组织管理" }));
+    fireEvent.click(screen.getByRole("button", { name: "学校管理" }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "学校与组织管理" })).toBeTruthy();
@@ -546,7 +548,7 @@ describe("AdminApp", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "题目管理" })).toBeTruthy();
     });
-    expect(screen.getAllByText("single_choice").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("单选题").length).toBeGreaterThan(0);
   });
 
   it("opens import panel after selecting import menu", async () => {
@@ -771,6 +773,7 @@ describe("AdminApp", () => {
                 teacher_id: 701,
                 class_id: 301,
                 course_id: 10,
+                assignment_type: "course_teacher",
                 change_type: "assign",
                 effective_from: "2026-04-23T11:00:00+08:00",
                 operator_id: 1,
@@ -787,6 +790,7 @@ describe("AdminApp", () => {
             teacher_id: body.teacher_id,
             class_id: body.class_id,
             course_id: body.course_id,
+            assignment_type: body.assignment_type ?? "course_teacher",
             change_type: body.change_type,
             effective_from: body.effective_at,
             operator_id: 1,
@@ -1008,6 +1012,111 @@ describe("AdminApp", () => {
     expect(screen.getAllByText("学校审核员").length).toBeGreaterThan(0);
   });
 
+  it("uses backend returned menus instead of local permission fallbacks", () => {
+    render(
+      <AdminApp
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [{ id: 1, name: "工作台", path: "/admin/workbench", children: [] }],
+          user: {
+            id: 1,
+            tenant_id: 1,
+            display_name: "系统管理员",
+            user_type: "sys_admin",
+            roles: ["sys_admin"],
+            permissions: ["org:manage", "user:manage", "tenant:manage"]
+          }
+        })}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "工作台" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "组织管理" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "用户管理" })).toBeNull();
+  });
+
+  it("opens tenant role config page for tenant administrators", async () => {
+    render(
+      <AdminApp
+        rbacApi={{
+          listRoles: async () => ({
+            items: [
+              {
+                id: 3,
+                tenant_id: 2,
+                code: "org_operator",
+                name: "学校/组织协管员",
+                role_type: "custom",
+                data_scope_type: "tenant",
+                status: "active",
+                permission_ids: [1]
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          }),
+          createRole: async (body) => ({ id: 4, tenant_id: 2, status: "active", permission_ids: [], ...body }),
+          assignRolePermissions: async (id, body) => ({
+            id,
+            tenant_id: 2,
+            code: "org_operator",
+            name: "学校/组织协管员",
+            role_type: "custom",
+            data_scope_type: "tenant",
+            status: "active",
+            permission_ids: body.permission_ids
+          }),
+          listPermissions: async () => ({
+            items: [
+              {
+                id: 1,
+                code: "user:manage",
+                module: "user",
+                action_name: "manage",
+                resource_type: "user",
+                name: "用户管理"
+              }
+            ],
+            page: 1,
+            page_size: 20,
+            total: 1
+          })
+        }}
+        sessionStore={createMemorySessionStore({
+          accessToken: "access_token",
+          refreshToken: "refresh_token",
+          expiresIn: 7200,
+          menus: [
+            {
+              id: 5,
+              name: "配置中心",
+              path: "/admin/config",
+              children: [{ id: 54, name: "租户角色配置", path: "/admin/tenant/roles", children: [] }]
+            }
+          ],
+          user: {
+            id: 2,
+            tenant_id: 2,
+            display_name: "租户管理员",
+            user_type: "tenant_admin",
+            roles: ["tenant_admin"],
+            permissions: ["tenant:manage"]
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "租户角色配置" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "租户角色配置" })).toBeTruthy();
+    });
+    expect(screen.getAllByText("学校/组织协管员").length).toBeGreaterThan(0);
+  });
+
   it("opens exam panel after selecting exam menu", async () => {
     render(
       <AdminApp
@@ -1149,7 +1258,6 @@ describe("AdminApp", () => {
       expect(screen.getByRole("heading", { name: "考试管理" })).toBeTruthy();
     });
     expect(screen.getAllByText("期中考试").length).toBeGreaterThan(0);
-    expect(screen.getByText("成绩概览")).toBeTruthy();
   });
 
   it("opens challenge panel after selecting challenge menu", async () => {
@@ -1208,6 +1316,10 @@ function createMemorySessionStore(initialSession: SessionState | null = null): S
       savedSession = null;
     }
   };
+}
+
+function openAdminUserMenu(displayName = "系统管理员") {
+  fireEvent.click(screen.getByRole("button", { name: `${displayName}账号菜单` }));
 }
 
 function createLoginOrganizations() {

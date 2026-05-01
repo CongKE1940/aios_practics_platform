@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
 import type {
+  CurrentUser,
   PageResult,
   PermissionItem,
   PermissionListQuery,
@@ -15,6 +16,7 @@ import {
   type FixedActionListColumn,
   type FixedActionListRowId
 } from "@aios/ui-web";
+import { canAccess } from "@aios/shared-utils";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -42,7 +44,7 @@ type ModalState =
   | { type: "edit"; role: RoleItem }
   | null;
 
-export function RbacPanel({ api }: { api: RbacPanelApi }) {
+export function RbacPanel({ api, currentUser, title = "角色权限" }: { api: RbacPanelApi; currentUser?: CurrentUser; title?: string }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -58,20 +60,35 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
   const [modal, setModal] = useState<ModalState>(null);
   const didLoadRef = useRef(false);
 
+  const currentPermissions = useMemo(() => getEffectivePermissions(currentUser), [currentUser]);
+  const currentPermissionSet = useMemo(() => new Set(currentPermissions), [currentPermissions]);
+  const canConfigureRoles = canAccess(currentPermissions, ["tenant:manage"]);
+  const canManageSystemConfig = canAccess(currentPermissions, ["system:manage"]);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const permissionNameMap = useMemo(() => new Map(permissions.map((permission) => [permission.id, permission.name])), [permissions]);
+  const visiblePermissions = useMemo(
+    () =>
+      permissions.filter(
+        (permission) => canManageSystemConfig || canAssignPermissionWithinSelf(permission, currentPermissionSet)
+      ),
+    [canManageSystemConfig, currentPermissionSet, permissions]
+  );
+  const assignablePermissionIDSet = useMemo(
+    () => new Set(visiblePermissions.map((permission) => permission.id)),
+    [visiblePermissions]
+  );
   const groupedModules = useMemo(() => {
     const map = new Map<string, PermissionItem[]>();
-    for (const permission of permissions) {
+    for (const permission of visiblePermissions) {
       const current = map.get(permission.module) ?? [];
       current.push(permission);
       map.set(permission.module, current);
     }
     return Array.from(map.entries());
-  }, [permissions]);
+  }, [visiblePermissions]);
   const modulePermissions = useMemo(
-    () => permissions.filter((permission) => !selectedModule || permission.module === selectedModule),
-    [permissions, selectedModule]
+    () => visiblePermissions.filter((permission) => !selectedModule || permission.module === selectedModule),
+    [visiblePermissions, selectedModule]
   );
   const columns = useMemo<Array<FixedActionListColumn<RoleItem>>>(
     () => [
@@ -190,11 +207,12 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
   }
 
   async function handleAssignRolePermissions(roleID: number, permissionIDs: number[]) {
-    await api.assignRolePermissions(roleID, { permission_ids: permissionIDs });
-    const updatedRoles = roles.map((role) => (role.id === roleID ? { ...role, permission_ids: permissionIDs } : role));
+    const nextPermissionIDs = normalizeAssignablePermissionIDs(permissionIDs);
+    await api.assignRolePermissions(roleID, { permission_ids: nextPermissionIDs });
+    const updatedRoles = roles.map((role) => (role.id === roleID ? { ...role, permission_ids: nextPermissionIDs } : role));
     setRoles(updatedRoles);
     if (modal?.type === "detail" && modal.role.id === roleID) {
-      setModal({ type: "detail", role: { ...modal.role, permission_ids: permissionIDs } });
+      setModal({ type: "detail", role: { ...modal.role, permission_ids: nextPermissionIDs } });
     }
     await loadAll();
   }
@@ -212,7 +230,7 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
   }
 
   function openDetailModal(role: RoleItem) {
-    setSelectedPermissionIDs(role.permission_ids ?? []);
+    setSelectedPermissionIDs(normalizeAssignablePermissionIDs(role.permission_ids ?? []));
     setModal({ type: "detail", role });
   }
 
@@ -224,8 +242,15 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
       data_scope_type: role.data_scope_type,
       remark: role.remark ?? ""
     });
-    setSelectedPermissionIDs(role.permission_ids ?? []);
+    setSelectedPermissionIDs(normalizeAssignablePermissionIDs(role.permission_ids ?? []));
     setModal({ type: "edit", role });
+  }
+
+  function normalizeAssignablePermissionIDs(permissionIDs: number[]): number[] {
+    if (canManageSystemConfig) {
+      return permissionIDs;
+    }
+    return permissionIDs.filter((permissionID) => assignablePermissionIDSet.has(permissionID));
   }
 
   function closeModal() {
@@ -259,6 +284,7 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
 
   return (
     <section aria-label="角色权限面板" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>{title}</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="角色权限数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
@@ -289,6 +315,9 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
           onExport={handleExport}
           onDetail={openDetailModal}
           onEdit={openEditModal}
+          permissions={currentPermissions}
+          createRequiredPermissions={["tenant:manage"]}
+          editRequiredPermissions={["tenant:manage"]}
           currentPage={page}
           pageCount={pageCount}
           total={total}
@@ -374,6 +403,7 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
                               className="ui-admin-table__checkbox"
                               aria-label={`权限-${permission.id}`}
                               checked={selectedPermissionIDs.includes(permission.id)}
+                              disabled={!canConfigureRoles}
                               onChange={() => togglePermission(permission.id)}
                             />
                           </td>
@@ -392,23 +422,27 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
                 </div>
                 <div className="ui-admin-modal__footer">
                   <div className="ui-admin-actions-bar__group">
-                    <button
-                      type="button"
-                      className="ui-button ui-button--ghost"
-                      onClick={() => void handleAssignRolePermissions(modal.role.id, permissions.map((item) => item.id))}
-                    >
-                      授予全部权限
-                    </button>
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => openEditModal(modal.role)}>
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      className="ui-button ui-button--primary"
-                      onClick={() => void handleAssignRolePermissions(modal.role.id, selectedPermissionIDs)}
-                    >
-                      保存授权
-                    </button>
+                    {canConfigureRoles ? (
+                      <>
+                        <button
+                          type="button"
+                          className="ui-button ui-button--ghost"
+                          onClick={() => void handleAssignRolePermissions(modal.role.id, visiblePermissions.map((item) => item.id))}
+                        >
+                          授予全部权限
+                        </button>
+                        <button type="button" className="ui-button ui-button--ghost" onClick={() => openEditModal(modal.role)}>
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="ui-button ui-button--primary"
+                          onClick={() => void handleAssignRolePermissions(modal.role.id, selectedPermissionIDs)}
+                        >
+                          保存授权
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </>
@@ -449,7 +483,7 @@ export function RbacPanel({ api }: { api: RbacPanelApi }) {
                           onChange={(event) => setForm((current) => ({ ...current, role_type: event.target.value }))}
                         >
                           <option value="custom">自定义</option>
-                          <option value="system">系统角色</option>
+                          {canManageSystemConfig ? <option value="system">系统角色</option> : null}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -580,9 +614,43 @@ function formatStatusLabel(status: string): string {
   }
 }
 
+function getEffectivePermissions(user?: CurrentUser): string[] {
+  if (!user) {
+    return ["system:manage"];
+  }
+  const permissions = [...(user.permissions ?? [])];
+  if (user.user_type === "sys_admin" && !permissions.includes("system:manage")) {
+    permissions.push("system:manage");
+  }
+  return permissions;
+}
+
+function canAssignPermissionWithinSelf(permission: PermissionItem, currentPermissionSet: Set<string>): boolean {
+  return currentPermissionSet.has(permission.code) && !isPermissionManagementPermission(permission);
+}
+
+function isPermissionManagementPermission(permission: PermissionItem): boolean {
+  if (permission.code === "system:manage" || permission.code === "tenant:manage" || permission.code === "role:manage") {
+    return true;
+  }
+  return permission.module === "role" || permission.module === "permission" || permission.module === "menu";
+}
+
 const pageStyle: CSSProperties = {
   minHeight: "100%",
   gap: 0
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {

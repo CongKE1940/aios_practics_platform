@@ -65,6 +65,18 @@ const emptyStats: WorkbenchStats = {
   noticeUnreadCount: 0
 };
 
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
+};
+
 export function AdminWorkbench({
   analyticsApi,
   examApi,
@@ -129,6 +141,7 @@ export function AdminWorkbench({
 
   return (
     <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin" style={workbenchStyle} aria-busy={loading}>
+      <h2 style={visuallyHiddenStyle}>工作台</h2>
       <div className="ui-stat-grid" style={statGridStyle}>
         {cards.map((card) => (
           <article key={card.title} className="ui-stat-card" style={statCardStyle}>

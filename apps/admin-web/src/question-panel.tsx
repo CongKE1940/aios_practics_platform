@@ -327,6 +327,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
   return (
     <section aria-label="题目管理面板" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>题目管理</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="题目数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
@@ -842,6 +843,18 @@ function formatDateTime(value?: string | null): string {
 const pageStyle: CSSProperties = {
   minHeight: "100%",
   gap: 0
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {

@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
-import type { ManagedUser, ManagedUserInput, ManagedUserListQuery, PageResult, RoleItem, RoleListQuery } from "@aios/api-sdk";
+import type {
+  CurrentUser,
+  ManagedUser,
+  ManagedUserInput,
+  ManagedUserListQuery,
+  PageResult,
+  RoleItem,
+  RoleListQuery
+} from "@aios/api-sdk";
 import {
   ClearableFilterInput,
   ClearableFilterSelect,
@@ -9,6 +17,7 @@ import {
   type FixedActionListColumn,
   type FixedActionListRowId
 } from "@aios/ui-web";
+import { canAccess } from "@aios/shared-utils";
 
 import { downloadCsv } from "./list-page-utils";
 
@@ -19,6 +28,7 @@ export interface UserPanelApi {
   disableUser(id: number): Promise<ManagedUser>;
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   updateUser?(id: number, body: ManagedUserInput): Promise<ManagedUser>;
+  resetUserPassword?(id: number): Promise<ManagedUser>;
 }
 
 const defaultPageSize = 10;
@@ -29,7 +39,6 @@ const defaultForm = {
   user_type: "teacher",
   phone: "",
   email: "",
-  password: "",
   role_id: ""
 };
 
@@ -41,7 +50,7 @@ type ModalState =
   | { type: "edit"; user: ManagedUser }
   | null;
 
-export function UserPanel({ api }: { api: UserPanelApi }) {
+export function UserPanel({ api, currentUser }: { api: UserPanelApi; currentUser?: CurrentUser }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -54,9 +63,18 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [total, setTotal] = useState(0);
+  const [notice, setNotice] = useState<{ tone: "success" | "danger"; title: string; description: string } | null>(null);
   const didLoadRef = useRef(false);
 
+  const currentPermissions = useMemo(() => getEffectivePermissions(currentUser), [currentUser]);
+  const canManageUsers = canAccess(currentPermissions, ["user:manage"]);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const canManagePrivilegedUsers = isPrivilegedUserManager(currentUser);
+  const userTypeOptions = useMemo(() => getUserTypeOptions(canManagePrivilegedUsers), [canManagePrivilegedUsers]);
+  const assignableRoles = useMemo(
+    () => roles.filter((role) => canManagePrivilegedUsers || !isPrivilegedRoleCode(role.code)),
+    [canManagePrivilegedUsers, roles]
+  );
   const roleMap = useMemo(() => new Map(roles.map((role) => [role.id, role.name])), [roles]);
   const columns = useMemo<Array<FixedActionListColumn<ManagedUser>>>(
     () => [
@@ -104,6 +122,16 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
     void loadAll(buildUserQuery("", "", 1, defaultPageSize));
   }, [api]);
 
+  useEffect(() => {
+    const allowedTypes = new Set(userTypeOptions.map((option) => option.value));
+    if (userTypeFilter && !allowedTypes.has(userTypeFilter)) {
+      setUserTypeFilter("");
+    }
+    if (!allowedTypes.has(form.user_type)) {
+      setForm((current) => ({ ...current, user_type: userTypeOptions[0]?.value ?? "teacher" }));
+    }
+  }, [form.user_type, userTypeFilter, userTypeOptions]);
+
   async function loadAll(query: ManagedUserListQuery = buildUserQuery(keyword, userTypeFilter, page, pageSize)) {
     setLoading(true);
     setErrorMessage("");
@@ -148,20 +176,26 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const body = buildUserPayload(form, modal?.type === "edit");
+    const body = buildUserPayload(form);
 
-    if (modal?.type === "edit") {
-      if (!api.updateUser) {
-        setErrorMessage("当前接口暂不支持编辑用户。 ");
-        return;
+    try {
+      if (modal?.type === "edit") {
+        if (!api.updateUser) {
+          setErrorMessage("当前接口暂不支持编辑用户。 ");
+          return;
+        }
+        await api.updateUser(modal.user.id, body);
+        setNotice({ tone: "success", title: "用户已保存", description: "用户基础信息已更新。" });
+      } else {
+        const created = await api.createUser(body);
+        setNotice(buildInitialPasswordNotice("用户已创建", created));
       }
-      await api.updateUser(modal.user.id, body);
-    } else {
-      await api.createUser(body);
-    }
 
-    closeModal();
-    await loadAll();
+      closeModal();
+      await loadAll();
+    } catch (error) {
+      setNotice({ tone: "danger", title: "保存失败", description: error instanceof Error ? error.message : "用户保存失败" });
+    }
   }
 
   async function handleAssignRoles(userID: number, roleID: string) {
@@ -185,6 +219,21 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
     await api.disableUser(user.id);
     closeModal();
     await loadAll();
+  }
+
+  async function handleResetPassword(user: ManagedUser) {
+    if (!api.resetUserPassword) {
+      setErrorMessage("当前接口暂不支持重置密码。");
+      return;
+    }
+    try {
+      const updated = await api.resetUserPassword(user.id);
+      setModal({ type: "detail", user: updated });
+      setNotice(buildInitialPasswordNotice("密码已重置", updated));
+      await loadAll();
+    } catch (error) {
+      setNotice({ tone: "danger", title: "重置失败", description: error instanceof Error ? error.message : "密码重置失败" });
+    }
   }
 
   function handleExport() {
@@ -222,7 +271,6 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
       user_type: user.user_type,
       phone: user.phone ?? "",
       email: user.email ?? "",
-      password: "",
       role_id: user.role_ids?.[0] ? String(user.role_ids[0]) : ""
     });
     setModal({ type: "edit", user });
@@ -235,8 +283,18 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
 
   return (
     <section aria-label="用户管理面板" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>用户管理</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="用户数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
+      ) : null}
+      {notice ? (
+        <ToastNotice
+          tone={notice.tone}
+          title={notice.title}
+          description={notice.description}
+          durationMs={notice.tone === "success" && notice.description.includes("一次性密码") ? 0 : 3200}
+          onClose={() => setNotice(null)}
+        />
       ) : null}
 
       <section className="ui-admin-card" aria-label="用户数据展示区" style={dataRegionStyle} aria-busy={loading}>
@@ -249,11 +307,11 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
             value={userTypeFilter}
             onChange={setUserTypeFilter}
           >
-              <option value="sys_admin">平台管理员</option>
-              <option value="school_admin">学校管理员</option>
-              <option value="teacher">教师</option>
-              <option value="student">学生</option>
-              <option value="staff">职员</option>
+            {userTypeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
@@ -276,6 +334,10 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
           onExport={handleExport}
           onDetail={(user) => setModal({ type: "detail", user })}
           onEdit={openEditModal}
+          permissions={currentPermissions}
+          createRequiredPermissions={["user:manage"]}
+          deleteRequiredPermissions={["user:manage"]}
+          editRequiredPermissions={["user:manage"]}
           currentPage={page}
           pageCount={pageCount}
           total={total}
@@ -283,7 +345,7 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
           minHeight="100%"
           emptyText={loading ? "数据加载中..." : "暂无用户数据"}
           ariaLabel="用户列表"
-          createLabel="新增"
+          createLabel="新增用户"
           deleteLabel="删除"
           exportLabel="导出"
           rowCheckboxLabel={(user) => `选择用户-${user.username}`}
@@ -323,6 +385,10 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                       <dd>{formatStatusLabel(modal.user.status)}</dd>
                     </div>
                     <div>
+                      <dt>密码状态</dt>
+                      <dd>{modal.user.must_change_password ? "待用户修改一次性密码" : "正常"}</dd>
+                    </div>
+                    <div>
                       <dt>手机号</dt>
                       <dd>{modal.user.phone || "-"}</dd>
                     </div>
@@ -338,19 +404,30 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                 </div>
                 <div className="ui-admin-modal__footer">
                   <div className="ui-admin-actions-bar__group">
-                    <button
-                      type="button"
-                      className="ui-button ui-button--ghost"
-                      onClick={() => void handleAssignRoles(modal.user.id, String(modal.user.role_ids?.[0] ?? ""))}
-                    >
-                      同步角色
-                    </button>
-                    <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDeleteOne(modal.user)}>
-                      删除用户
-                    </button>
-                    <button type="button" className="ui-button ui-button--primary" onClick={() => openEditModal(modal.user)}>
-                      编辑
-                    </button>
+                    {canManageUsers ? (
+                      <>
+                        <button
+                          type="button"
+                          className="ui-button ui-button--ghost"
+                          onClick={() => void handleAssignRoles(modal.user.id, String(modal.user.role_ids?.[0] ?? ""))}
+                        >
+                          同步角色
+                        </button>
+                        <button
+                          type="button"
+                          className="ui-button ui-button--ghost"
+                          onClick={() => void handleResetPassword(modal.user)}
+                        >
+                          重置密码
+                        </button>
+                        <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleDeleteOne(modal.user)}>
+                          删除用户
+                        </button>
+                        <button type="button" className="ui-button ui-button--primary" onClick={() => openEditModal(modal.user)}>
+                          编辑
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </>
@@ -390,11 +467,11 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                           value={form.user_type}
                           onChange={(event) => setForm((current) => ({ ...current, user_type: event.target.value }))}
                         >
-                          <option value="sys_admin">平台管理员</option>
-                          <option value="school_admin">学校管理员</option>
-                          <option value="teacher">教师</option>
-                          <option value="student">学生</option>
-                          <option value="staff">职员</option>
+                          {userTypeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -414,16 +491,6 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                           onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                         />
                       </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="managed_password">{modal.type === "create" ? "初始密码" : "新密码"}</label>
-                        <input
-                          id="managed_password"
-                          type="password"
-                          value={form.password}
-                          placeholder={modal.type === "edit" ? "不修改则留空" : "请输入初始密码"}
-                          onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-                        />
-                      </div>
                       <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                         <label htmlFor="managed_default_role">默认角色</label>
                         <select
@@ -432,7 +499,7 @@ export function UserPanel({ api }: { api: UserPanelApi }) {
                           onChange={(event) => setForm((current) => ({ ...current, role_id: event.target.value }))}
                         >
                           <option value="">请选择角色</option>
-                          {roles.map((role) => (
+                          {assignableRoles.map((role) => (
                             <option key={role.id} value={role.id}>
                               {role.name}
                             </option>
@@ -468,15 +535,23 @@ function buildUserQuery(keyword: string, userType: string, page: number, pageSiz
   };
 }
 
-function buildUserPayload(form: UserFormState, isEdit: boolean): ManagedUserInput {
+function buildUserPayload(form: UserFormState): ManagedUserInput {
   return {
     username: form.username,
     display_name: form.display_name,
     user_type: form.user_type,
     phone: form.phone || undefined,
     email: form.email || undefined,
-    password: isEdit ? form.password || undefined : form.password,
     role_ids: form.role_id ? [Number(form.role_id)] : []
+  };
+}
+
+function buildInitialPasswordNotice(title: string, user: ManagedUser): { tone: "success"; title: string; description: string } {
+  const password = user.initial_password || "请从后端响应中查看";
+  return {
+    tone: "success",
+    title,
+    description: `系统已生成随机一次性密码：${password}。用户首次登录必须修改密码。`
   };
 }
 
@@ -494,8 +569,10 @@ function formatUserType(userType: string): string {
   switch (userType) {
     case "sys_admin":
       return "平台管理员";
+    case "tenant_admin":
+      return "租户管理员";
     case "school_admin":
-      return "学校管理员";
+      return "学校/组织管理员";
     case "teacher":
       return "教师";
     case "student":
@@ -505,6 +582,45 @@ function formatUserType(userType: string): string {
     default:
       return userType;
   }
+}
+
+function getUserTypeOptions(canManagePrivilegedUsers: boolean): Array<{ value: string; label: string }> {
+  const baseOptions = [
+    { value: "teacher", label: "教师" },
+    { value: "student", label: "学生" },
+    { value: "staff", label: "职员" }
+  ];
+  if (!canManagePrivilegedUsers) {
+    return baseOptions;
+  }
+  return [
+    { value: "sys_admin", label: "平台管理员" },
+    { value: "tenant_admin", label: "租户管理员" },
+    { value: "school_admin", label: "学校/组织管理员" },
+    ...baseOptions
+  ];
+}
+
+function isPrivilegedUserManager(user?: CurrentUser): boolean {
+  if (!user) {
+    return true;
+  }
+  return user.user_type === "sys_admin" || (user.permissions ?? []).some((permission) => permission === "system:manage" || permission === "tenant:manage");
+}
+
+function isPrivilegedRoleCode(roleCode: string): boolean {
+  return roleCode === "sys_admin" || roleCode === "school_admin" || roleCode === "tenant_admin";
+}
+
+function getEffectivePermissions(user?: CurrentUser): string[] {
+  if (!user) {
+    return ["system:manage"];
+  }
+  const permissions = [...(user.permissions ?? [])];
+  if (user.user_type === "sys_admin" && !permissions.includes("system:manage")) {
+    permissions.push("system:manage");
+  }
+  return permissions;
 }
 
 function formatStatusLabel(status: string): string {
@@ -543,6 +659,18 @@ function formatRoleNames(roleIDs: number[] | undefined, roleMap: Map<number, str
 const pageStyle: CSSProperties = {
   minHeight: "100%",
   gap: 0
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {

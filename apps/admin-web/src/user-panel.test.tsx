@@ -72,6 +72,8 @@ describe("UserPanel", () => {
       display_name: "张老师",
       user_type: "teacher",
       status: "active",
+      initial_password: "Rand@123456",
+      must_change_password: true,
       role_ids: [3]
     });
     const assignUserRoles = vi.fn<UserPanelApi["assignUserRoles"]>().mockResolvedValue({
@@ -115,7 +117,6 @@ describe("UserPanel", () => {
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "teacher001" } });
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "张老师" } });
     fireEvent.change(screen.getAllByLabelText("用户类型")[1], { target: { value: "teacher" } });
-    fireEvent.change(screen.getByLabelText("初始密码"), { target: { value: "Init@123456" } });
     fireEvent.change(screen.getByLabelText("默认角色"), { target: { value: "3" } });
     fireEvent.click(screen.getAllByRole("button", { name: "新增用户" })[1]);
 
@@ -123,6 +124,7 @@ describe("UserPanel", () => {
       expect(createUser).toHaveBeenCalledTimes(1);
       expect(listUsers).toHaveBeenCalledTimes(2);
     });
+    expect(screen.getByText(/系统已生成随机一次性密码/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "详情" }));
     fireEvent.click(screen.getByRole("button", { name: "同步角色" }));
@@ -130,6 +132,53 @@ describe("UserPanel", () => {
     await waitFor(() => {
       expect(assignUserRoles).toHaveBeenCalledWith(7, { role_ids: [3] });
     });
+  });
+
+  it("hides privileged user types and roles for organization admins", async () => {
+    render(
+      <UserPanel
+        currentUser={{
+          id: 1,
+          tenant_id: 1,
+          display_name: "组织管理员",
+          user_type: "school_admin",
+          roles: ["school_admin"],
+          permissions: ["user:manage"]
+        }}
+        api={createUserPanelApi({
+          roles: [
+            {
+              id: 3,
+              tenant_id: 1,
+              code: "org_operator",
+              name: "学校/组织协管员",
+              role_type: "builtin",
+              data_scope_type: "tenant",
+              status: "active"
+            },
+            {
+              id: 4,
+              tenant_id: 1,
+              code: "school_admin",
+              name: "学校/组织管理员",
+              role_type: "builtin",
+              data_scope_type: "tenant",
+              status: "active"
+            }
+          ]
+        })}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "用户管理" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "新增用户" }));
+
+    expect(screen.queryByRole("option", { name: "平台管理员" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "学校/组织管理员" })).toBeNull();
+    expect(screen.getByRole("option", { name: "学校/组织协管员" })).toBeTruthy();
   });
 });
 
