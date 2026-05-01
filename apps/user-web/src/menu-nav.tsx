@@ -63,7 +63,7 @@ function MenuNode({ menu, selectedPath, onSelect, depth = 0 }: MenuNodeProps) {
             .filter(Boolean)
             .join(" ")}
           aria-expanded={open}
-          aria-pressed={isActive}
+          aria-pressed={isActive || isTrailActive}
           onClick={() => {
             setOpen((current) => !current);
             if (!open && nextSelectedPath && !isTrailActive) {

@@ -238,6 +238,7 @@ export function CourseOverviewPage({ api, menus, userType, onNavigate }: CourseO
 
   return (
     <section aria-label="我的课程页" className="ui-admin-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>我的课程</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="课程数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
@@ -336,13 +337,13 @@ export function CourseOverviewPage({ api, menus, userType, onNavigate }: CourseO
                         {userType === "teacher" ? "进入考试管理" : "进入考试"}
                       </button>
                     ) : null}
-                    {userType === "teacher" && entryPaths.teacherBanks ? (
+                    {(userType === "teacher" || userType === "student") && entryPaths.teacherBanks ? (
                       <button
                         type="button"
                         className="ui-button ui-button--ghost"
                         onClick={() => onNavigate(entryPaths.teacherBanks!)}
                       >
-                        进入老师题库
+                        进入我的题库
                       </button>
                     ) : null}
                     {api.updateCourse ? (
@@ -544,6 +545,18 @@ function escapeCsvValue(value: string): string {
 const pageStyle: CSSProperties = {
   minHeight: "100%",
   gap: 0
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {

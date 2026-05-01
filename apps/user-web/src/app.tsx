@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import {
+  ApiError,
+  PASSWORD_CHANGE_REQUIRED_CODE,
   createApiClient,
+  type ChangeInitialPasswordRequest,
   type LoginOrganization,
   type LoginRequest,
+  type LoginResponse,
+  type ManagedUser,
   type MenuItem,
   type PracticeSessionDetail
 } from "@aios/api-sdk";
@@ -41,6 +46,7 @@ import { StudentExamPage, type StudentExamApi } from "./student-exam-page";
 import { TeacherQuestionBankPage, type TeacherQuestionBankApi } from "./teacher-question-bank-page";
 import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
 import { UserWorkbenchPage } from "./user-workbench-page";
+import { ProfilePage, type UserProfileApi } from "./profile-page";
 
 type UserPracticeApi = PracticePanelApi &
   PracticeReviewApi &
@@ -53,7 +59,8 @@ type UserPracticeApi = PracticePanelApi &
   Partial<StudentPracticeSessionDetailApi> &
   Partial<StudentPracticeSessionQuestionDetailApi> &
   Partial<StudentExamApi> &
-  Partial<TeacherExamApi>;
+  Partial<TeacherExamApi> &
+  Partial<UserProfileApi>;
 
 interface UserAppProps {
   authApi?: UserAuthApi;
@@ -73,6 +80,9 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [passwordChangeState, setPasswordChangeState] = useState<ChangeInitialPasswordRequest | null>(null);
+  const [passwordChangeConfirm, setPasswordChangeConfirm] = useState("");
+  const [passwordChanging, setPasswordChanging] = useState(false);
   const selectedRoute = getRoutePath(selectedPath);
 
   function handleUnauthorized() {
@@ -111,6 +121,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     return {
       listLoginOrganizations: () => anonymous.listLoginOrganizations(),
       login: (body) => anonymous.login(body),
+      changeInitialPassword: (body) => anonymous.changeInitialPassword(body),
       logout: (accessToken) => createApiClient({ baseUrl, accessToken }).logout(),
       menus: (accessToken) => createApiClient({ baseUrl, accessToken, onUnauthorized: handleUnauthorized }).menus("user")
     };
@@ -161,21 +172,22 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
       try {
         result = await auth.login(form);
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "登录失败");
+        if (isPasswordChangeRequired(error)) {
+          setPasswordChangeState({
+            tenant_code: form.tenant_code,
+            username: form.username,
+            old_password: form.password,
+            new_password: ""
+          });
+          setPasswordChangeConfirm("");
+          setErrorMessage("");
+        } else {
+          setErrorMessage(error instanceof Error ? error.message : "登录失败");
+        }
         return;
       }
 
-      const menus = await auth.menus(result.access_token);
-      const nextSession: UserSessionState = {
-        accessToken: result.access_token,
-        refreshToken: result.refresh_token,
-        expiresIn: result.expires_in,
-        menus,
-        user: result.user
-      };
-      store.save(nextSession);
-      setSession(nextSession);
-      setSelectedPath(getFirstAvailablePath(menus));
+      await applyLoginResult(result);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorized();
@@ -185,6 +197,56 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleInitialPasswordChange() {
+    if (!passwordChangeState) {
+      return;
+    }
+    if (!auth.changeInitialPassword) {
+      setErrorMessage("当前接口暂不支持初始密码修改。");
+      return;
+    }
+    if (passwordChangeState.new_password !== passwordChangeConfirm) {
+      setErrorMessage("两次输入的新密码不一致。");
+      return;
+    }
+    if (passwordChangeState.new_password.length < 8 || passwordChangeState.new_password === passwordChangeState.old_password) {
+      setErrorMessage("新密码至少 8 位，且不能与初始密码相同。");
+      return;
+    }
+
+    setPasswordChanging(true);
+    setErrorMessage("");
+    try {
+      await auth.changeInitialPassword(passwordChangeState);
+      const result = await auth.login({
+        tenant_code: passwordChangeState.tenant_code,
+        username: passwordChangeState.username,
+        password: passwordChangeState.new_password
+      });
+      setPasswordChangeState(null);
+      setPasswordChangeConfirm("");
+      await applyLoginResult(result);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "初始密码修改失败");
+    } finally {
+      setPasswordChanging(false);
+    }
+  }
+
+  async function applyLoginResult(result: LoginResponse) {
+    const menus = await auth.menus(result.access_token);
+    const nextSession: UserSessionState = {
+      accessToken: result.access_token,
+      refreshToken: result.refresh_token,
+      expiresIn: result.expires_in,
+      menus,
+      user: result.user
+    };
+    store.save(nextSession);
+    setSession(nextSession);
+    setSelectedPath(getFirstAvailablePath(menus));
   }
 
   async function handleLogout() {
@@ -199,6 +261,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
       setSession(null);
       setSelectedPath("/app/workbench");
       setPendingPracticeSession(null);
+      setPasswordChangeState(null);
+      setPasswordChangeConfirm("");
     }
   }
 
@@ -218,7 +282,18 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
             organizationsError={organizationsError}
             submitting={submitting}
             errorMessage={errorMessage}
+            passwordChangeState={passwordChangeState}
+            passwordChangeConfirm={passwordChangeConfirm}
+            passwordChanging={passwordChanging}
             onSubmit={handleLogin}
+            onPasswordChangeStateChange={setPasswordChangeState}
+            onPasswordChangeConfirmChange={setPasswordChangeConfirm}
+            onPasswordChangeSubmit={handleInitialPasswordChange}
+            onPasswordChangeBack={() => {
+              setPasswordChangeState(null);
+              setPasswordChangeConfirm("");
+              setErrorMessage("");
+            }}
           />
         </section>
       </main>
@@ -232,7 +307,22 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     currentPracticeApi,
     pendingPracticeSession,
     setPendingPracticeSession,
-    setSelectedPath
+    setSelectedPath,
+    onUserUpdated: (user) => {
+      if (!session) {
+        return;
+      }
+      const nextSession = {
+        ...session,
+        user: {
+          ...session.user,
+          display_name: user.display_name,
+          must_change_password: user.must_change_password
+        }
+      };
+      store.save(nextSession);
+      setSession(nextSession);
+    }
   });
   const breadcrumb = resolveUserBreadcrumb(selectedPath, session.menus);
 
@@ -266,6 +356,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
             <SidebarUserMenu
               displayName={session.user.display_name}
               userTypeLabel={getUserTypeLabel(session.user.user_type)}
+              onProfile={() => setSelectedPath("/app/profile")}
               onLogout={handleLogout}
             />
           </>
@@ -306,6 +397,7 @@ interface RenderUserContentArgs {
   pendingPracticeSession: PracticeSessionDetail | null;
   setPendingPracticeSession: Dispatch<SetStateAction<PracticeSessionDetail | null>>;
   setSelectedPath: Dispatch<SetStateAction<string>>;
+  onUserUpdated(user: ManagedUser): void;
 }
 
 function renderUserContent({
@@ -315,7 +407,8 @@ function renderUserContent({
   currentPracticeApi,
   pendingPracticeSession,
   setPendingPracticeSession,
-  setSelectedPath
+  setSelectedPath,
+  onUserUpdated
 }: RenderUserContentArgs) {
   const isStudentSessionQuestionRoute = selectedRoute.startsWith("/app/class-learning/student/session/question");
   const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
@@ -329,6 +422,13 @@ function renderUserContent({
           userTypeLabel={getUserTypeLabel(session.user.user_type)}
           onNavigate={setSelectedPath}
         />
+      ) : null}
+      {selectedRoute === "/app/profile" ? (
+        currentPracticeApi && isUserProfileApi(currentPracticeApi) ? (
+          <ProfilePage api={currentPracticeApi} onUserUpdated={onUserUpdated} />
+        ) : (
+          <p>当前个人信息功能暂不可用。</p>
+        )
       ) : null}
       {selectedRoute === "/app/courses" ? (
         currentPracticeApi && isCourseOverviewApi(currentPracticeApi) ? (
@@ -351,9 +451,9 @@ function renderUserContent({
       ) : null}
       {selectedRoute === "/app/teacher-banks" ? (
         currentPracticeApi && isTeacherQuestionBankApi(currentPracticeApi) ? (
-          <TeacherQuestionBankPage api={currentPracticeApi} />
+          <TeacherQuestionBankPage api={currentPracticeApi} userType={session.user.user_type} />
         ) : (
-          <p>当前老师题库功能暂不可用。</p>
+          <p>当前题库功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/questions/feedback" ? (
@@ -493,7 +593,8 @@ function isTeacherQuestionBankApi(api: UserPracticeApi | undefined): api is User
     typeof api?.listQuestionBanks === "function" &&
     typeof api?.createQuestionBank === "function" &&
     typeof api?.publishQuestionBank === "function" &&
-    typeof api?.assignQuestionBankVisibility === "function"
+    typeof api?.listQuestions === "function" &&
+    typeof api?.createQuestion === "function"
   );
 }
 
@@ -531,10 +632,20 @@ function isTeacherExamApi(api: UserPracticeApi | undefined): api is UserPractice
 function isStudentExamApi(api: UserPracticeApi | undefined): api is UserPracticeApi & StudentExamApi {
   return (
     typeof api?.listExams === "function" &&
+    typeof api?.createExam === "function" &&
+    typeof api?.publishExam === "function" &&
     typeof api?.startExamAttempt === "function" &&
     typeof api?.saveExamAttemptAnswer === "function" &&
     typeof api?.submitExamAttempt === "function" &&
     typeof api?.getExamAttemptResult === "function"
+  );
+}
+
+function isUserProfileApi(api: UserPracticeApi | undefined): api is UserPracticeApi & UserProfileApi {
+  return (
+    typeof api?.getMyProfile === "function" &&
+    typeof api?.updateMyProfile === "function" &&
+    typeof api?.changeMyPassword === "function"
   );
 }
 
@@ -565,6 +676,10 @@ function wrapUnauthorizedApi<T extends object>(api: T, onUnauthorized: () => voi
 
 function isUnauthorizedError(error: unknown): error is Error & { status: number } {
   return typeof error === "object" && error !== null && "status" in error && (error as { status?: number }).status === 401;
+}
+
+function isPasswordChangeRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.code === PASSWORD_CHANGE_REQUIRED_CODE;
 }
 
 function getFirstAvailablePath(menus: MenuItem[]): string {
@@ -630,12 +745,14 @@ function getUserPageTitle(selectedRoute: string): string {
   switch (selectedRoute) {
     case "/app/workbench":
       return "工作台";
+    case "/app/profile":
+      return "个人信息";
     case "/app/courses":
       return "课程中心";
     case "/app/notifications":
       return "通知中心";
     case "/app/teacher-banks":
-      return "老师题库";
+      return "我的题库";
     case "/app/questions/feedback":
       return "题目互动";
     case "/app/class-learning":
@@ -664,7 +781,9 @@ function getUserTypeLabel(userType: UserSessionState["user"]["user_type"]): stri
     case "student":
       return "学生";
     case "school_admin":
-      return "学校管理员";
+      return "学校/组织管理员";
+    case "tenant_admin":
+      return "租户管理员";
     case "sys_admin":
       return "系统管理员";
     default:

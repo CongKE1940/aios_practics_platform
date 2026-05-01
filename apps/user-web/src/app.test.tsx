@@ -125,7 +125,8 @@ describe("UserApp", () => {
     expect(screen.getAllByText("当前账号暂无可用功能")).toHaveLength(2);
     expect(screen.queryByText("学习导航")).toBeNull();
     expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "退出登录" })).toBeTruthy();
+    openUserMenu();
+    expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "我的课程" })).toBeNull();
     expect(screen.queryByRole("button", { name: "我的课程" })).toBeNull();
   });
@@ -149,7 +150,7 @@ describe("UserApp", () => {
       />
     );
 
-    expect(screen.getByText("AIOS 学习工作台")).toBeTruthy();
+    expect(screen.getByText("智慧教育平台")).toBeTruthy();
     expect(screen.getByText("学习导航")).toBeTruthy();
     expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "我的课程" })).toBeTruthy();
@@ -323,6 +324,36 @@ describe("UserApp", () => {
         practiceApi={{
           ...createPracticeApiMock(),
           listExams,
+          createExam: async (body) => ({
+            id: 302,
+            tenant_id: 1,
+            owner_org_type: "user",
+            owner_org_id: 7,
+            creator_id: 7,
+            status: "draft",
+            total_score: 10,
+            ...body,
+            fixed_questions: body.fixed_questions ?? [],
+            targets: body.targets ?? [],
+            paper_rules: body.paper_rules ?? []
+          }),
+          publishExam: async (id) => ({
+            id,
+            tenant_id: 1,
+            owner_org_type: "user",
+            owner_org_id: 7,
+            creator_id: 7,
+            name: "我的自测",
+            exam_mode: "random_assembly",
+            status: "published",
+            start_time: "2026-04-24T09:00:00+08:00",
+            end_time: "2026-05-24T09:00:00+08:00",
+            duration_minutes: 60,
+            total_score: 10,
+            targets: [{ target_type: "user", target_id: 7 }],
+            fixed_questions: [],
+            paper_rules: []
+          }),
           startExamAttempt: async () => ({
             attempt: {
               id: 801,
@@ -391,9 +422,9 @@ describe("UserApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "考试入口" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "考试入口" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "考试中心" })).toBeTruthy();
       expect(screen.getByText("期中测验")).toBeTruthy();
-      expect(listExams).toHaveBeenCalledWith({ page: 1, page_size: 20, status: "published" });
+      expect(listExams).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 10 }));
     });
   });
 
@@ -490,7 +521,8 @@ describe("UserApp", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    openUserMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
       expect(logout).toHaveBeenCalledTimes(1);
@@ -540,7 +572,8 @@ describe("UserApp", () => {
 
     render(<UserApp practiceApi={createPracticeApiMock()} sessionStore={sessionStore} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    openUserMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
       expect(createApiClientSpy).toHaveBeenCalledWith(
@@ -572,7 +605,8 @@ describe("UserApp", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    openUserMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "退出登录" }));
 
     await waitFor(() => {
       expect(logout).toHaveBeenCalledTimes(1);
@@ -649,17 +683,15 @@ describe("UserApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "班级学习" }));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "七年级一班" })).toBeTruthy();
+      expect(screen.getByText("当前已选：七年级一班 / 数学")).toBeTruthy();
     });
-    fireEvent.click(screen.getByRole("button", { name: "七年级一班" }));
-    fireEvent.click(screen.getByRole("button", { name: "数学" }));
     fireEvent.click(screen.getByRole("button", { name: "查询班级学习" }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "班级学习" })).toBeTruthy();
-      expect(screen.getByText("七年级一班 / 数学")).toBeTruthy();
-      expect(screen.getByText("李同学", { selector: "p" })).toBeTruthy();
-      expect(screen.getByText("正确率：75%")).toBeTruthy();
+      expect(screen.getAllByText("七年级一班 / 数学").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("李同学").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("75%").length).toBeGreaterThan(0);
     });
   });
 
@@ -754,9 +786,9 @@ describe("UserApp", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "查询班级学习" }));
-    await waitFor(() => expect(screen.getByText("李同学", { selector: "p" })).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText("李同学").length).toBeGreaterThan(0));
 
-    fireEvent.click(screen.getByRole("button", { name: "查看详情" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看明细" }));
 
     await waitFor(() => {
       expect(getStudentPracticeDetail).toHaveBeenCalledTimes(1);
@@ -1599,6 +1631,10 @@ function createSessionStore(initialSession: UserSessionState): UserSessionStore 
   };
 }
 
+function openUserMenu(displayName = "李同学") {
+  fireEvent.click(screen.getByRole("button", { name: `${displayName}账号菜单` }));
+}
+
 function createSession(menus: UserSessionState["menus"]): UserSessionState {
   return {
     accessToken: "access-1",
@@ -1663,6 +1699,64 @@ function createPracticeApiMock() {
       page: 1,
       page_size: 12,
       total: 1
+    }),
+    listQuestionBanks: async () => ({
+      items: [
+        {
+          id: 1,
+          tenant_id: 1,
+          owner_org_type: "school",
+          owner_org_id: 1,
+          creator_id: 7,
+          course_id: 10,
+          name: "我的数学题库",
+          status: "draft",
+          source_type: "manual"
+        }
+      ],
+      page: 1,
+      page_size: 20,
+      total: 1
+    }),
+    createQuestionBank: async (body: apiSdk.QuestionBankInput) => ({
+      id: 2,
+      tenant_id: 1,
+      owner_org_type: "school",
+      owner_org_id: 1,
+      creator_id: 7,
+      status: "draft",
+      source_type: "manual",
+      ...body
+    }),
+    publishQuestionBank: async (id: number) => ({
+      id,
+      tenant_id: 1,
+      owner_org_type: "school",
+      owner_org_id: 1,
+      creator_id: 7,
+      course_id: 10,
+      name: "我的数学题库",
+      status: "active",
+      source_type: "manual"
+    }),
+    listQuestions: async () => ({
+      items: [],
+      page: 1,
+      page_size: 50,
+      total: 0
+    }),
+    createQuestion: async (body: apiSdk.QuestionInput) => ({
+      id: 1001,
+      tenant_id: 1,
+      owner_org_type: "school",
+      owner_org_id: 1,
+      creator_id: 7,
+      status: "active",
+      source_type: "manual",
+      current_version_id: 3001,
+      current_version_no: 1,
+      current_content: body.content,
+      ...body
     }),
     createPracticeSession: async () => ({
       id: 501,

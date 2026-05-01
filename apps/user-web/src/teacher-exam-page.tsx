@@ -865,7 +865,7 @@ function buildFormFromDetail(detail: ExamDetail): typeof defaultForm {
       .join("\n"),
     paperRulesText: (detail.paper_rules ?? [])
       .map((item) =>
-        [item.question_type, formatScore(item.score_per_question), item.question_count, item.bank_ids?.join("|") ?? ""].join(
+        [item.question_type, formatScore(item.score_per_question), item.question_count, item.bank_ids?.join("|") ?? "", item.course_id ?? ""].join(
           ":"
         )
       )
@@ -1072,12 +1072,16 @@ function parseFixedQuestions(value: string): ExamFixedQuestion[] {
 function parsePaperRules(value: string): ExamPaperRule[] {
   return splitLines(value)
     .map((item) => item.split(":"))
-    .map(([questionType, scorePerQuestion, questionCount, bankIds]) => ({
-      question_type: questionType?.trim() ?? "",
-      score_per_question: Number(scorePerQuestion),
-      question_count: Number(questionCount),
-      bank_ids: parseNumberList(bankIds)
-    }))
+    .map(([questionType, scorePerQuestion, questionCount, bankIds, courseId]) => {
+      const parsedCourseID = parsePositiveNumber(courseId ?? "");
+      return {
+        question_type: questionType?.trim() ?? "",
+        score_per_question: Number(scorePerQuestion),
+        question_count: Number(questionCount),
+        bank_ids: parseNumberList(bankIds),
+        course_id: parsedCourseID
+      };
+    })
     .filter(
       (item) =>
         item.question_type.length > 0 &&

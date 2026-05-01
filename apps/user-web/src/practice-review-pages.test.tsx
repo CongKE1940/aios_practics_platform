@@ -107,7 +107,7 @@ describe("practice review pages", () => {
 
     render(<PracticeHistoryPage api={api} onNavigate={navigate} />);
 
-    fireEvent.change(screen.getByLabelText("课程ID筛选"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("课程筛选"), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "筛选记录" }));
 
     await waitFor(() => {
@@ -179,7 +179,7 @@ describe("practice review pages", () => {
       />
     );
 
-    fireEvent.change(screen.getByLabelText("课程ID筛选"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("课程筛选"), { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "筛选题目" }));
 
     await waitFor(() => {

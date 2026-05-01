@@ -108,8 +108,15 @@ describe("PracticePanel", () => {
       expect(screen.getByText("1+1等于几？")).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByLabelText("选项 B"));
-    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+    fireEvent.keyDown(window, { key: "1" });
+    expect(optionInput("选项 A").checked).toBe(true);
+    fireEvent.keyDown(window, { key: "2" });
+    expect(optionInput("选项 A").checked).toBe(false);
+    expect(optionInput("选项 B").checked).toBe(true);
+    fireEvent.keyDown(window, { key: "2" });
+    expect(optionInput("选项 B").checked).toBe(false);
+    fireEvent.keyDown(window, { key: "2" });
+    fireEvent.keyDown(window, { key: "Enter" });
 
     await waitFor(() => {
       expect(api.submitPracticeAnswer).toHaveBeenCalledWith(
@@ -479,3 +486,15 @@ describe("PracticePanel", () => {
     );
   });
 });
+
+function optionInput(label: string): HTMLInputElement {
+  const element = screen.getByLabelText(label);
+  if (element instanceof HTMLInputElement) {
+    return element;
+  }
+  const input = element.querySelector("input");
+  if (!input) {
+    throw new Error(`找不到选项输入框：${label}`);
+  }
+  return input;
+}

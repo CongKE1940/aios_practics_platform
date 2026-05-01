@@ -7,6 +7,8 @@ import type {
   ExamAttemptDetail,
   ExamAttemptQuestion,
   ExamAttemptResult,
+  ExamDetail,
+  ExamInput,
   ExamListQuery,
   PageResult
 } from "@aios/api-sdk";
@@ -21,6 +23,8 @@ import {
 
 export interface StudentExamApi {
   listExams(query?: ExamListQuery): Promise<PageResult<Exam>>;
+  createExam(body: ExamInput): Promise<ExamDetail>;
+  publishExam(examId: number): Promise<ExamDetail>;
   startExamAttempt(examId: number): Promise<ExamAttemptDetail>;
   getExamAttempt(attemptId: number): Promise<ExamAttemptDetail>;
   saveExamAttemptAnswer(attemptId: number, body: ExamAttemptAnswerInput): Promise<ExamAttemptAnswer>;
@@ -34,6 +38,14 @@ interface StudentExamPageProps {
 
 const recoveryStorageKey = "aios.student_exam.recovery.v1";
 const defaultPageSize = 10;
+const defaultSelfTestForm = {
+  name: "",
+  durationMinutes: "60",
+  questionType: "single_choice",
+  questionCount: "5",
+  scorePerQuestion: "2",
+  bankIds: ""
+};
 
 const columns: Array<FixedActionListColumn<Exam>> = [
   {
@@ -79,6 +91,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
   const [attemptDetail, setAttemptDetail] = useState<ExamAttemptDetail | null>(null);
   const [result, setResult] = useState<ExamAttemptResult | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [draftAnswers, setDraftAnswers] = useState<Record<number, string[]>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -93,12 +106,19 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
   const [total, setTotal] = useState(0);
   const [selectedIDs, setSelectedIDs] = useState<FixedActionListRowId[]>([]);
   const [detailExam, setDetailExam] = useState<Exam | null>(null);
+  const [selfTestForm, setSelfTestForm] = useState(defaultSelfTestForm);
+  const [selfTestSaving, setSelfTestSaving] = useState(false);
+  const [noticeMessage, setNoticeMessage] = useState("");
   const autoSubmittedRef = useRef(false);
   const didLoadRef = useRef(false);
 
   const currentQuestion = attemptDetail?.questions[currentIndex] ?? null;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const currentQuestionAnswerCount = useMemo(() => attemptDetail?.answers.length ?? 0, [attemptDetail]);
+  const answeredDisplayOrders = useMemo(
+    () => buildAnsweredDisplayOrders(attemptDetail?.answers ?? [], draftAnswers),
+    [attemptDetail, draftAnswers]
+  );
+  const currentQuestionAnswerCount = answeredDisplayOrders.size;
 
   useEffect(() => {
     if (didLoadRef.current) {
@@ -113,26 +133,36 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
       if (!attemptDetail || submitting) {
         return;
       }
-      if (requireConfirm && !window.confirm("确认交卷吗？交卷后不能继续修改答案。")) {
+      const unansweredQuestions = listUnansweredQuestions(attemptDetail.questions, answeredDisplayOrders);
+      const confirmMessage =
+        unansweredQuestions.length > 0
+          ? `还有以下题目未作答：${unansweredQuestions.map((question) => `第 ${question.display_order} 题`).join("、")}。确认交卷吗？交卷后不能继续修改答案。`
+          : "确认交卷吗？交卷后不能继续修改答案。";
+      if (requireConfirm && !window.confirm(confirmMessage)) {
         return;
       }
 
       setSubmitting(true);
       setErrorMessage("");
       try {
+        const savedDetail = await savePendingDraftAnswers(attemptDetail);
         const submitted = await api.submitExamAttempt(attemptDetail.attempt.id);
         setResult(submitted);
         setAttemptDetail(null);
         setActiveExam(null);
+        setDraftAnswers({});
         setRemainingSeconds(null);
         clearExamRecovery();
+        if (savedDetail) {
+          setSelectedKeys([]);
+        }
       } catch (error) {
         setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "交卷失败，请检查网络后重试。");
       } finally {
         setSubmitting(false);
       }
     },
-    [api, attemptDetail, submitting]
+    [api, attemptDetail, submitting, answeredDisplayOrders, draftAnswers]
   );
 
   useEffect(() => {
@@ -172,6 +202,55 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [attemptDetail]);
 
+  useEffect(() => {
+    if (!attemptDetail || !currentQuestion) {
+      return;
+    }
+    const activeAttemptDetail = attemptDetail;
+    const activeQuestion = currentQuestion;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (shouldIgnoreKeyboardEvent(event)) {
+        return;
+      }
+
+      const optionIndex = numberKeyIndex(event.key);
+      if (optionIndex !== null) {
+        const option = questionOptions(activeQuestion)[optionIndex];
+        if (!option?.key) {
+          return;
+        }
+        event.preventDefault();
+        toggleKey(option.key);
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (isCurrentAnswerSaved(activeAttemptDetail, activeQuestion, selectedKeys)) {
+          handleMove(currentIndex + 1);
+        } else {
+          void handleSaveAnswer();
+        }
+        return;
+      }
+
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        handleMove(currentIndex + 1);
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        handleMove(currentIndex - 1);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [attemptDetail, currentQuestion, currentIndex, draftAnswers, selectedKeys]);
+
   async function loadExams(query: ExamListQuery = buildExamQuery(status, keyword, targetType, targetID, page, pageSize), restore = false) {
     setLoading(true);
     setErrorMessage("");
@@ -191,6 +270,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
           setAttemptDetail(recovered.detail);
           setResult(null);
           setCurrentIndex(0);
+          setDraftAnswers(buildDraftAnswers(recovered.detail.answers));
           setSelectedKeys(selectedKeysFor(recovered.detail.answers, recovered.detail.questions[0]?.display_order));
         }
       }
@@ -219,6 +299,53 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
     await loadExams(buildExamQuery("", "", "", "", 1, defaultPageSize));
   }
 
+  async function handleCreateSelfTest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const questionCount = parsePositiveNumber(selfTestForm.questionCount);
+    const scorePerQuestion = parsePositiveNumber(selfTestForm.scorePerQuestion);
+    const durationMinutes = parsePositiveNumber(selfTestForm.durationMinutes);
+    if (!questionCount || !scorePerQuestion || !durationMinutes) {
+      setErrorMessage("请填写有效的自测题量、分值和时长。");
+      return;
+    }
+
+    const now = new Date();
+    const endTime = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const name = selfTestForm.name.trim() || `我的自测 ${formatDateTime(now.toISOString())}`;
+    const payload: ExamInput = {
+      name,
+      exam_mode: "random_assembly",
+      start_time: now.toISOString(),
+      end_time: endTime.toISOString(),
+      duration_minutes: durationMinutes,
+      targets: [],
+      fixed_questions: [],
+      paper_rules: [
+        {
+          question_type: selfTestForm.questionType,
+          score_per_question: scorePerQuestion,
+          question_count: questionCount,
+          bank_ids: parseNumberList(selfTestForm.bankIds)
+        }
+      ]
+    };
+
+    setSelfTestSaving(true);
+    setErrorMessage("");
+    setNoticeMessage("");
+    try {
+      const created = await api.createExam(payload);
+      const published = await api.publishExam(created.id);
+      setSelfTestForm(defaultSelfTestForm);
+      setNoticeMessage(`自测考试已创建：${published.name}`);
+      await loadExams(buildExamQuery(status, keyword, targetType, targetID, 1, pageSize));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "自测考试创建失败，请稍后重试。");
+    } finally {
+      setSelfTestSaving(false);
+    }
+  }
+
   async function handlePageChange(nextPage: number) {
     setSelectedIDs([]);
     await loadExams(buildExamQuery(status, keyword, targetType, targetID, nextPage, pageSize));
@@ -235,6 +362,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
       setResult(null);
       setDetailExam(null);
       setCurrentIndex(0);
+      setDraftAnswers(buildDraftAnswers(normalizedDetail.answers));
       setSelectedKeys(selectedKeysFor(normalizedDetail.answers, normalizedDetail.questions[0]?.display_order));
       saveExamRecovery(exam.id, normalizedDetail.attempt.id);
     } catch (error) {
@@ -242,9 +370,9 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
     }
   }
 
-  async function handleSaveAnswer() {
+  async function handleSaveAnswer(): Promise<boolean> {
     if (!attemptDetail || !currentQuestion) {
-      return;
+      return false;
     }
     setErrorMessage("");
     try {
@@ -253,9 +381,30 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
         answer: { selected_keys: selectedKeys }
       });
       setAttemptDetail((current) => mergeSavedAnswer(current, currentQuestion, selectedKeys));
+      setDraftAnswers((current) => ({ ...current, [currentQuestion.display_order]: selectedKeys }));
+      return true;
     } catch (error) {
       setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "答案保存失败，请重试。");
+      return false;
     }
+  }
+
+  async function savePendingDraftAnswers(detail: ExamAttemptDetail): Promise<ExamAttemptDetail> {
+    let nextDetail = detail;
+    for (const question of detail.questions) {
+      const selected = draftAnswers[question.display_order] ?? selectedKeysFor(nextDetail.answers, question.display_order);
+      const saved = selectedKeysFor(nextDetail.answers, question.display_order);
+      if (sameStringArray(selected, saved)) {
+        continue;
+      }
+      await api.saveExamAttemptAnswer(detail.attempt.id, {
+        display_order: question.display_order,
+        answer: { selected_keys: selected }
+      });
+      nextDetail = mergeSavedAnswer(nextDetail, question, selected) ?? nextDetail;
+    }
+    setAttemptDetail(nextDetail);
+    return nextDetail;
   }
 
   function handleMove(nextIndex: number) {
@@ -264,12 +413,20 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
     }
     const boundedIndex = Math.max(0, Math.min(nextIndex, attemptDetail.questions.length - 1));
     setCurrentIndex(boundedIndex);
-    setSelectedKeys(selectedKeysFor(attemptDetail.answers, attemptDetail.questions[boundedIndex]?.display_order));
+    const displayOrder = attemptDetail.questions[boundedIndex]?.display_order;
+    setSelectedKeys(displayOrder ? draftAnswers[displayOrder] ?? selectedKeysFor(attemptDetail.answers, displayOrder) : []);
     setErrorMessage("");
   }
 
   function toggleKey(key: string) {
-    setSelectedKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+    if (!currentQuestion) {
+      return;
+    }
+    setSelectedKeys((current) => {
+      const next = toggleOptionSelection(current, key, currentQuestion.question_type ?? "");
+      setDraftAnswers((answers) => ({ ...answers, [currentQuestion.display_order]: next }));
+      return next;
+    });
   }
 
   function handleExport() {
@@ -295,9 +452,84 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
 
   return (
     <section aria-label="考试中心" className="ui-admin-page ui-user-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>考试中心</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="考试数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
+      {noticeMessage ? <ToastNotice tone="success" title="自测考试已就绪" description={noticeMessage} onClose={() => setNoticeMessage("")} /> : null}
+
+      <section className="ui-admin-card" aria-label="学生自测创建区" style={selfTestCardStyle}>
+        <div className="ui-admin-card__header">
+          <div>
+            <h3>创建自测考试</h3>
+            <p className="ui-admin-subtle">按题型和题库随机抽题，仅当前学生可见。</p>
+          </div>
+        </div>
+        <form className="ui-admin-form__grid ui-admin-form__grid--wide" onSubmit={(event) => void handleCreateSelfTest(event)}>
+          <div className="ui-admin-form__field">
+            <label htmlFor="student_self_exam_name">自测名称</label>
+            <input
+              id="student_self_exam_name"
+              placeholder="留空自动生成"
+              value={selfTestForm.name}
+              onChange={(event) => setSelfTestForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="student_self_exam_question_type">题型</label>
+            <select
+              id="student_self_exam_question_type"
+              value={selfTestForm.questionType}
+              onChange={(event) => setSelfTestForm((current) => ({ ...current, questionType: event.target.value }))}
+            >
+              <option value="single_choice">单选题</option>
+              <option value="multiple_choice">多选题</option>
+              <option value="true_false">判断题</option>
+            </select>
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="student_self_exam_bank_ids">题库ID</label>
+            <input
+              id="student_self_exam_bank_ids"
+              placeholder="可填多个，用英文逗号分隔"
+              value={selfTestForm.bankIds}
+              onChange={(event) => setSelfTestForm((current) => ({ ...current, bankIds: event.target.value }))}
+            />
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="student_self_exam_question_count">题量</label>
+            <input
+              id="student_self_exam_question_count"
+              inputMode="numeric"
+              value={selfTestForm.questionCount}
+              onChange={(event) => setSelfTestForm((current) => ({ ...current, questionCount: event.target.value }))}
+            />
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="student_self_exam_score">每题分值</label>
+            <input
+              id="student_self_exam_score"
+              inputMode="decimal"
+              value={selfTestForm.scorePerQuestion}
+              onChange={(event) => setSelfTestForm((current) => ({ ...current, scorePerQuestion: event.target.value }))}
+            />
+          </div>
+          <div className="ui-admin-form__field">
+            <label htmlFor="student_self_exam_duration">自测时长</label>
+            <input
+              id="student_self_exam_duration"
+              inputMode="numeric"
+              value={selfTestForm.durationMinutes}
+              onChange={(event) => setSelfTestForm((current) => ({ ...current, durationMinutes: event.target.value }))}
+            />
+          </div>
+          <div className="ui-admin-actions-bar__group" style={selfTestActionStyle}>
+            <button type="submit" className="ui-button ui-button--primary" disabled={selfTestSaving}>
+              {selfTestSaving ? "创建中..." : "创建自测"}
+            </button>
+          </div>
+        </form>
+      </section>
 
       <section className="ui-admin-card" aria-label="考试数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
@@ -406,19 +638,31 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
             </div>
             <div className="ui-admin-modal__body">
               {attemptDetail.questions.length > 1 ? (
-                <nav className="ui-admin-actions-bar__group" aria-label="考试题号导航">
-                  {attemptDetail.questions.map((question, index) => (
-                    <button
-                      key={question.display_order}
-                      type="button"
-                      className={index === currentIndex ? "ui-button ui-button--primary" : "ui-button ui-button--ghost"}
-                      aria-pressed={index === currentIndex}
-                      onClick={() => handleMove(index)}
-                    >
-                      第 {index + 1} 题
-                    </button>
-                  ))}
-                </nav>
+                <section aria-label="考试题目序号面板" style={questionPanelStyle}>
+                  <div style={questionPanelHeaderStyle}>
+                    <strong>题目序号</strong>
+                    <span>已答 {currentQuestionAnswerCount} / {attemptDetail.questions.length}</span>
+                  </div>
+                  <nav aria-label="考试题号导航" style={questionGridStyle}>
+                    {attemptDetail.questions.map((question, index) => {
+                      const answered = answeredDisplayOrders.has(question.display_order);
+                      const current = index === currentIndex;
+                      return (
+                        <button
+                          key={question.display_order}
+                          type="button"
+                          className="ui-button"
+                          style={questionNumberButtonStyle(current, answered)}
+                          aria-label={`第 ${question.display_order} 题，${answered ? "已作答" : "未作答"}`}
+                          aria-pressed={current}
+                          onClick={() => handleMove(index)}
+                        >
+                          {question.display_order}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                </section>
               ) : null}
               <section className="ui-admin-card" aria-label="当前题目">
                 <div className="ui-admin-card__header">
@@ -532,10 +776,101 @@ function buildExamQuery(
   };
 }
 
+function parsePositiveNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseNumberList(value: string): number[] | undefined {
+  const items = value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return items.length > 0 ? items : undefined;
+}
+
 function selectedKeysFor(answers: ExamAttemptAnswer[], displayOrder?: number): string[] {
   const answer = answers.find((item) => item.display_order === displayOrder)?.answer;
   const selected = answer?.selected_keys;
   return Array.isArray(selected) ? selected.filter((item): item is string => typeof item === "string") : [];
+}
+
+function buildDraftAnswers(answers: ExamAttemptAnswer[]): Record<number, string[]> {
+  return answers.reduce<Record<number, string[]>>((result, answer) => {
+    result[answer.display_order] = selectedKeysFor(answers, answer.display_order);
+    return result;
+  }, {});
+}
+
+function buildAnsweredDisplayOrders(answers: ExamAttemptAnswer[], draftAnswers: Record<number, string[]>): Set<number> {
+  const merged = new Map<number, string[]>();
+  answers.forEach((answer) => merged.set(answer.display_order, selectedKeysFor(answers, answer.display_order)));
+  Object.entries(draftAnswers).forEach(([displayOrder, selected]) => {
+    merged.set(Number(displayOrder), selected);
+  });
+  const result = new Set<number>();
+  merged.forEach((selected, displayOrder) => {
+    if (hasSelectedAnswer(selected)) {
+      result.add(displayOrder);
+    }
+  });
+  return result;
+}
+
+function listUnansweredQuestions(questions: ExamAttemptQuestion[], answeredDisplayOrders: Set<number>): ExamAttemptQuestion[] {
+  return questions.filter((question) => !answeredDisplayOrders.has(question.display_order));
+}
+
+function isCurrentAnswerSaved(detail: ExamAttemptDetail, question: ExamAttemptQuestion, selectedKeys: string[]): boolean {
+  return sameStringArray(selectedKeysFor(detail.answers, question.display_order), selectedKeys);
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const normalize = (values: string[]) => [...values].sort().join("\u0000");
+  return normalize(left) === normalize(right);
+}
+
+function hasSelectedAnswer(selectedKeys: string[]): boolean {
+  return selectedKeys.some((key) => key.trim() !== "");
+}
+
+function toggleOptionSelection(current: string[], key: string, questionType: string): string[] {
+  if (current.includes(key)) {
+    return current.filter((item) => item !== key);
+  }
+  if (isSingleSelectQuestion(questionType)) {
+    return [key];
+  }
+  return [...current, key];
+}
+
+function isSingleSelectQuestion(questionType: string): boolean {
+  return questionType === "single_choice" || questionType === "true_false";
+}
+
+function numberKeyIndex(key: string): number | null {
+  if (!/^[1-9]$/.test(key)) {
+    return null;
+  }
+  return Number(key) - 1;
+}
+
+function shouldIgnoreKeyboardEvent(event: KeyboardEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select";
 }
 
 async function restoreAttemptIfPossible(
@@ -784,9 +1119,44 @@ function escapeCsvValue(value: string): string {
   return value;
 }
 
+function questionNumberButtonStyle(current: boolean, answered: boolean): CSSProperties {
+  return {
+    width: 42,
+    minWidth: 42,
+    height: 36,
+    padding: 0,
+    borderRadius: 6,
+    border: current ? "2px solid #1d4ed8" : answered ? "1px solid #16a34a" : "1px solid #cbd5e1",
+    background: current ? "#dbeafe" : answered ? "#dcfce7" : "#f8fafc",
+    color: current ? "#1d4ed8" : answered ? "#166534" : "#64748b",
+    fontWeight: current ? 700 : 600
+  };
+}
+
 const pageStyle: CSSProperties = {
   minHeight: "100%",
-  gap: 0
+  gap: 14
+};
+
+const selfTestCardStyle: CSSProperties = {
+  padding: 22
+};
+
+const selfTestActionStyle: CSSProperties = {
+  alignItems: "end",
+  paddingBottom: 1
+};
+
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
 };
 
 const dataRegionStyle: CSSProperties = {
@@ -809,4 +1179,25 @@ const queryActionsStyle: CSSProperties = {
   alignItems: "center",
   paddingBottom: 1,
   whiteSpace: "nowrap"
+};
+
+const questionPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+  marginBottom: 14
+};
+
+const questionPanelHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  color: "#475569"
+};
+
+const questionGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(42px, 42px))",
+  gap: 8,
+  alignItems: "center"
 };

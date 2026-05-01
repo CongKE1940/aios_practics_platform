@@ -47,6 +47,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
   const [session, setSession] = useState<PracticeSessionDetail | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [draftAnswers, setDraftAnswers] = useState<Record<number, string[]>>({});
   const [result, setResult] = useState<PracticeAnswerResult | null>(null);
   const [questionState, setQuestionState] = useState<UserQuestionState | null>(null);
   const currentQuestion = session?.questions[currentIndex] ?? null;
@@ -58,6 +59,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setSession(initialSession);
     setCurrentIndex(0);
     setSelectedKeys([]);
+    setDraftAnswers({});
     setResult(null);
     setQuestionState(null);
     setForm((current) => ({
@@ -88,6 +90,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setSession(created);
     setCurrentIndex(0);
     setSelectedKeys([]);
+    setDraftAnswers({});
     setResult(null);
     setQuestionState(null);
   }
@@ -102,13 +105,25 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     });
     setResult(answered);
     setQuestionState(answered.state);
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            questions: current.questions.map((question) =>
+              question.session_question_id === currentQuestion.session_question_id
+                ? { ...question, answered: true, is_correct: answered.is_correct }
+                : question
+            )
+          }
+        : current
+    );
   }
 
   async function handleNext() {
     if (!session) {
       return;
     }
-    if (form.flowMode === "continuous") {
+    if (form.flowMode === "continuous" && currentIndex >= session.questions.length - 1) {
       const next = await api.nextPracticeQuestion(session.id);
       setSession((current) =>
         current
@@ -119,10 +134,23 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
           : current
       );
       setCurrentIndex((current) => current + 1);
+      setSelectedKeys([]);
     } else {
-      setCurrentIndex((current) => Math.min(current + 1, (session.questions.length || 1) - 1));
+      moveToQuestion(currentIndex + 1);
+      return;
     }
-    setSelectedKeys([]);
+    setResult(null);
+    setQuestionState(null);
+  }
+
+  function moveToQuestion(nextIndex: number) {
+    if (!session) {
+      return;
+    }
+    const boundedIndex = Math.max(0, Math.min(nextIndex, session.questions.length - 1));
+    const nextQuestion = session.questions[boundedIndex];
+    setCurrentIndex(boundedIndex);
+    setSelectedKeys(nextQuestion ? draftAnswers[nextQuestion.session_question_id] ?? [] : []);
     setResult(null);
     setQuestionState(null);
   }
@@ -136,6 +164,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
     setSession(null);
     setCurrentIndex(0);
     setSelectedKeys([]);
+    setDraftAnswers({});
     setResult(null);
     setQuestionState(null);
   }
@@ -157,8 +186,70 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
   }
 
   function toggleKey(key: string) {
-    setSelectedKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+    if (!currentQuestion) {
+      return;
+    }
+    setSelectedKeys((current) => {
+      const next = toggleOptionSelection(current, key, currentQuestion.question_type);
+      setDraftAnswers((answers) => ({
+        ...answers,
+        [currentQuestion.session_question_id]: next
+      }));
+      return next;
+    });
   }
+
+  useEffect(() => {
+    if (!session || !currentQuestion) {
+      return;
+    }
+    const activeSession = session;
+    const activeQuestion = currentQuestion;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (shouldIgnoreKeyboardEvent(event)) {
+        return;
+      }
+      const optionIndex = numberKeyIndex(event.key);
+      if (optionIndex !== null) {
+        const option = questionOptions(activeQuestion)[optionIndex];
+        if (!option?.key) {
+          return;
+        }
+        event.preventDefault();
+        toggleKey(option.key);
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (result) {
+          void handleNext();
+        } else {
+          void handleSubmit();
+        }
+        return;
+      }
+
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        if (currentIndex < activeSession.questions.length - 1) {
+          event.preventDefault();
+          moveToQuestion(currentIndex + 1);
+        }
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        if (currentIndex > 0) {
+          event.preventDefault();
+          moveToQuestion(currentIndex - 1);
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentQuestion, currentIndex, draftAnswers, result, selectedKeys, session]);
 
   function handleQuestionFeedback() {
     if (!currentQuestion) {
@@ -216,7 +307,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
 
           {form.sourceMode === "course" ? (
             <div className="ui-admin-form__field">
-              <label htmlFor="practice_course_id">课程 ID</label>
+              <label htmlFor="practice_course_id">课程ID</label>
               <input
                 id="practice_course_id"
                 inputMode="numeric"
@@ -226,7 +317,7 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
             </div>
           ) : (
             <div className="ui-admin-form__field">
-              <label htmlFor="practice_bank_ids">题库 ID</label>
+              <label htmlFor="practice_bank_ids">题库ID</label>
               <input
                 id="practice_bank_ids"
                 value={form.bankIds}
@@ -374,4 +465,40 @@ function questionOptions(question: PracticeSessionDetail["questions"][number]): 
     ];
   }
   return [];
+}
+
+function toggleOptionSelection(current: string[], key: string, questionType: string): string[] {
+  if (current.includes(key)) {
+    return current.filter((item) => item !== key);
+  }
+  if (isSingleSelectQuestion(questionType)) {
+    return [key];
+  }
+  return [...current, key];
+}
+
+function isSingleSelectQuestion(questionType: string): boolean {
+  return questionType === "single_choice" || questionType === "true_false";
+}
+
+function numberKeyIndex(key: string): number | null {
+  if (!/^[1-9]$/.test(key)) {
+    return null;
+  }
+  return Number(key) - 1;
+}
+
+function shouldIgnoreKeyboardEvent(event: KeyboardEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return true;
+  }
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select";
 }

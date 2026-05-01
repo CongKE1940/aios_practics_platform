@@ -276,6 +276,7 @@ export function ClassLearningPage({ api, onNavigate }: ClassLearningPageProps) {
 
   return (
     <section aria-label="班级学习页" className="ui-admin-page ui-user-page" style={pageStyle}>
+      <h2 style={visuallyHiddenStyle}>班级学习</h2>
       {errorMessage ? (
         <ToastNotice tone="danger" title="班级学习数据加载失败" description={errorMessage} onClose={() => setErrorMessage("")} />
       ) : null}
@@ -314,13 +315,19 @@ export function ClassLearningPage({ api, onNavigate }: ClassLearningPageProps) {
           />
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading || !selectedCourse}>
-              {loading ? "查询中" : "查询"}
+              {loading ? "查询中" : "查询班级学习"}
             </button>
             <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleReset()} disabled={loading}>
               重置
             </button>
           </div>
         </form>
+
+        {selectedCourse ? (
+          <p className="ui-admin-subtle" style={selectedCourseStyle}>
+            当前已选：{selectedCourse.class_name} / {selectedCourse.course_name}
+          </p>
+        ) : null}
 
         {summary ? (
           <div className="ui-admin-kpis" aria-label="班级学习汇总" style={summaryStyle}>
@@ -553,6 +560,18 @@ const pageStyle: CSSProperties = {
   gap: 0
 };
 
+const visuallyHiddenStyle: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0
+};
+
 const dataRegionStyle: CSSProperties = {
   display: "grid",
   gridTemplateRows: "auto auto minmax(0, 1fr)",
@@ -570,6 +589,10 @@ const filterFormStyle: CSSProperties = {
 };
 
 const summaryStyle: CSSProperties = {
+  margin: 0
+};
+
+const selectedCourseStyle: CSSProperties = {
   margin: 0
 };
 
