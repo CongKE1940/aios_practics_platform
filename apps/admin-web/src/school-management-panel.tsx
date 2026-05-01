@@ -49,7 +49,7 @@ type DeleteConfirmState = {
   cascadeDelete: boolean;
 } | null;
 
-const defaultPageSize = 10;
+const defaultPageSize = 100;
 const defaultObjectTypeItems: Array<{ value: SchoolObjectType; label: string }> = [
   { value: SchoolObjectTypeSchool, label: "学校" },
   { value: SchoolObjectTypeOrganization, label: "组织" }
