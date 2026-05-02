@@ -226,6 +226,22 @@ func TestHandler_QuestionLifecycleAndVersions(t *testing.T) {
 	if versions.Data[0].VersionNo != 2 {
 		t.Fatalf("latest version_no = %d", versions.Data[0].VersionNo)
 	}
+
+	compareRec := performQuestionRequest(
+		router,
+		http.MethodGet,
+		"/api/v1/questions/"+strconv.FormatInt(created.Data.ID, 10)+"/versions/compare?left_version_no=1&right_version_no=2",
+		nil,
+		"token",
+	)
+	if compareRec.Code != http.StatusOK {
+		t.Fatalf("compare versions status = %d, body = %s", compareRec.Code, compareRec.Body.String())
+	}
+	var compared envelope[QuestionVersionCompareResult]
+	decodeQuestionBody(t, compareRec, &compared)
+	if compared.Data.Left.VersionNo != 1 || compared.Data.Right.VersionNo != 2 {
+		t.Fatalf("compared = %+v", compared.Data)
+	}
 }
 
 func TestHandler_QuestionRequiresPermission(t *testing.T) {
@@ -649,6 +665,22 @@ func (repo *memoryRepository) ListVersions(_ context.Context, tenantID int64, qu
 	return versions, nil
 }
 
+func (repo *memoryRepository) CompareVersions(_ context.Context, tenantID int64, questionID int64, filter QuestionVersionCompareFilter) (QuestionVersionCompareResult, error) {
+	question, ok := repo.questions[questionID]
+	if !ok || question.TenantID != tenantID {
+		return QuestionVersionCompareResult{}, ErrNotFound
+	}
+	left, err := repo.findVersion(questionID, filter.LeftVersionID, filter.LeftVersionNo)
+	if err != nil {
+		return QuestionVersionCompareResult{}, err
+	}
+	right, err := repo.findVersion(questionID, filter.RightVersionID, filter.RightVersionNo)
+	if err != nil {
+		return QuestionVersionCompareResult{}, err
+	}
+	return QuestionVersionCompareResult{QuestionID: questionID, Left: left, Right: right}, nil
+}
+
 func (repo *memoryRepository) CreateVersion(_ context.Context, tenantID int64, questionID int64, version QuestionVersion) (QuestionVersion, Question, error) {
 	question, ok := repo.questions[questionID]
 	if !ok || question.TenantID != tenantID {
@@ -814,6 +846,18 @@ func (repo *memoryRepository) hasVersion(questionID int64, versionID int64) bool
 		}
 	}
 	return false
+}
+
+func (repo *memoryRepository) findVersion(questionID int64, versionID int64, versionNo int) (QuestionVersion, error) {
+	for _, version := range repo.versions[questionID] {
+		if versionID > 0 && version.ID == versionID {
+			return version, nil
+		}
+		if versionID <= 0 && versionNo > 0 && version.VersionNo == versionNo {
+			return version, nil
+		}
+	}
+	return QuestionVersion{}, ErrNotFound
 }
 
 func (repo *memoryRepository) hasComment(questionID int64, commentID int64) bool {

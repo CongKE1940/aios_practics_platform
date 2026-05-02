@@ -78,6 +78,12 @@ type QuestionVersion struct {
 	CreatedAt     time.Time      `json:"created_at,omitempty"`
 }
 
+type QuestionVersionCompareResult struct {
+	QuestionID int64           `json:"question_id"`
+	Left       QuestionVersion `json:"left"`
+	Right      QuestionVersion `json:"right"`
+}
+
 type QuestionInput struct {
 	QuestionType string         `json:"question_type" binding:"required"`
 	Difficulty   string         `json:"difficulty"`
@@ -190,12 +196,20 @@ type QuestionListFilter struct {
 	PageSize     int
 }
 
+type QuestionVersionCompareFilter struct {
+	LeftVersionID  int64
+	RightVersionID int64
+	LeftVersionNo  int
+	RightVersionNo int
+}
+
 type Repository interface {
 	ListQuestions(ctx context.Context, scope Scope, filter QuestionListFilter) (PageResult[Question], error)
 	GetQuestion(ctx context.Context, scope Scope, id int64) (Question, error)
 	CreateQuestion(ctx context.Context, question Question, version QuestionVersion, bankIDs []int64, courseIDs []int64) (Question, error)
 	UpdateQuestion(ctx context.Context, question Question, bankIDs []int64, courseIDs []int64) (Question, error)
 	ListVersions(ctx context.Context, tenantID int64, questionID int64) ([]QuestionVersion, error)
+	CompareVersions(ctx context.Context, tenantID int64, questionID int64, filter QuestionVersionCompareFilter) (QuestionVersionCompareResult, error)
 	CreateVersion(ctx context.Context, tenantID int64, questionID int64, version QuestionVersion) (QuestionVersion, Question, error)
 	SetQuestionTags(ctx context.Context, tenantID int64, questionID int64, tagIDs []int64, tagNames []string) error
 	CreateComment(ctx context.Context, tenantID int64, questionID int64, userID int64, input QuestionCommentInput) error

@@ -167,6 +167,8 @@ export function resolveAdminPageTitle(selectedPath: string): string {
       return "字典管理";
     case "/admin/notices":
       return "公告通知";
+    case "/admin/notifications":
+      return "我的通知";
     case "/admin/question-banks":
       return "题库管理";
     case "/admin/questions":

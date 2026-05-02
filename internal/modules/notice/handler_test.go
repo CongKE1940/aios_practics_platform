@@ -303,6 +303,57 @@ func (repo *memoryRepository) PublishNotice(_ context.Context, tenantID int64, i
 	return repo.notices[id], nil
 }
 
+func (repo *memoryRepository) ListAnnouncements(_ context.Context, tenantID int64, recipientUserID int64, filter AnnouncementListFilter) (PageResult[Notice], error) {
+	items := make([]Notice, 0)
+	for _, notification := range repo.notifications {
+		if notification.TenantID != tenantID ||
+			notification.RecipientUserID != recipientUserID ||
+			notification.Category != NotificationCategoryNotice ||
+			notification.SourceType != NotificationSourceTypeNotice ||
+			notification.SourceID == nil {
+			continue
+		}
+		if filter.ReadStatus != "" && notification.Status != filter.ReadStatus {
+			continue
+		}
+		notice, ok := repo.notices[*notification.SourceID]
+		if !ok || notice.Status != NoticeStatusPublished {
+			continue
+		}
+		if filter.NoticeType != "" && notice.NoticeType != filter.NoticeType {
+			continue
+		}
+		notice.ReadAt = notification.ReadAt
+		notice.ReadStatus = notification.Status
+		items = append(items, notice)
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
+func (repo *memoryRepository) MarkAnnouncementRead(_ context.Context, tenantID int64, recipientUserID int64, id int64) (Notice, error) {
+	for notificationID, notification := range repo.notifications {
+		if notification.TenantID == tenantID &&
+			notification.RecipientUserID == recipientUserID &&
+			notification.Category == NotificationCategoryNotice &&
+			notification.SourceType == NotificationSourceTypeNotice &&
+			notification.SourceID != nil &&
+			*notification.SourceID == id {
+			now := time.Now()
+			notification.Status = NotificationStatusRead
+			notification.ReadAt = &now
+			repo.notifications[notificationID] = notification
+			notice, ok := repo.notices[id]
+			if !ok {
+				return Notice{}, ErrNotFound
+			}
+			notice.ReadAt = notification.ReadAt
+			notice.ReadStatus = notification.Status
+			return notice, nil
+		}
+	}
+	return Notice{}, ErrNotFound
+}
+
 func (repo *memoryRepository) RecallNotice(_ context.Context, tenantID int64, id int64) (Notice, error) {
 	notice, ok := repo.notices[id]
 	if !ok || notice.TenantID != tenantID {
@@ -342,6 +393,39 @@ func (repo *memoryRepository) MarkNotificationRead(_ context.Context, tenantID i
 		repo.notifications[id] = notification
 	}
 	return repo.notifications[id], nil
+}
+
+func (repo *memoryRepository) CreateNotification(_ context.Context, scope Scope, input NotificationInput) (NotificationSendResult, error) {
+	recipientIDs := make([]int64, 0)
+	if input.TargetType == NotificationTargetSingleUser {
+		if input.TargetUserID <= 0 {
+			return NotificationSendResult{}, ErrInvalidInput
+		}
+		recipientIDs = append(recipientIDs, input.TargetUserID)
+	} else {
+		recipientIDs = append(recipientIDs, repo.activeUsers[scope.TenantID]...)
+	}
+
+	items := make([]Notification, 0, len(recipientIDs))
+	for _, recipientID := range recipientIDs {
+		sourceID := scope.UserID
+		notification := Notification{
+			ID:              repo.nextNotificationID,
+			TenantID:        scope.TenantID,
+			RecipientUserID: recipientID,
+			Category:        NotificationCategoryDirect,
+			Title:           input.Title,
+			Content:         input.Content,
+			SourceType:      NotificationSourceTypeUser,
+			SourceID:        &sourceID,
+			Status:          NotificationStatusUnread,
+			CreatedAt:       time.Now(),
+		}
+		repo.notifications[repo.nextNotificationID] = notification
+		repo.nextNotificationID++
+		items = append(items, notification)
+	}
+	return NotificationSendResult{Items: items, Total: len(items)}, nil
 }
 
 func performJSONRequest(router http.Handler, method string, path string, body any) *httptest.ResponseRecorder {

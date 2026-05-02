@@ -9,7 +9,8 @@ import {
   type LoginRequest,
   type LoginResponse,
   type ManagedUser,
-  type MenuItem
+  type MenuItem,
+  type Notice
 } from "@aios/api-sdk";
 import { AppShell, EmptyState, SidebarUserMenu, StatusNotice } from "@aios/ui-web";
 
@@ -32,6 +33,7 @@ import { GradeManagementPanel } from "./grade-management-panel";
 import { HistoryPanel, type HistoryPanelApi } from "./history-panel";
 import { ImportPanel, type ImportPanelApi } from "./import-panel";
 import { NoticePanel, type NoticeApi } from "./notice-panel";
+import { NotificationPanel, type AdminNotificationApi } from "./notification-panel";
 import { type OrganizationApi } from "./organization-panel";
 import { PaperManagementPanel, type PaperManagementApi } from "./paper-assembly-panel";
 import { ProfilePanel, type ProfilePanelApi } from "./profile-panel";
@@ -53,6 +55,7 @@ interface AuthApi {
 interface AdminAppProps {
   authApi?: AuthApi;
   noticeApi?: NoticeApi;
+  notificationApi?: AdminNotificationApi;
   orgApi?: OrganizationApi;
   questionBankApi?: QuestionBankPanelApi;
   questionApi?: QuestionPanelApi;
@@ -91,6 +94,7 @@ const defaultForm: LoginRequest = {
 export function AdminApp({
   authApi,
   noticeApi,
+  notificationApi,
   orgApi,
   questionBankApi,
   questionApi,
@@ -115,6 +119,8 @@ export function AdminApp({
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+  const [pendingAnnouncements, setPendingAnnouncements] = useState<Notice[]>([]);
   const [passwordChangeState, setPasswordChangeState] = useState<ChangeInitialPasswordRequest | null>(null);
   const [passwordChangeConfirm, setPasswordChangeConfirm] = useState("");
   const [passwordChanging, setPasswordChanging] = useState(false);
@@ -231,6 +237,18 @@ export function AdminApp({
     const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
     return createApiClient({ baseUrl, accessToken: session.accessToken });
   }, [noticeApi, selectedPath, session]);
+
+  const currentNotificationApi = useMemo<AdminNotificationApi | undefined>(() => {
+    if (notificationApi) {
+      return notificationApi;
+    }
+    if (!session) {
+      return undefined;
+    }
+
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18081/api/v1";
+    return createApiClient({ baseUrl, accessToken: session.accessToken });
+  }, [notificationApi, session]);
 
   const currentQuestionBankApi = useMemo<QuestionBankPanelApi | undefined>(() => {
     if (questionBankApi) {
@@ -416,6 +434,76 @@ export function AdminApp({
     setForm((current) => ({ ...current, password: "" }));
   }
 
+  async function refreshUnreadNotifications() {
+    if (!currentNotificationApi) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+    try {
+      const result = await currentNotificationApi.listNotifications({ status: "unread", page: 1, page_size: 1 });
+      setHasUnreadNotifications(result.total > 0);
+    } catch {
+      setHasUnreadNotifications(false);
+    }
+  }
+
+  async function confirmPendingAnnouncements() {
+    if (!currentNotificationApi?.markAnnouncementRead) {
+      setPendingAnnouncements([]);
+      return;
+    }
+    const announcements = pendingAnnouncements;
+    setPendingAnnouncements([]);
+    await Promise.all(announcements.map((notice) => currentNotificationApi.markAnnouncementRead?.(notice.id)));
+    await refreshUnreadNotifications();
+  }
+
+  useEffect(() => {
+    if (!session || !currentNotificationApi) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+    let active = true;
+    currentNotificationApi
+      .listNotifications({ status: "unread", page: 1, page_size: 1 })
+      .then((result) => {
+        if (active) {
+          setHasUnreadNotifications(result.total > 0);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHasUnreadNotifications(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentNotificationApi, session]);
+
+  useEffect(() => {
+    if (!session || !currentNotificationApi?.listAnnouncements) {
+      setPendingAnnouncements([]);
+      return;
+    }
+    let active = true;
+    currentNotificationApi
+      .listAnnouncements({ notice_type: "system", read_status: "unread", page: 1, page_size: 5 })
+      .then((result) => {
+        if (active) {
+          setPendingAnnouncements(result.items);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPendingAnnouncements([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentNotificationApi, session]);
+
   if (!session) {
     return (
       <main className="ui-auth-page">
@@ -522,6 +610,7 @@ export function AdminApp({
     currentRbacApi,
     currentDictionaryApi,
     currentNoticeApi,
+    currentNotificationApi,
     currentQuestionBankApi,
     currentQuestionApi,
     currentImportApi,
@@ -545,7 +634,8 @@ export function AdminApp({
       store.save(nextSession);
       setSession(nextSession);
     },
-    onNavigate: setSelectedPath
+    onNavigate: setSelectedPath,
+    onUnreadMayChange: refreshUnreadNotifications
   });
   const breadcrumb = resolveAdminNavigationBreadcrumb(selectedPath, session.menus);
 
@@ -580,6 +670,8 @@ export function AdminApp({
               displayName={session.user.display_name}
               userTypeLabel={getUserTypeLabel(session.user.user_type)}
               onProfile={() => setSelectedPath("/admin/profile")}
+              onNotifications={() => setSelectedPath("/admin/notifications")}
+              hasUnreadNotifications={hasUnreadNotifications}
               onLogout={handleLogout}
             />
           </>
@@ -620,6 +712,9 @@ export function AdminApp({
             <EmptyState title="请选择左侧功能入口。" description="" />
           )}
         </div>
+        {pendingAnnouncements.length > 0 ? (
+          <AnnouncementLoginModal announcements={pendingAnnouncements} onConfirm={() => void confirmPendingAnnouncements()} />
+        ) : null}
       </AppShell>
     </div>
   );
@@ -633,6 +728,7 @@ interface RenderAdminViewArgs {
   currentRbacApi?: RbacPanelApi;
   currentDictionaryApi?: DictionaryPanelApi;
   currentNoticeApi?: NoticeApi;
+  currentNotificationApi?: AdminNotificationApi;
   currentQuestionBankApi?: QuestionBankPanelApi;
   currentQuestionApi?: QuestionPanelApi;
   currentImportApi?: ImportPanelApi;
@@ -643,6 +739,7 @@ interface RenderAdminViewArgs {
   currentChallengeApi?: ChallengePanelApi;
   onUserUpdated(user: ManagedUser): void;
   onNavigate(path: string): void;
+  onUnreadMayChange(): void;
 }
 
 function renderAdminView({
@@ -653,6 +750,7 @@ function renderAdminView({
   currentRbacApi,
   currentDictionaryApi,
   currentNoticeApi,
+  currentNotificationApi,
   currentQuestionBankApi,
   currentQuestionApi,
   currentImportApi,
@@ -662,7 +760,8 @@ function renderAdminView({
   currentProfileApi,
   currentChallengeApi,
   onUserUpdated,
-  onNavigate
+  onNavigate,
+  onUnreadMayChange
 }: RenderAdminViewArgs) {
   return (
     <>
@@ -688,6 +787,9 @@ function renderAdminView({
         <DictionaryItemPanel api={currentDictionaryApi} dictionaryId={parseDictionaryID(selectedPath)} onNavigate={onNavigate} />
       ) : null}
       {selectedPath === "/admin/notices" && currentNoticeApi ? <NoticePanel api={currentNoticeApi} /> : null}
+      {selectedPath === "/admin/notifications" && currentNotificationApi ? (
+        <NotificationPanel api={currentNotificationApi} onUnreadMayChange={onUnreadMayChange} />
+      ) : null}
       {selectedPath === "/admin/question-banks" && currentQuestionBankApi ? (
         <QuestionBankPanel api={currentQuestionBankApi} />
       ) : null}
@@ -721,6 +823,7 @@ function isKnownAdminPath(selectedPath: string): boolean {
     "/admin/roles",
     "/admin/dictionaries",
     "/admin/notices",
+    "/admin/notifications",
     "/admin/question-banks",
     "/admin/questions",
     "/admin/questions/editor",
@@ -827,6 +930,55 @@ function getUserTypeLabel(userType: LoginResponse["user"]["user_type"]): string 
   }
 }
 
+function AnnouncementLoginModal({ announcements, onConfirm }: { announcements: Notice[]; onConfirm(): void }) {
+  const firstAnnouncement = announcements[0];
+  return (
+    <div className="ui-admin-modal-backdrop">
+      <section className="ui-admin-modal" aria-label="未读系统公告">
+        <div className="ui-admin-modal__header">
+          <div>
+            <h3>未读系统公告</h3>
+            <p>{firstAnnouncement.title}</p>
+          </div>
+        </div>
+        <div className="ui-admin-modal__body">
+          <dl className="ui-admin-meta-list">
+            <div>
+              <dt>公告内容</dt>
+              <dd>{firstAnnouncement.content}</dd>
+            </div>
+            <div>
+              <dt>发布人</dt>
+              <dd>{firstAnnouncement.publisher_name || firstAnnouncement.publisher_id}</dd>
+            </div>
+            <div>
+              <dt>发布时间</dt>
+              <dd>{formatDateTime(firstAnnouncement.publish_at)}</dd>
+            </div>
+          </dl>
+          {announcements.length > 1 ? <p>还有 {announcements.length - 1} 条未读公告，本次确认后不再弹出这些公告。</p> : null}
+        </div>
+        <div className="ui-admin-modal__footer">
+          <button type="button" className="ui-button ui-button--primary" onClick={onConfirm}>
+            我已知晓
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString("zh-CN", { hour12: false });
+}
+
 function formatOrganizationLabel(organization: LoginOrganization): string {
   return `${organization.tenant_name}（${organization.tenant_code}）`;
 }
@@ -882,7 +1034,12 @@ function normalizeAdminMenus(menus: MenuItem[]): MenuItem[] {
 }
 
 function canOpenAdminPath(menus: MenuItem[], selectedPath: string): boolean {
-  if (selectedPath === "" || selectedPath === "/admin/workbench" || selectedPath === "/admin/profile") {
+  if (
+    selectedPath === "" ||
+    selectedPath === "/admin/workbench" ||
+    selectedPath === "/admin/profile" ||
+    selectedPath === "/admin/notifications"
+  ) {
     return true;
   }
   if (selectedPath.startsWith("/admin/dictionaries/")) {

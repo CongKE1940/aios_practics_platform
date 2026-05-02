@@ -154,6 +154,7 @@ var userMenus = []menuDef{
 			{id: 26, name: "疑惑题", path: "/app/practice/confused", requiredPermissions: []string{"practice:use"}},
 			{id: 27, name: "班级学习", path: "/app/class-learning", requiredPermissions: []string{"analytics:view"}},
 			{id: 28, name: "通知中心", path: "/app/notifications"},
+			{id: 32, name: "系统公告", path: "/app/announcements"},
 			{id: 29, name: "我的题库", path: "/app/teacher-banks", requiredUserTypes: []string{"teacher", "student"}},
 		},
 	},

@@ -196,6 +196,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	if err := repo.insertQuestionCourses(ctx, tx, question.TenantID, questionID, courseIDs); err != nil {
 		return Question{}, err
 	}
+	if err := repo.insertQuestionVersionSnapshot(ctx, tx, question.TenantID, questionID, versionID, 1, question, version, "question_created"); err != nil {
+		return Question{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return Question{}, err
@@ -279,6 +282,27 @@ ORDER BY version_no DESC, id DESC
 	return items, nil
 }
 
+func (repo *MySQLRepository) CompareVersions(
+	ctx context.Context,
+	tenantID int64,
+	questionID int64,
+	filter QuestionVersionCompareFilter,
+) (QuestionVersionCompareResult, error) {
+	left, err := repo.getVersionByQuestionSelector(ctx, tenantID, questionID, filter.LeftVersionID, filter.LeftVersionNo)
+	if err != nil {
+		return QuestionVersionCompareResult{}, err
+	}
+	right, err := repo.getVersionByQuestionSelector(ctx, tenantID, questionID, filter.RightVersionID, filter.RightVersionNo)
+	if err != nil {
+		return QuestionVersionCompareResult{}, err
+	}
+	return QuestionVersionCompareResult{
+		QuestionID: questionID,
+		Left:       left,
+		Right:      right,
+	}, nil
+}
+
 func (repo *MySQLRepository) CreateVersion(ctx context.Context, tenantID int64, questionID int64, version QuestionVersion) (QuestionVersion, Question, error) {
 	tx, err := repo.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -286,7 +310,8 @@ func (repo *MySQLRepository) CreateVersion(ctx context.Context, tenantID int64, 
 	}
 	defer tx.Rollback()
 
-	if _, err := repo.getQuestionForUpdate(ctx, tx, tenantID, questionID); err != nil {
+	current, err := repo.getQuestionForUpdate(ctx, tx, tenantID, questionID)
+	if err != nil {
 		return QuestionVersion{}, Question{}, err
 	}
 
@@ -302,6 +327,9 @@ func (repo *MySQLRepository) CreateVersion(ctx context.Context, tenantID int64, 
 	}
 
 	if _, err := tx.ExecContext(ctx, "UPDATE questions SET current_version_id = ? WHERE id = ? AND tenant_id = ?", versionID, questionID, tenantID); err != nil {
+		return QuestionVersion{}, Question{}, err
+	}
+	if err := repo.insertQuestionVersionSnapshot(ctx, tx, tenantID, questionID, versionID, versionNo, current, version, "question_version_created"); err != nil {
 		return QuestionVersion{}, Question{}, err
 	}
 
@@ -553,6 +581,17 @@ func (repo *MySQLRepository) updateChallengeReviewWithNewVersion(ctx context.Con
 	if _, err := tx.ExecContext(ctx, "UPDATE questions SET current_version_id = ? WHERE id = ? AND tenant_id = ?", versionID, target.QuestionID, target.TenantID); err != nil {
 		return QuestionChallengeListItem{}, err
 	}
+	if err := repo.insertQuestionVersionSnapshot(ctx, tx, target.TenantID, target.QuestionID, versionID, versionNo, current, QuestionVersion{
+		Content:       input.NewVersion.Content,
+		Answer:        input.NewVersion.Answer,
+		Analysis:      input.NewVersion.Analysis,
+		StructureHash: buildStructureHash(current.QuestionType, input.NewVersion.Content, input.NewVersion.Answer),
+		ChangeSummary: input.NewVersion.ChangeSummary,
+		IsPublished:   true,
+		CreatedBy:     scope.UserID,
+	}, "question_challenge_version_created"); err != nil {
+		return QuestionChallengeListItem{}, err
+	}
 
 	query := `
 UPDATE question_challenges
@@ -619,6 +658,61 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+func (repo *MySQLRepository) insertQuestionVersionSnapshot(
+	ctx context.Context,
+	tx *sql.Tx,
+	tenantID int64,
+	questionID int64,
+	versionID int64,
+	versionNo int,
+	question Question,
+	version QuestionVersion,
+	triggerEventType string,
+) error {
+	payload := map[string]any{
+		"question_id":         questionID,
+		"question_version_id": versionID,
+		"version_no":          versionNo,
+		"question_type":       question.QuestionType,
+		"difficulty":          question.Difficulty,
+		"status":              question.Status,
+		"content":             version.Content,
+		"answer":              version.Answer,
+		"analysis":            version.Analysis,
+		"structure_hash":      version.StructureHash,
+		"change_summary":      version.ChangeSummary,
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO entity_snapshots (
+  tenant_id, entity_type, entity_id, snapshot_type, snapshot_json, version_no, trigger_event_type, operator_user_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`, tenantID, "question", questionID, "version", string(payloadJSON), versionNo, triggerEventType, nullPositiveInt64(version.CreatedBy)); err != nil {
+		return err
+	}
+	return repo.insertQuestionAuditLog(ctx, tx, tenantID, version.CreatedBy, triggerEventType, questionID, payloadJSON)
+}
+
+func (repo *MySQLRepository) insertQuestionAuditLog(
+	ctx context.Context,
+	tx *sql.Tx,
+	tenantID int64,
+	operatorUserID int64,
+	actionName string,
+	questionID int64,
+	afterJSON []byte,
+) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO audit_logs (
+  tenant_id, operator_user_id, module_name, action_name, resource_type, resource_id, after_json, result
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`, tenantID, nullPositiveInt64(operatorUserID), "question", actionName, "question", questionID, string(afterJSON), "success")
+	return err
 }
 
 func (repo *MySQLRepository) insertQuestionBanks(ctx context.Context, tx *sql.Tx, tenantID int64, questionID int64, bankIDs []int64) error {
@@ -1070,6 +1164,36 @@ LIMIT 1
 	return item, nil
 }
 
+func (repo *MySQLRepository) getVersionByQuestionSelector(
+	ctx context.Context,
+	tenantID int64,
+	questionID int64,
+	versionID int64,
+	versionNo int,
+) (QuestionVersion, error) {
+	query := `
+SELECT qv.id, qv.question_id, qv.version_no, qv.content_json, qv.answer_json, qv.analysis_json, qv.structure_hash,
+       qv.change_summary, qv.is_published, qv.created_by, qv.created_at
+FROM question_versions qv
+JOIN questions q ON q.id = qv.question_id
+WHERE qv.question_id = ? AND q.tenant_id = ? AND q.deleted_at IS NULL
+`
+	args := []any{questionID, tenantID}
+	if versionID > 0 {
+		query += " AND qv.id = ?"
+		args = append(args, versionID)
+	} else {
+		query += " AND qv.version_no = ?"
+		args = append(args, versionNo)
+	}
+	query += " LIMIT 1"
+	item, err := scanQuestionVersionScanner(repo.db.QueryRowContext(ctx, query, args...))
+	if err != nil {
+		return QuestionVersion{}, wrapNotFound(err)
+	}
+	return item, nil
+}
+
 func (repo *MySQLRepository) getQuestionWithBanks(ctx context.Context, tenantID int64, id int64) (Question, error) {
 	query := `
 SELECT
@@ -1515,6 +1639,13 @@ func nullInt64(value *int64) any {
 		return nil
 	}
 	return *value
+}
+
+func nullPositiveInt64(value int64) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
 }
 
 func wrapNotFound(err error) error {

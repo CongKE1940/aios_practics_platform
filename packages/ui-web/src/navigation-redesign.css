@@ -210,6 +210,7 @@ body::before {
 }
 
 .ui-sidebar-user__avatar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -220,6 +221,29 @@ body::before {
   background: linear-gradient(135deg, rgba(31, 93, 107, 0.16), rgba(214, 157, 52, 0.22));
   color: var(--ui-color-primary-strong);
   font-weight: 900;
+}
+
+.ui-sidebar-user__red-dot,
+.ui-sidebar-user__menu-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e11d48;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
+}
+
+.ui-sidebar-user__red-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+}
+
+.ui-sidebar-user__menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .ui-sidebar-user__copy {

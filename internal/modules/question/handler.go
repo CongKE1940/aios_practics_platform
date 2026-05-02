@@ -32,6 +32,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.PUT("/question-challenges/:id", handler.updateChallengeReview)
 	router.POST("/questions", handler.createQuestion)
 	router.PUT("/questions/:id", handler.updateQuestion)
+	router.GET("/questions/:id/versions/compare", handler.compareVersions)
 	router.GET("/questions/:id/versions", handler.listVersions)
 	router.POST("/questions/:id/versions", handler.createVersion)
 	router.POST("/questions/:id/tags", handler.setQuestionTags)
@@ -107,6 +108,29 @@ func (handler *Handler) listVersions(ctx *gin.Context) {
 		return
 	}
 	result, err := handler.service.ListVersions(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeQuestionError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) compareVersions(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx)
+	if !ok {
+		return
+	}
+	filter := QuestionVersionCompareFilter{
+		LeftVersionNo:  parseInt(ctx.Query("left_version_no")),
+		RightVersionNo: parseInt(ctx.Query("right_version_no")),
+	}
+	if leftID, ok := parseOptionalInt64(ctx.Query("left_version_id")); ok {
+		filter.LeftVersionID = *leftID
+	}
+	if rightID, ok := parseOptionalInt64(ctx.Query("right_version_id")); ok {
+		filter.RightVersionID = *rightID
+	}
+	result, err := handler.service.CompareVersions(ctx.Request.Context(), scope, id, filter)
 	if err != nil {
 		writeQuestionError(ctx, err)
 		return

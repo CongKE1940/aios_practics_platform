@@ -10,6 +10,7 @@ import {
   type LoginResponse,
   type ManagedUser,
   type MenuItem,
+  type Notice,
   type PracticeSessionDetail
 } from "@aios/api-sdk";
 import { AppShell, EmptyState, PageSection, SidebarUserMenu, StatusNotice } from "@aios/ui-web";
@@ -22,6 +23,7 @@ import type { UserAuthApi, UserSessionState, UserSessionStore } from "./auth-typ
 import { MenuNav, normalizeUserNavigationMenus } from "./menu-nav";
 import { LoginPage } from "./login-page";
 import { NotificationCenterPage, type NotificationCenterApi } from "./notification-center-page";
+import { SystemAnnouncementPage, type SystemAnnouncementApi } from "./system-announcement-page";
 import { ClassLearningPage, type ClassLearningApi } from "./class-learning-page";
 import { CourseOverviewPage, type CourseOverviewApi } from "./course-overview-page";
 import { QuestionFeedbackPage, type QuestionFeedbackPageApi } from "./question-feedback-page";
@@ -52,6 +54,7 @@ type UserPracticeApi = PracticePanelApi &
   PracticeReviewApi &
   Partial<CourseOverviewApi> &
   Partial<NotificationCenterApi> &
+  Partial<SystemAnnouncementApi> &
   Partial<QuestionFeedbackPageApi> &
   Partial<TeacherQuestionBankApi> &
   Partial<ClassLearningApi> &
@@ -80,6 +83,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+  const [pendingAnnouncements, setPendingAnnouncements] = useState<Notice[]>([]);
   const [passwordChangeState, setPasswordChangeState] = useState<ChangeInitialPasswordRequest | null>(null);
   const [passwordChangeConfirm, setPasswordChangeConfirm] = useState("");
   const [passwordChanging, setPasswordChanging] = useState(false);
@@ -162,6 +167,80 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
       active = false;
     };
   }, [auth, session]);
+
+  useEffect(() => {
+    if (!session || !currentPracticeApi || !isNotificationCenterApi(currentPracticeApi)) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+
+    let active = true;
+    currentPracticeApi
+      .listNotifications({ status: "unread", page: 1, page_size: 1 })
+      .then((result) => {
+        if (active) {
+          setHasUnreadNotifications(result.total > 0);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHasUnreadNotifications(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentPracticeApi, session]);
+
+  useEffect(() => {
+    if (!session || !currentPracticeApi || !isSystemAnnouncementApi(currentPracticeApi)) {
+      setPendingAnnouncements([]);
+      return;
+    }
+
+    let active = true;
+    currentPracticeApi
+      .listAnnouncements({ notice_type: "system", read_status: "unread", page: 1, page_size: 5 })
+      .then((result) => {
+        if (active) {
+          setPendingAnnouncements(result.items);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPendingAnnouncements([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentPracticeApi, session]);
+
+  async function refreshUnreadNotifications() {
+    if (!currentPracticeApi || !isNotificationCenterApi(currentPracticeApi)) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+    try {
+      const result = await currentPracticeApi.listNotifications({ status: "unread", page: 1, page_size: 1 });
+      setHasUnreadNotifications(result.total > 0);
+    } catch {
+      setHasUnreadNotifications(false);
+    }
+  }
+
+  async function confirmPendingAnnouncements() {
+    if (!currentPracticeApi || !isSystemAnnouncementApi(currentPracticeApi)) {
+      setPendingAnnouncements([]);
+      return;
+    }
+    const announcements = pendingAnnouncements;
+    setPendingAnnouncements([]);
+    await Promise.all(announcements.map((notice) => currentPracticeApi.markAnnouncementRead(notice.id)));
+    await refreshUnreadNotifications();
+  }
 
   async function handleLogin(form: LoginRequest) {
     setSubmitting(true);
@@ -322,7 +401,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
       };
       store.save(nextSession);
       setSession(nextSession);
-    }
+    },
+    onUnreadMayChange: refreshUnreadNotifications
   });
   const breadcrumb = resolveUserBreadcrumb(selectedPath, session.menus);
 
@@ -357,6 +437,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
               displayName={session.user.display_name}
               userTypeLabel={getUserTypeLabel(session.user.user_type)}
               onProfile={() => setSelectedPath("/app/profile")}
+              onNotifications={() => setSelectedPath("/app/notifications")}
+              hasUnreadNotifications={hasUnreadNotifications}
               onLogout={handleLogout}
             />
           </>
@@ -384,6 +466,9 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
           <div className="ui-admin-route ui-user-route">{content}</div>
         )}
         {errorMessage ? <StatusNotice tone="danger" title="当前会话异常" description={errorMessage} /> : null}
+        {pendingAnnouncements.length > 0 ? (
+          <AnnouncementLoginModal announcements={pendingAnnouncements} onConfirm={() => void confirmPendingAnnouncements()} />
+        ) : null}
       </AppShell>
     </div>
   );
@@ -398,6 +483,7 @@ interface RenderUserContentArgs {
   setPendingPracticeSession: Dispatch<SetStateAction<PracticeSessionDetail | null>>;
   setSelectedPath: Dispatch<SetStateAction<string>>;
   onUserUpdated(user: ManagedUser): void;
+  onUnreadMayChange(): void;
 }
 
 function renderUserContent({
@@ -408,7 +494,8 @@ function renderUserContent({
   pendingPracticeSession,
   setPendingPracticeSession,
   setSelectedPath,
-  onUserUpdated
+  onUserUpdated,
+  onUnreadMayChange
 }: RenderUserContentArgs) {
   const isStudentSessionQuestionRoute = selectedRoute.startsWith("/app/class-learning/student/session/question");
   const isStudentSessionRoute = selectedRoute.startsWith("/app/class-learning/student/session");
@@ -445,9 +532,16 @@ function renderUserContent({
       ) : null}
       {selectedRoute === "/app/notifications" ? (
         currentPracticeApi && isNotificationCenterApi(currentPracticeApi) ? (
-          <NotificationCenterPage api={currentPracticeApi} />
+          <NotificationCenterPage api={currentPracticeApi} onUnreadMayChange={onUnreadMayChange} />
         ) : (
           <p>当前通知中心暂不可用。</p>
+        )
+      ) : null}
+      {selectedRoute === "/app/announcements" ? (
+        currentPracticeApi && isSystemAnnouncementApi(currentPracticeApi) ? (
+          <SystemAnnouncementPage api={currentPracticeApi} onUnreadMayChange={onUnreadMayChange} />
+        ) : (
+          <p>当前系统公告暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/teacher-banks" ? (
@@ -590,6 +684,10 @@ function isCourseOverviewApi(api: UserPracticeApi | undefined): api is UserPract
 
 function isNotificationCenterApi(api: UserPracticeApi | undefined): api is UserPracticeApi & NotificationCenterApi {
   return typeof api?.listNotifications === "function" && typeof api?.markNotificationRead === "function";
+}
+
+function isSystemAnnouncementApi(api: UserPracticeApi | undefined): api is UserPracticeApi & SystemAnnouncementApi {
+  return typeof api?.listAnnouncements === "function" && typeof api?.markAnnouncementRead === "function";
 }
 
 function isQuestionFeedbackApi(api: UserPracticeApi | undefined): api is UserPracticeApi & QuestionFeedbackPageApi {
@@ -763,6 +861,8 @@ function getUserPageTitle(selectedRoute: string): string {
       return "课程中心";
     case "/app/notifications":
       return "通知中心";
+    case "/app/announcements":
+      return "系统公告";
     case "/app/teacher-banks":
       return "我的题库";
     case "/app/questions/feedback":
@@ -784,6 +884,55 @@ function getUserPageTitle(selectedRoute: string): string {
     default:
       return "当前内容";
   }
+}
+
+function AnnouncementLoginModal({ announcements, onConfirm }: { announcements: Notice[]; onConfirm(): void }) {
+  const firstAnnouncement = announcements[0];
+  return (
+    <div className="ui-admin-modal-backdrop">
+      <section className="ui-admin-modal" aria-label="未读系统公告">
+        <div className="ui-admin-modal__header">
+          <div>
+            <h3>未读系统公告</h3>
+            <p>{firstAnnouncement.title}</p>
+          </div>
+        </div>
+        <div className="ui-admin-modal__body">
+          <dl className="ui-admin-meta-list">
+            <div>
+              <dt>公告内容</dt>
+              <dd>{firstAnnouncement.content}</dd>
+            </div>
+            <div>
+              <dt>发布人</dt>
+              <dd>{firstAnnouncement.publisher_name || firstAnnouncement.publisher_id}</dd>
+            </div>
+            <div>
+              <dt>发布时间</dt>
+              <dd>{formatDateTime(firstAnnouncement.publish_at)}</dd>
+            </div>
+          </dl>
+          {announcements.length > 1 ? <p>还有 {announcements.length - 1} 条未读公告，可在系统公告页继续查看。</p> : null}
+        </div>
+        <div className="ui-admin-modal__footer">
+          <button type="button" className="ui-button ui-button--primary" onClick={onConfirm}>
+            我已知晓
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
 function getUserTypeLabel(userType: UserSessionState["user"]["user_type"]): string {

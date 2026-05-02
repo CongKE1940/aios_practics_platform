@@ -171,15 +171,20 @@ ORDER BY id ASC
 			AddRow("class", int64(401), createdAt).
 			AddRow("user", int64(402), createdAt))
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT question_id, question_version_id, score, display_order, created_at
-FROM exam_fixed_question_drafts
-WHERE exam_id = ?
-ORDER BY display_order ASC, id ASC
+SELECT efqd.question_id, efqd.question_version_id, efqd.score, efqd.display_order, efqd.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_fixed_question_drafts efqd
+JOIN questions q ON q.id = efqd.question_id
+JOIN question_versions qv ON qv.id = efqd.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE efqd.exam_id = ?
+ORDER BY efqd.display_order ASC, efqd.id ASC
 `)).
 		WithArgs(int64(301)).
-		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"}).
-			AddRow(int64(11), int64(111), "5.00", 1, createdAt).
-			AddRow(int64(12), int64(112), "10.00", 2, createdAt))
+		WillReturnRows(newExamFixedQuestionRows().
+			AddRow(int64(11), int64(111), "5.00", 1, createdAt, "single_choice", 1, int64(111), 1, `{"stem":{"text":"1+1等于几？"}}`, `{"judge_mode":"by_option_key","correct_keys":["B"]}`, nil).
+			AddRow(int64(12), int64(112), "10.00", 2, createdAt, "single_choice", 1, int64(112), 1, `{"stem":{"text":"2+2等于几？"}}`, `{"judge_mode":"by_option_key","correct_keys":["A"]}`, nil))
 
 	result, err := repo.CreateExam(context.Background(), Scope{TenantID: 9, UserID: 21}, ExamInput{
 		Name:            "期中模拟",
@@ -242,13 +247,18 @@ ORDER BY id ASC
 		WithArgs(int64(301)).
 		WillReturnRows(sqlmock.NewRows([]string{"target_type", "target_id", "created_at"}))
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT question_id, question_version_id, score, display_order, created_at
-FROM exam_fixed_question_drafts
-WHERE exam_id = ?
-ORDER BY display_order ASC, id ASC
+SELECT efqd.question_id, efqd.question_version_id, efqd.score, efqd.display_order, efqd.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_fixed_question_drafts efqd
+JOIN questions q ON q.id = efqd.question_id
+JOIN question_versions qv ON qv.id = efqd.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE efqd.exam_id = ?
+ORDER BY efqd.display_order ASC, efqd.id ASC
 `)).
 		WithArgs(int64(301)).
-		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"}))
+		WillReturnRows(newExamFixedQuestionRows())
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`
 UPDATE exams
@@ -302,15 +312,20 @@ ORDER BY id ASC
 		WillReturnRows(sqlmock.NewRows([]string{"target_type", "target_id", "created_at"}).
 			AddRow("course", int64(501), createdAt))
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT question_id, question_version_id, score, display_order, created_at
-FROM exam_fixed_question_drafts
-WHERE exam_id = ?
-ORDER BY display_order ASC, id ASC
+SELECT efqd.question_id, efqd.question_version_id, efqd.score, efqd.display_order, efqd.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_fixed_question_drafts efqd
+JOIN questions q ON q.id = efqd.question_id
+JOIN question_versions qv ON qv.id = efqd.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE efqd.exam_id = ?
+ORDER BY efqd.display_order ASC, efqd.id ASC
 `)).
 		WithArgs(int64(301)).
-		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"}).
-			AddRow(int64(21), int64(121), "12.00", 1, createdAt).
-			AddRow(int64(22), int64(122), "18.00", 2, createdAt))
+		WillReturnRows(newExamFixedQuestionRows().
+			AddRow(int64(21), int64(121), "12.00", 1, createdAt, "single_choice", 1, int64(121), 1, `{"stem":{"text":"更新后第1题"}}`, `{"judge_mode":"by_option_key","correct_keys":["A"]}`, nil).
+			AddRow(int64(22), int64(122), "18.00", 2, createdAt, "single_choice", 1, int64(122), 1, `{"stem":{"text":"更新后第2题"}}`, `{"judge_mode":"by_option_key","correct_keys":["B"]}`, nil))
 
 	result, err := repo.UpdateExam(context.Background(), Scope{TenantID: 9}, 301, ExamInput{
 		Name:            "更新后考试",
@@ -579,16 +594,18 @@ func TestMySQLRepositoryGetAttemptIncludesQuestionContent(t *testing.T) {
 	now := time.Now().UTC().Add(-10 * time.Minute)
 	expectAttemptByID(mock, 801, 9, 10001, 701, now, ExamAttemptStatusInProgress)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
+SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type,
+       qv.version_no, q.current_version_id, current_qv.version_no, qv.content_json
 FROM exam_paper_questions epq
 JOIN questions q ON q.id = epq.question_id
 JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
 WHERE epq.paper_id = ?
 ORDER BY epq.order_no ASC
 `)).
 		WithArgs(int64(701)).
-		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score", "question_type", "content_json"}).
-			AddRow(int64(101), int64(1001), 1, "2.00", "single_choice", `{"stem":{"text":"1+1等于几？"},"options":[{"key":"A","text":"2"}]}`))
+		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score", "question_type", "version_no", "current_version_id", "current_version_no", "content_json"}).
+			AddRow(int64(101), int64(1001), 1, "2.00", "single_choice", 1, int64(1002), 2, `{"stem":{"text":"1+1等于几？"},"options":[{"key":"A","text":"2"}]}`))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT attempt_id, question_id, question_version_id, display_order, answer_json, is_correct, score
 FROM exam_attempt_answers
@@ -604,6 +621,9 @@ ORDER BY display_order ASC
 	}
 	if len(result.Questions) != 1 || result.Questions[0].QuestionType != "single_choice" {
 		t.Fatalf("questions = %+v", result.Questions)
+	}
+	if !result.Questions[0].QuestionChanged || result.Questions[0].CurrentVersionID == nil || *result.Questions[0].CurrentVersionID != 1002 {
+		t.Fatalf("question version state = %+v", result.Questions[0])
 	}
 	stem, _ := result.Questions[0].Content["stem"].(map[string]any)
 	if stem["text"] != "1+1等于几？" {
@@ -891,16 +911,18 @@ VALUES (?, ?, ?, ?, ?, ?)
 		WillReturnResult(sqlmock.NewResult(801, 1))
 	expectAttemptByID(mock, 801, 9, 10001, 701, startedAt, ExamAttemptStatusInProgress)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
+SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type,
+       qv.version_no, q.current_version_id, current_qv.version_no, qv.content_json
 FROM exam_paper_questions epq
 JOIN questions q ON q.id = epq.question_id
 JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
 WHERE epq.paper_id = ?
 ORDER BY epq.order_no ASC
 `)).
 		WithArgs(int64(701)).
-		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score", "question_type", "content_json"}).
-			AddRow(int64(101), int64(1001), 1, "2.00", "single_choice", `{"stem":{"text":"1+1等于几？"}}`))
+		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "order_no", "score", "question_type", "version_no", "current_version_id", "current_version_no", "content_json"}).
+			AddRow(int64(101), int64(1001), 1, "2.00", "single_choice", 1, int64(1001), 1, `{"stem":{"text":"1+1等于几？"}}`))
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT attempt_id, question_id, question_version_id, display_order, answer_json, is_correct, score
 FROM exam_attempt_answers
@@ -970,15 +992,37 @@ ORDER BY id ASC
 `)).
 		WithArgs(examID).
 		WillReturnRows(targetRows)
-	questionRows := sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"})
+	questionRows := newExamFixedQuestionRows()
 	for _, question := range fixedQuestions {
-		questionRows.AddRow(question.QuestionID, question.QuestionVersionID, formatExamScore(question.Score), question.DisplayOrder, question.CreatedAt)
+		versionNo := question.VersionNo
+		if versionNo == 0 {
+			versionNo = 1
+		}
+		questionRows.AddRow(
+			question.QuestionID,
+			question.QuestionVersionID,
+			formatExamScore(question.Score),
+			question.DisplayOrder,
+			question.CreatedAt,
+			"single_choice",
+			versionNo,
+			question.QuestionVersionID,
+			versionNo,
+			`{"stem":{"text":"历史题目"}}`,
+			`{"judge_mode":"by_option_key","correct_keys":["A"]}`,
+			nil,
+		)
 	}
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT question_id, question_version_id, score, display_order, created_at
-FROM exam_fixed_question_drafts
-WHERE exam_id = ?
-ORDER BY display_order ASC, id ASC
+SELECT efqd.question_id, efqd.question_version_id, efqd.score, efqd.display_order, efqd.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_fixed_question_drafts efqd
+JOIN questions q ON q.id = efqd.question_id
+JOIN question_versions qv ON qv.id = efqd.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE efqd.exam_id = ?
+ORDER BY efqd.display_order ASC, efqd.id ASC
 `)).
 		WithArgs(examID).
 		WillReturnRows(questionRows)
@@ -1016,13 +1060,35 @@ ORDER BY id ASC
 		WithArgs(examID).
 		WillReturnRows(sqlmock.NewRows([]string{"target_type", "target_id", "created_at"}))
 	mock.ExpectQuery(regexp.QuoteMeta(`
-SELECT question_id, question_version_id, score, display_order, created_at
-FROM exam_fixed_question_drafts
-WHERE exam_id = ?
-ORDER BY display_order ASC, id ASC
+SELECT efqd.question_id, efqd.question_version_id, efqd.score, efqd.display_order, efqd.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_fixed_question_drafts efqd
+JOIN questions q ON q.id = efqd.question_id
+JOIN question_versions qv ON qv.id = efqd.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE efqd.exam_id = ?
+ORDER BY efqd.display_order ASC, efqd.id ASC
 `)).
 		WithArgs(examID).
-		WillReturnRows(sqlmock.NewRows([]string{"question_id", "question_version_id", "score", "display_order", "created_at"}))
+		WillReturnRows(newExamFixedQuestionRows())
+}
+
+func newExamFixedQuestionRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"question_id",
+		"question_version_id",
+		"score",
+		"display_order",
+		"created_at",
+		"question_type",
+		"version_no",
+		"current_version_id",
+		"current_version_no",
+		"content_json",
+		"answer_json",
+		"analysis_json",
+	})
 }
 
 func expectAttemptByID(mock sqlmock.Sqlmock, attemptID int64, tenantID int64, userID int64, paperID int64, now time.Time, status string) {

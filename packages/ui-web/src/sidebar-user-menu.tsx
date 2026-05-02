@@ -7,10 +7,19 @@ export interface SidebarUserMenuProps {
   displayName: string;
   userTypeLabel: string;
   onProfile?: () => void;
+  onNotifications?: () => void;
+  hasUnreadNotifications?: boolean;
   onLogout: () => void;
 }
 
-export function SidebarUserMenu({ displayName, userTypeLabel, onProfile, onLogout }: SidebarUserMenuProps) {
+export function SidebarUserMenu({
+  displayName,
+  userTypeLabel,
+  onProfile,
+  onNotifications,
+  hasUnreadNotifications = false,
+  onLogout
+}: SidebarUserMenuProps) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
 
@@ -28,6 +37,7 @@ export function SidebarUserMenu({ displayName, userTypeLabel, onProfile, onLogou
       >
         <span className="ui-sidebar-user__avatar" aria-hidden="true">
           <img className="ui-sidebar-user__avatar-image" src={DEFAULT_AVATAR_DATA_URI} alt="" />
+          {hasUnreadNotifications ? <span className="ui-sidebar-user__red-dot" /> : null}
         </span>
         <span className="ui-sidebar-user__copy">
           <strong>{displayName}</strong>
@@ -50,6 +60,21 @@ export function SidebarUserMenu({ displayName, userTypeLabel, onProfile, onLogou
           >
             个人信息
           </button>
+          {onNotifications ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onNotifications();
+                setOpen(false);
+              }}
+            >
+              <span className="ui-sidebar-user__menu-label">
+                我的通知
+                {hasUnreadNotifications ? <span className="ui-sidebar-user__menu-dot" aria-hidden="true" /> : null}
+              </span>
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"

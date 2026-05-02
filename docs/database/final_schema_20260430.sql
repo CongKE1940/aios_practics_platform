@@ -169,10 +169,12 @@ CREATE TABLE `entity_snapshots` (
   `snapshot_json` json NOT NULL,
   `version_no` int NOT NULL DEFAULT '1',
   `trigger_event_type` varchar(64) DEFAULT NULL,
+  `operator_user_id` bigint DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   KEY `idx_entity_snapshots_entity_created` (`entity_type`,`entity_id`,`created_at`),
-  KEY `idx_entity_snapshots_tenant_type` (`tenant_id`,`entity_type`)
+  KEY `idx_entity_snapshots_tenant_type` (`tenant_id`,`entity_type`),
+  KEY `idx_entity_snapshots_operator_created` (`operator_user_id`,`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `exam_attempt_answers` (
@@ -1046,6 +1048,7 @@ ALTER TABLE `classes` ADD CONSTRAINT `fk_classes_tenant` FOREIGN KEY (`tenant_id
 ALTER TABLE `courses` ADD CONSTRAINT `fk_courses_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`);
 ALTER TABLE `data_scopes` ADD CONSTRAINT `fk_data_scopes_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`);
 ALTER TABLE `dictionary_items` ADD CONSTRAINT `fk_dictionary_items_dictionary` FOREIGN KEY (`dictionary_id`) REFERENCES `dictionaries` (`id`);
+ALTER TABLE `entity_snapshots` ADD CONSTRAINT `fk_entity_snapshots_operator` FOREIGN KEY (`operator_user_id`) REFERENCES `users` (`id`);
 ALTER TABLE `entity_snapshots` ADD CONSTRAINT `fk_entity_snapshots_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`);
 ALTER TABLE `exam_attempt_answers` ADD CONSTRAINT `fk_eaa_attempt` FOREIGN KEY (`attempt_id`) REFERENCES `exam_attempts` (`id`);
 ALTER TABLE `exam_attempt_answers` ADD CONSTRAINT `fk_eaa_question_version` FOREIGN KEY (`question_version_id`) REFERENCES `question_versions` (`id`);

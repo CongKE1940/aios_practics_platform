@@ -78,6 +78,7 @@ export interface ApiClient {
   createQuestion(body: QuestionInput): Promise<Question>;
   updateQuestion(id: number, body: QuestionUpdateInput): Promise<Question>;
   listQuestionVersions(id: number): Promise<QuestionVersion[]>;
+  compareQuestionVersions(id: number, query: QuestionVersionCompareQuery): Promise<QuestionVersionCompareResult>;
   createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
   setQuestionTags(id: number, body: QuestionTagInput): Promise<boolean>;
   createQuestionComment(id: number, body: QuestionCommentInput): Promise<boolean>;
@@ -90,7 +91,10 @@ export interface ApiClient {
   updateNotice(id: number, body: NoticeInput): Promise<Notice>;
   publishNotice(id: number): Promise<Notice>;
   recallNotice(id: number): Promise<Notice>;
+  listAnnouncements(query?: AnnouncementListQuery): Promise<PageResult<Notice>>;
+  markAnnouncementRead(id: number): Promise<Notice>;
   listNotifications(query?: NotificationListQuery): Promise<PageResult<NotificationItem>>;
+  createNotification(body: NotificationInput): Promise<NotificationSendResult>;
   markNotificationRead(id: number): Promise<NotificationItem>;
   uploadFile(body: FormData): Promise<FileAsset>;
   importFileFromUrl(body: FileImportUrlInput): Promise<FileAsset>;
@@ -145,6 +149,8 @@ export interface ApiClient {
   listClassCourseOptions(): Promise<ClassCourseOptionsResult>;
   listAuditLogs(query?: AuditLogListQuery): Promise<PageResult<AuditLogItem>>;
   listEntitySnapshots(query?: EntitySnapshotListQuery): Promise<PageResult<EntitySnapshotItem>>;
+  listEntityTimeline(query: EntityTimelineQuery): Promise<PageResult<EntitySnapshotItem>>;
+  compareEntitySnapshots(query: EntitySnapshotCompareQuery): Promise<EntitySnapshotCompareResult>;
   listStudentTransitions(query?: StudentTransitionListQuery): Promise<PageResult<StudentTransitionItem>>;
   createStudentTransition(body: StudentTransitionInput): Promise<StudentTransitionItem>;
   listTeacherAssignmentHistories(
@@ -383,6 +389,12 @@ export interface QuestionVersion {
   created_at?: string;
 }
 
+export interface QuestionVersionCompareResult {
+  question_id: number;
+  left: QuestionVersion;
+  right: QuestionVersion;
+}
+
 export interface QuestionCommentInput {
   question_version_id: number;
   content: string;
@@ -444,11 +456,14 @@ export interface Notice {
   content: string;
   notice_type: string;
   publisher_id: number;
+  publisher_name?: string;
   publish_scope_type: string;
   publish_scope: Record<string, unknown>;
   publish_at: string;
   expire_at?: string | null;
   status: string;
+  read_at?: string | null;
+  read_status?: string;
 }
 
 export interface NotificationItem {
@@ -458,6 +473,8 @@ export interface NotificationItem {
   category: string;
   title: string;
   content: string;
+  sender_user_id?: number | null;
+  sender_name?: string;
   source_type?: string | null;
   source_id?: number | null;
   read_at?: string | null;
@@ -966,7 +983,16 @@ export interface EntitySnapshotItem {
   snapshot_json: Record<string, unknown>;
   version_no: number;
   trigger_event_type?: string | null;
+  operator_user_id?: number | null;
+  operator_name?: string | null;
   created_at: string;
+}
+
+export interface EntitySnapshotCompareResult {
+  entity_type: string;
+  entity_id: number;
+  left: EntitySnapshotItem;
+  right: EntitySnapshotItem;
 }
 
 export interface StudentTransitionItem {
@@ -1174,6 +1200,21 @@ export interface NoticeInput {
   publish_scope: Record<string, unknown>;
   publish_at: string;
   expire_at?: string | null;
+  target_tenant_id?: number;
+}
+
+export interface NotificationInput {
+  title: string;
+  content: string;
+  target_type: string;
+  target_user_id?: number;
+  target_scope?: Record<string, unknown>;
+  target_tenant_id?: number;
+}
+
+export interface NotificationSendResult {
+  items: NotificationItem[];
+  total: number;
 }
 
 export interface FileImportUrlInput {
@@ -1241,6 +1282,14 @@ export interface ExamTarget {
 export interface ExamFixedQuestion {
   question_id: number;
   question_version_id: number;
+  question_type?: string;
+  version_no?: number;
+  current_version_id?: number | null;
+  current_version_no?: number | null;
+  question_changed?: boolean;
+  content?: Record<string, unknown>;
+  answer?: Record<string, unknown>;
+  analysis?: Record<string, unknown>;
   score: number;
   display_order: number;
   created_at?: string;
@@ -1322,6 +1371,10 @@ export interface ExamAttempt {
 export interface ExamAttemptQuestion {
   question_id: number;
   question_version_id: number;
+  version_no?: number;
+  current_version_id?: number | null;
+  current_version_no?: number | null;
+  question_changed?: boolean;
   display_order: number;
   score: number;
   question_type?: string;
@@ -1479,6 +1532,13 @@ export interface QuestionListQuery {
   page_size?: number;
 }
 
+export interface QuestionVersionCompareQuery {
+  left_version_id?: number;
+  right_version_id?: number;
+  left_version_no?: number;
+  right_version_no?: number;
+}
+
 export interface QuestionChallengeListQuery {
   status?: string;
   page?: number;
@@ -1488,6 +1548,13 @@ export interface QuestionChallengeListQuery {
 export interface NoticeListQuery {
   status?: string;
   notice_type?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface AnnouncementListQuery {
+  notice_type?: string;
+  read_status?: string;
   page?: number;
   page_size?: number;
 }
@@ -1584,6 +1651,20 @@ export interface EntitySnapshotListQuery {
   entity_id?: number;
   page?: number;
   page_size?: number;
+}
+
+export interface EntityTimelineQuery {
+  entity_type: string;
+  entity_id: number;
+  page?: number;
+  page_size?: number;
+}
+
+export interface EntitySnapshotCompareQuery {
+  entity_type: string;
+  entity_id: number;
+  left_version_no: number;
+  right_version_no: number;
 }
 
 export interface StudentTransitionListQuery {
@@ -1706,6 +1787,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     updateQuestion: (id, body) =>
       request(fetcher, options, `/questions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     listQuestionVersions: (id) => request(fetcher, options, `/questions/${id}/versions`, { method: "GET" }),
+    compareQuestionVersions: (id, query) =>
+      request(fetcher, options, buildPath(`/questions/${id}/versions/compare`, query), { method: "GET" }),
     createQuestionVersion: (id, body) =>
       request(fetcher, options, `/questions/${id}/versions`, { method: "POST", body: JSON.stringify(body) }),
     setQuestionTags: (id, body) =>
@@ -1725,8 +1808,14 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request(fetcher, options, `/notices/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     publishNotice: (id) => request(fetcher, options, `/notices/${id}/publish`, { method: "POST" }),
     recallNotice: (id) => request(fetcher, options, `/notices/${id}/recall`, { method: "POST" }),
+    listAnnouncements: (query) =>
+      request(fetcher, options, buildPath("/announcements", query), { method: "GET" }),
+    markAnnouncementRead: (id) =>
+      request(fetcher, options, `/announcements/${id}/read`, { method: "POST" }),
     listNotifications: (query) =>
       request(fetcher, options, buildPath("/notifications", query), { method: "GET" }),
+    createNotification: (body) =>
+      request(fetcher, options, "/notifications", { method: "POST", body: JSON.stringify(body) }),
     markNotificationRead: (id) =>
       request(fetcher, options, `/notifications/${id}/read`, { method: "POST" }),
     uploadFile: (body) => request(fetcher, options, "/files/upload", { method: "POST", body }),
@@ -1819,6 +1908,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     listAuditLogs: (query) => request(fetcher, options, buildPath("/audit-logs", query), { method: "GET" }),
     listEntitySnapshots: (query) =>
       request(fetcher, options, buildPath("/entity-snapshots", query), { method: "GET" }),
+    listEntityTimeline: (query) =>
+      request(fetcher, options, buildPath("/entity-timeline", query), { method: "GET" }),
+    compareEntitySnapshots: (query) =>
+      request(fetcher, options, buildPath("/entity-snapshots/compare", query), { method: "GET" }),
     listStudentTransitions: (query) =>
       request(fetcher, options, buildPath("/student-transitions", query), { method: "GET" }),
     createStudentTransition: (body) =>

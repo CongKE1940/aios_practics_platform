@@ -33,7 +33,10 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.PUT("/notices/:id", handler.updateNotice)
 	router.POST("/notices/:id/publish", handler.publishNotice)
 	router.POST("/notices/:id/recall", handler.recallNotice)
+	router.GET("/announcements", handler.listAnnouncements)
+	router.POST("/announcements/:id/read", handler.markAnnouncementRead)
 	router.GET("/notifications", handler.listNotifications)
+	router.POST("/notifications", handler.createNotification)
 	router.POST("/notifications/:id/read", handler.markNotificationRead)
 }
 
@@ -157,6 +160,26 @@ func (handler *Handler) listNotifications(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
 }
 
+func (handler *Handler) createNotification(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx, false)
+	if !ok {
+		return
+	}
+
+	var input NotificationInput
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+		return
+	}
+
+	result, err := handler.service.CreateNotification(ctx.Request.Context(), scope, input)
+	if err != nil {
+		handler.writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
 func (handler *Handler) markNotificationRead(ctx *gin.Context) {
 	scope, id, ok := handler.authorizeWithID(ctx, false)
 	if !ok {
@@ -164,6 +187,39 @@ func (handler *Handler) markNotificationRead(ctx *gin.Context) {
 	}
 
 	result, err := handler.service.MarkNotificationRead(ctx.Request.Context(), scope, id)
+	if err != nil {
+		handler.writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) listAnnouncements(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx, false)
+	if !ok {
+		return
+	}
+
+	result, err := handler.service.ListAnnouncements(ctx.Request.Context(), scope, AnnouncementListFilter{
+		NoticeType: ctx.Query("notice_type"),
+		ReadStatus: ctx.Query("read_status"),
+		Page:       parseIntQuery(ctx, "page"),
+		PageSize:   parseIntQuery(ctx, "page_size"),
+	})
+	if err != nil {
+		handler.writeError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) markAnnouncementRead(ctx *gin.Context) {
+	scope, id, ok := handler.authorizeWithID(ctx, false)
+	if !ok {
+		return
+	}
+
+	result, err := handler.service.MarkAnnouncementRead(ctx.Request.Context(), scope, id)
 	if err != nil {
 		handler.writeError(ctx, err)
 		return
@@ -214,6 +270,8 @@ func (handler *Handler) writeError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidInput):
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", requestID(ctx)))
+	case errors.Is(err, ErrForbidden):
+		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", requestID(ctx)))
 	case errors.Is(err, ErrNotFound):
 		ctx.JSON(http.StatusNotFound, response.Failure(CodeNotFound, "资源不存在", requestID(ctx)))
 	default:

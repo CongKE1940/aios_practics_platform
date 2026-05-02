@@ -1178,10 +1178,15 @@ func (repo *MySQLRepository) getExamPaperForUse(ctx context.Context, scope Scope
 
 func (repo *MySQLRepository) listPaperFixedQuestions(ctx context.Context, paperID int64) ([]ExamFixedQuestion, error) {
 	const query = `
-SELECT question_id, question_version_id, score, order_no, created_at
-FROM exam_paper_questions
-WHERE paper_id = ?
-ORDER BY order_no ASC, id ASC
+SELECT epq.question_id, epq.question_version_id, epq.score, epq.order_no, epq.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_paper_questions epq
+JOIN questions q ON q.id = epq.question_id
+JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE epq.paper_id = ?
+ORDER BY epq.order_no ASC, epq.id ASC
 `
 	rows, err := repo.db.QueryContext(ctx, query, paperID)
 	if err != nil {
@@ -1191,8 +1196,8 @@ ORDER BY order_no ASC, id ASC
 
 	items := make([]ExamFixedQuestion, 0)
 	for rows.Next() {
-		var item ExamFixedQuestion
-		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.Score, &item.DisplayOrder, &item.CreatedAt); err != nil {
+		item, err := scanExamFixedQuestionWithSnapshot(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1464,10 +1469,15 @@ func (repo *MySQLRepository) existsByID(ctx context.Context, query string, args 
 
 func (repo *MySQLRepository) listExamFixedQuestions(ctx context.Context, examID int64) ([]ExamFixedQuestion, error) {
 	const query = `
-SELECT question_id, question_version_id, score, display_order, created_at
-FROM exam_fixed_question_drafts
-WHERE exam_id = ?
-ORDER BY display_order ASC, id ASC
+SELECT efqd.question_id, efqd.question_version_id, efqd.score, efqd.display_order, efqd.created_at,
+       q.question_type, qv.version_no, q.current_version_id, current_qv.version_no,
+       qv.content_json, qv.answer_json, qv.analysis_json
+FROM exam_fixed_question_drafts efqd
+JOIN questions q ON q.id = efqd.question_id
+JOIN question_versions qv ON qv.id = efqd.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
+WHERE efqd.exam_id = ?
+ORDER BY efqd.display_order ASC, efqd.id ASC
 `
 	rows, err := repo.db.QueryContext(ctx, query, examID)
 	if err != nil {
@@ -1477,8 +1487,8 @@ ORDER BY display_order ASC, id ASC
 
 	items := make([]ExamFixedQuestion, 0)
 	for rows.Next() {
-		var item ExamFixedQuestion
-		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.Score, &item.DisplayOrder, &item.CreatedAt); err != nil {
+		item, err := scanExamFixedQuestionWithSnapshot(rows)
+		if err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -1578,10 +1588,12 @@ LIMIT 1
 
 func (repo *MySQLRepository) listAttemptQuestions(ctx context.Context, paperID int64) ([]ExamAttemptQuestion, error) {
 	const query = `
-SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type, qv.content_json
+SELECT epq.question_id, epq.question_version_id, epq.order_no, epq.score, q.question_type,
+       qv.version_no, q.current_version_id, current_qv.version_no, qv.content_json
 FROM exam_paper_questions epq
 JOIN questions q ON q.id = epq.question_id
 JOIN question_versions qv ON qv.id = epq.question_version_id
+LEFT JOIN question_versions current_qv ON current_qv.id = q.current_version_id
 WHERE epq.paper_id = ?
 ORDER BY epq.order_no ASC
 `
@@ -1595,12 +1607,33 @@ ORDER BY epq.order_no ASC
 	for rows.Next() {
 		var item ExamAttemptQuestion
 		var contentJSON string
-		if err := rows.Scan(&item.QuestionID, &item.QuestionVersionID, &item.DisplayOrder, &item.Score, &item.QuestionType, &contentJSON); err != nil {
+		var currentVersionID sql.NullInt64
+		var currentVersionNo sql.NullInt64
+		if err := rows.Scan(
+			&item.QuestionID,
+			&item.QuestionVersionID,
+			&item.DisplayOrder,
+			&item.Score,
+			&item.QuestionType,
+			&item.VersionNo,
+			&currentVersionID,
+			&currentVersionNo,
+			&contentJSON,
+		); err != nil {
 			return nil, err
 		}
 		content, err := decodeAnswer(contentJSON)
 		if err != nil {
 			return nil, err
+		}
+		if currentVersionID.Valid {
+			value := currentVersionID.Int64
+			item.CurrentVersionID = &value
+			item.QuestionChanged = value != item.QuestionVersionID
+		}
+		if currentVersionNo.Valid {
+			value := int(currentVersionNo.Int64)
+			item.CurrentVersionNo = &value
 		}
 		item.Content = content
 		items = append(items, item)
@@ -1852,6 +1885,59 @@ func scanExamPaper(scanner interface{ Scan(dest ...any) error }) (ExamPaper, err
 		value := updatedAt.Time
 		item.UpdatedAt = &value
 	}
+	return item, nil
+}
+
+func scanExamFixedQuestionWithSnapshot(scanner interface{ Scan(dest ...any) error }) (ExamFixedQuestion, error) {
+	var item ExamFixedQuestion
+	var currentVersionID sql.NullInt64
+	var currentVersionNo sql.NullInt64
+	var contentJSON string
+	var answerJSON string
+	var analysisJSON sql.NullString
+	if err := scanner.Scan(
+		&item.QuestionID,
+		&item.QuestionVersionID,
+		&item.Score,
+		&item.DisplayOrder,
+		&item.CreatedAt,
+		&item.QuestionType,
+		&item.VersionNo,
+		&currentVersionID,
+		&currentVersionNo,
+		&contentJSON,
+		&answerJSON,
+		&analysisJSON,
+	); err != nil {
+		return ExamFixedQuestion{}, err
+	}
+	content, err := decodeAnswer(contentJSON)
+	if err != nil {
+		return ExamFixedQuestion{}, err
+	}
+	answer, err := decodeAnswer(answerJSON)
+	if err != nil {
+		return ExamFixedQuestion{}, err
+	}
+	analysis := map[string]any{}
+	if analysisJSON.Valid {
+		analysis, err = decodeAnswer(analysisJSON.String)
+		if err != nil {
+			return ExamFixedQuestion{}, err
+		}
+	}
+	if currentVersionID.Valid {
+		value := currentVersionID.Int64
+		item.CurrentVersionID = &value
+		item.QuestionChanged = value != item.QuestionVersionID
+	}
+	if currentVersionNo.Valid {
+		value := int(currentVersionNo.Int64)
+		item.CurrentVersionNo = &value
+	}
+	item.Content = content
+	item.Answer = answer
+	item.Analysis = analysis
 	return item, nil
 }
 

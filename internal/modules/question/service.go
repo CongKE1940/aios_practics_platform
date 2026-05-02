@@ -86,6 +86,23 @@ func (service *Service) ListVersions(ctx context.Context, scope Scope, id int64)
 	return service.repo.ListVersions(ctx, current.TenantID, id)
 }
 
+func (service *Service) CompareVersions(
+	ctx context.Context,
+	scope Scope,
+	id int64,
+	filter QuestionVersionCompareFilter,
+) (QuestionVersionCompareResult, error) {
+	current, err := service.repo.GetQuestion(ctx, scope, id)
+	if err != nil {
+		return QuestionVersionCompareResult{}, err
+	}
+	if !hasQuestionVersionSelector(filter.LeftVersionID, filter.LeftVersionNo) ||
+		!hasQuestionVersionSelector(filter.RightVersionID, filter.RightVersionNo) {
+		return QuestionVersionCompareResult{}, ErrInvalidInput
+	}
+	return service.repo.CompareVersions(ctx, current.TenantID, id, filter)
+}
+
 func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64, input QuestionVersionInput) (QuestionVersion, error) {
 	current, err := service.repo.GetQuestion(ctx, scope, id)
 	if err != nil {
@@ -111,6 +128,10 @@ func (service *Service) CreateVersion(ctx context.Context, scope Scope, id int64
 		return QuestionVersion{}, err
 	}
 	return version, nil
+}
+
+func hasQuestionVersionSelector(versionID int64, versionNo int) bool {
+	return versionID > 0 || versionNo > 0
 }
 
 func (service *Service) SetQuestionTags(ctx context.Context, scope Scope, id int64, input QuestionTagInput) error {

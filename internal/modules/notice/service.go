@@ -67,6 +67,30 @@ func (service *Service) MarkNotificationRead(ctx context.Context, scope Scope, i
 	return service.repo.MarkNotificationRead(ctx, scope.TenantID, scope.UserID, id)
 }
 
+func (service *Service) ListAnnouncements(ctx context.Context, scope Scope, filter AnnouncementListFilter) (PageResult[Notice], error) {
+	return service.repo.ListAnnouncements(ctx, scope.TenantID, scope.UserID, normalizeAnnouncementListFilter(filter))
+}
+
+func (service *Service) MarkAnnouncementRead(ctx context.Context, scope Scope, id int64) (Notice, error) {
+	return service.repo.MarkAnnouncementRead(ctx, scope.TenantID, scope.UserID, id)
+}
+
+func (service *Service) CreateNotification(ctx context.Context, scope Scope, input NotificationInput) (NotificationSendResult, error) {
+	if !canSendNotification(scope, input) {
+		return NotificationSendResult{}, ErrForbidden
+	}
+	if input.Title == "" || input.Content == "" {
+		return NotificationSendResult{}, ErrInvalidInput
+	}
+	if input.TargetScope == nil {
+		input.TargetScope = map[string]any{}
+	}
+	if !isAllowedNotificationTarget(input.TargetType) {
+		return NotificationSendResult{}, ErrInvalidInput
+	}
+	return service.repo.CreateNotification(ctx, scope, input)
+}
+
 func noticeFromInput(scope Scope, input NoticeInput) (Notice, error) {
 	if input.PublishAt == nil || input.PublishAt.IsZero() {
 		return Notice{}, ErrInvalidInput
@@ -74,15 +98,19 @@ func noticeFromInput(scope Scope, input NoticeInput) (Notice, error) {
 	if input.ExpireAt != nil && input.ExpireAt.Before(*input.PublishAt) {
 		return Notice{}, ErrInvalidInput
 	}
-	if input.PublishScopeType != "all" && input.PublishScopeType != "user_ids" {
+	if !isAllowedNoticeScope(input.PublishScopeType) {
 		return Notice{}, ErrInvalidInput
 	}
 	if input.PublishScope == nil {
 		return Notice{}, ErrInvalidInput
 	}
+	tenantID, err := resolveTargetTenantID(scope, input.TargetTenantID, input.PublishScope)
+	if err != nil {
+		return Notice{}, err
+	}
 
 	return Notice{
-		TenantID:         scope.TenantID,
+		TenantID:         tenantID,
 		Title:            input.Title,
 		Content:          input.Content,
 		NoticeType:       input.NoticeType,
@@ -106,16 +134,124 @@ func normalizeNotificationListFilter(filter NotificationListFilter) Notification
 	return filter
 }
 
+func normalizeAnnouncementListFilter(filter AnnouncementListFilter) AnnouncementListFilter {
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	return filter
+}
+
 func readTenantID(scope Scope) int64 {
 	if scope.UserType == "sys_admin" {
 		return 0
 	}
 	for _, permission := range scope.Permissions {
-		if permission == "system:manage" || permission == "tenant:manage" {
+		if permission == "system:manage" {
 			return 0
 		}
 	}
 	return scope.TenantID
+}
+
+func resolveTargetTenantID(scope Scope, inputTargetTenantID int64, publishScope map[string]any) (int64, error) {
+	targetTenantID := inputTargetTenantID
+	if targetTenantID <= 0 {
+		targetTenantID = scopeTenantIDFromMap(publishScope)
+	}
+	if targetTenantID <= 0 {
+		targetTenantID = scope.TenantID
+	}
+	if targetTenantID <= 0 {
+		return 0, ErrInvalidInput
+	}
+	if canManageAnyTenant(scope) {
+		return targetTenantID, nil
+	}
+	if targetTenantID != scope.TenantID {
+		return 0, ErrForbidden
+	}
+	return targetTenantID, nil
+}
+
+func canManageAnyTenant(scope Scope) bool {
+	if scope.UserType == "sys_admin" {
+		return true
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" {
+			return true
+		}
+	}
+	return false
+}
+
+func canSendNotification(scope Scope, input NotificationInput) bool {
+	if input.TargetType == NotificationTargetSingleUser {
+		return true
+	}
+	if isManager(scope) {
+		return true
+	}
+	return scope.UserType == "teacher" && input.TargetType == NotificationTargetClassIDs
+}
+
+func isManager(scope Scope) bool {
+	if scope.UserType == "sys_admin" || scope.UserType == "tenant_admin" || scope.UserType == "school_admin" {
+		return true
+	}
+	for _, permission := range scope.Permissions {
+		if permission == "system:manage" || permission == "tenant:manage" || permission == "notice:manage" {
+			return true
+		}
+	}
+	return false
+}
+
+func isAllowedNoticeScope(scopeType string) bool {
+	switch scopeType {
+	case NoticeScopeAll,
+		NoticeScopeUserIDs,
+		NoticeScopeUserTypes,
+		NoticeScopeExcludeUserTypes,
+		NoticeScopeTenantAdmins,
+		NoticeScopeAllAdmins,
+		NoticeScopeNonStudents,
+		NoticeScopeClassIDs:
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedNotificationTarget(targetType string) bool {
+	switch targetType {
+	case NotificationTargetSingleUser,
+		NotificationTargetAll,
+		NotificationTargetUserTypes,
+		NotificationTargetExcludeTypes,
+		NotificationTargetTenantAdmins,
+		NotificationTargetAllAdmins,
+		NotificationTargetNonStudents,
+		NotificationTargetClassIDs:
+		return true
+	default:
+		return false
+	}
+}
+
+func scopeTenantIDFromMap(scope map[string]any) int64 {
+	if scope == nil {
+		return 0
+	}
+	switch value := scope["target_tenant_id"].(type) {
+	case float64:
+		return int64(value)
+	case int64:
+		return value
+	case int:
+		return int64(value)
+	default:
+		return 0
+	}
 }
 
 func normalizePage(page int) int {

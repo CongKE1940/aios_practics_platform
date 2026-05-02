@@ -44,6 +44,44 @@ func (service *Service) ListEntitySnapshots(
 	return service.repo.ListEntitySnapshots(ctx, readTenantID(scope), filter)
 }
 
+func (service *Service) ListEntityTimeline(
+	ctx context.Context,
+	scope Scope,
+	filter EntityTimelineFilter,
+) (PageResult[EntitySnapshot], error) {
+	if service == nil || service.repo == nil {
+		return PageResult[EntitySnapshot]{}, ErrRepositoryUnavailable
+	}
+	if !canViewAudit(scope) {
+		return PageResult[EntitySnapshot]{}, ErrForbidden
+	}
+	filter.EntityType = strings.TrimSpace(filter.EntityType)
+	if filter.EntityType == "" || filter.EntityID <= 0 {
+		return PageResult[EntitySnapshot]{}, ErrInvalidInput
+	}
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	return service.repo.ListEntityTimeline(ctx, readTenantID(scope), filter)
+}
+
+func (service *Service) CompareEntitySnapshots(
+	ctx context.Context,
+	scope Scope,
+	filter EntitySnapshotCompareFilter,
+) (EntitySnapshotCompareResult, error) {
+	if service == nil || service.repo == nil {
+		return EntitySnapshotCompareResult{}, ErrRepositoryUnavailable
+	}
+	if !canViewAudit(scope) {
+		return EntitySnapshotCompareResult{}, ErrForbidden
+	}
+	filter.EntityType = strings.TrimSpace(filter.EntityType)
+	if filter.EntityType == "" || filter.EntityID <= 0 || filter.LeftVersionNo <= 0 || filter.RightVersionNo <= 0 {
+		return EntitySnapshotCompareResult{}, ErrInvalidInput
+	}
+	return service.repo.CompareEntitySnapshots(ctx, readTenantID(scope), filter)
+}
+
 func (service *Service) ListStudentTransitions(
 	ctx context.Context,
 	scope Scope,

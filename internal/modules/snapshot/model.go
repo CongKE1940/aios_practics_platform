@@ -80,7 +80,16 @@ type EntitySnapshot struct {
 	SnapshotJSON     map[string]any `json:"snapshot_json"`
 	VersionNo        int            `json:"version_no"`
 	TriggerEventType string         `json:"trigger_event_type,omitempty"`
+	OperatorUserID   *int64         `json:"operator_user_id,omitempty"`
+	OperatorName     string         `json:"operator_name,omitempty"`
 	CreatedAt        time.Time      `json:"created_at"`
+}
+
+type EntitySnapshotCompareResult struct {
+	EntityType string         `json:"entity_type"`
+	EntityID   int64          `json:"entity_id"`
+	Left       EntitySnapshot `json:"left"`
+	Right      EntitySnapshot `json:"right"`
 }
 
 type StudentTransition struct {
@@ -128,6 +137,20 @@ type EntitySnapshotListFilter struct {
 	PageSize   int
 }
 
+type EntityTimelineFilter struct {
+	EntityType string
+	EntityID   int64
+	Page       int
+	PageSize   int
+}
+
+type EntitySnapshotCompareFilter struct {
+	EntityType     string
+	EntityID       int64
+	LeftVersionNo  int
+	RightVersionNo int
+}
+
 type StudentTransitionListFilter struct {
 	StudentID      int64
 	TransitionType string
@@ -164,6 +187,8 @@ type TeacherAssignmentChangeInput struct {
 type Repository interface {
 	ListAuditLogs(ctx context.Context, tenantID int64, filter AuditLogListFilter) (PageResult[AuditLog], error)
 	ListEntitySnapshots(ctx context.Context, tenantID int64, filter EntitySnapshotListFilter) (PageResult[EntitySnapshot], error)
+	ListEntityTimeline(ctx context.Context, tenantID int64, filter EntityTimelineFilter) (PageResult[EntitySnapshot], error)
+	CompareEntitySnapshots(ctx context.Context, tenantID int64, filter EntitySnapshotCompareFilter) (EntitySnapshotCompareResult, error)
 	ListStudentTransitions(ctx context.Context, tenantID int64, filter StudentTransitionListFilter) (PageResult[StudentTransition], error)
 	ApplyStudentTransition(ctx context.Context, tenantID int64, operatorUserID int64, input StudentTransitionInput) (StudentTransition, error)
 	ListTeacherAssignmentHistories(ctx context.Context, tenantID int64, filter TeacherAssignmentHistoryListFilter) (PageResult[TeacherAssignmentHistory], error)

@@ -162,6 +162,114 @@ func TestHandler_RecordTeacherAssignmentChangeReturnsCreatedItem(t *testing.T) {
 	}
 }
 
+func TestHandler_ListEntityTimelineReturnsOperator(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	operatorID := int64(7)
+	repo := &memorySnapshotRepository{
+		entityTimeline: PageResult[EntitySnapshot]{
+			Items: []EntitySnapshot{
+				{
+					ID:             30,
+					TenantID:       1,
+					EntityType:     "question",
+					EntityID:       1001,
+					SnapshotType:   "version",
+					SnapshotJSON:   map[string]any{"title": "旧题目"},
+					VersionNo:      1,
+					OperatorUserID: &operatorID,
+					OperatorName:   "张老师",
+					CreatedAt:      time.Date(2026, 4, 23, 9, 0, 0, 0, time.UTC),
+				},
+			},
+			Page:     1,
+			PageSize: 20,
+			Total:    1,
+		},
+	}
+	router := newSnapshotTestRouter(repo, fakeSnapshotParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      1,
+			UserType:    "sys_admin",
+			Permissions: []string{"audit:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performSnapshotRequest(router, http.MethodGet, "/api/v1/entity-timeline?entity_type=question&entity_id=1001", nil, "token")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body snapshotEnvelope[PageResult[EntitySnapshot]]
+	decodeSnapshotBody(t, rec, &body)
+	if len(body.Data.Items) != 1 || body.Data.Items[0].OperatorUserID == nil || *body.Data.Items[0].OperatorUserID != operatorID {
+		t.Fatalf("body = %+v", body.Data)
+	}
+	if repo.lastTimelineFilter.EntityType != "question" || repo.lastTimelineFilter.EntityID != 1001 {
+		t.Fatalf("filter = %+v", repo.lastTimelineFilter)
+	}
+}
+
+func TestHandler_CompareEntitySnapshotsReturnsBothVersions(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := &memorySnapshotRepository{
+		entitySnapshotCompare: EntitySnapshotCompareResult{
+			EntityType: "question",
+			EntityID:   1001,
+			Left: EntitySnapshot{
+				ID:           31,
+				TenantID:     1,
+				EntityType:   "question",
+				EntityID:     1001,
+				SnapshotType: "version",
+				SnapshotJSON: map[string]any{"stem": "旧题目"},
+				VersionNo:    1,
+			},
+			Right: EntitySnapshot{
+				ID:           32,
+				TenantID:     1,
+				EntityType:   "question",
+				EntityID:     1001,
+				SnapshotType: "version",
+				SnapshotJSON: map[string]any{"stem": "新题目"},
+				VersionNo:    2,
+			},
+		},
+	}
+	router := newSnapshotTestRouter(repo, fakeSnapshotParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      1,
+			UserType:    "sys_admin",
+			Permissions: []string{"audit:view"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	rec := performSnapshotRequest(
+		router,
+		http.MethodGet,
+		"/api/v1/entity-snapshots/compare?entity_type=question&entity_id=1001&left_version_no=1&right_version_no=2",
+		nil,
+		"token",
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	var body snapshotEnvelope[EntitySnapshotCompareResult]
+	decodeSnapshotBody(t, rec, &body)
+	if body.Data.Left.VersionNo != 1 || body.Data.Right.VersionNo != 2 {
+		t.Fatalf("body = %+v", body.Data)
+	}
+	if repo.lastCompareFilter.LeftVersionNo != 1 || repo.lastCompareFilter.RightVersionNo != 2 {
+		t.Fatalf("filter = %+v", repo.lastCompareFilter)
+	}
+}
+
 func TestHandler_RecordHeadTeacherAssignmentChangeAllowsNoCourse(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -247,11 +355,15 @@ func (parser fakeSnapshotParser) ParseToken(_ context.Context, token string, tok
 type memorySnapshotRepository struct {
 	auditLogs                  PageResult[AuditLog]
 	entitySnapshots            PageResult[EntitySnapshot]
+	entityTimeline             PageResult[EntitySnapshot]
+	entitySnapshotCompare      EntitySnapshotCompareResult
 	studentTransitions         PageResult[StudentTransition]
 	teacherAssignmentHistories PageResult[TeacherAssignmentHistory]
 	studentTransition          StudentTransition
 	teacherAssignmentHistory   TeacherAssignmentHistory
 	lastAuditLogFilter         AuditLogListFilter
+	lastTimelineFilter         EntityTimelineFilter
+	lastCompareFilter          EntitySnapshotCompareFilter
 	lastStudentTransitionInput StudentTransitionInput
 	lastTeacherAssignmentInput TeacherAssignmentChangeInput
 }
@@ -263,6 +375,16 @@ func (repo *memorySnapshotRepository) ListAuditLogs(_ context.Context, _ int64, 
 
 func (repo *memorySnapshotRepository) ListEntitySnapshots(_ context.Context, _ int64, _ EntitySnapshotListFilter) (PageResult[EntitySnapshot], error) {
 	return repo.entitySnapshots, nil
+}
+
+func (repo *memorySnapshotRepository) ListEntityTimeline(_ context.Context, _ int64, filter EntityTimelineFilter) (PageResult[EntitySnapshot], error) {
+	repo.lastTimelineFilter = filter
+	return repo.entityTimeline, nil
+}
+
+func (repo *memorySnapshotRepository) CompareEntitySnapshots(_ context.Context, _ int64, filter EntitySnapshotCompareFilter) (EntitySnapshotCompareResult, error) {
+	repo.lastCompareFilter = filter
+	return repo.entitySnapshotCompare, nil
 }
 
 func (repo *memorySnapshotRepository) ListStudentTransitions(_ context.Context, _ int64, _ StudentTransitionListFilter) (PageResult[StudentTransition], error) {

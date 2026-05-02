@@ -29,6 +29,8 @@ func NewHandler(service *Service, parser TokenParser) *Handler {
 func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/audit-logs", handler.listAuditLogs)
 	router.GET("/entity-snapshots", handler.listEntitySnapshots)
+	router.GET("/entity-snapshots/compare", handler.compareEntitySnapshots)
+	router.GET("/entity-timeline", handler.listEntityTimeline)
 	router.GET("/student-transitions", handler.listStudentTransitions)
 	router.POST("/student-transitions", handler.createStudentTransition)
 	router.GET("/teacher-assignment-histories", handler.listTeacherAssignmentHistories)
@@ -63,6 +65,42 @@ func (handler *Handler) listEntitySnapshots(ctx *gin.Context) {
 		EntityID:   parseInt64(ctx.Query("entity_id")),
 		Page:       parseInt(ctx.Query("page")),
 		PageSize:   parseInt(ctx.Query("page_size")),
+	})
+	if err != nil {
+		writeSnapshotError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) listEntityTimeline(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.ListEntityTimeline(ctx.Request.Context(), scope, EntityTimelineFilter{
+		EntityType: ctx.Query("entity_type"),
+		EntityID:   parseInt64(ctx.Query("entity_id")),
+		Page:       parseInt(ctx.Query("page")),
+		PageSize:   parseInt(ctx.Query("page_size")),
+	})
+	if err != nil {
+		writeSnapshotError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, ctx.GetHeader("X-Request-Id")))
+}
+
+func (handler *Handler) compareEntitySnapshots(ctx *gin.Context) {
+	scope, ok := handler.authorize(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.CompareEntitySnapshots(ctx.Request.Context(), scope, EntitySnapshotCompareFilter{
+		EntityType:     ctx.Query("entity_type"),
+		EntityID:       parseInt64(ctx.Query("entity_id")),
+		LeftVersionNo:  parseInt(ctx.Query("left_version_no")),
+		RightVersionNo: parseInt(ctx.Query("right_version_no")),
 	})
 	if err != nil {
 		writeSnapshotError(ctx, err)

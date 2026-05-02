@@ -78,11 +78,19 @@ type ExamTarget struct {
 }
 
 type ExamFixedQuestion struct {
-	QuestionID        int64     `json:"question_id"`
-	QuestionVersionID int64     `json:"question_version_id"`
-	Score             float64   `json:"score"`
-	DisplayOrder      int       `json:"display_order"`
-	CreatedAt         time.Time `json:"created_at,omitempty"`
+	QuestionID        int64          `json:"question_id"`
+	QuestionVersionID int64          `json:"question_version_id"`
+	QuestionType      string         `json:"question_type,omitempty"`
+	VersionNo         int            `json:"version_no,omitempty"`
+	CurrentVersionID  *int64         `json:"current_version_id,omitempty"`
+	CurrentVersionNo  *int           `json:"current_version_no,omitempty"`
+	QuestionChanged   bool           `json:"question_changed"`
+	Content           map[string]any `json:"content,omitempty"`
+	Answer            map[string]any `json:"answer,omitempty"`
+	Analysis          map[string]any `json:"analysis,omitempty"`
+	Score             float64        `json:"score"`
+	DisplayOrder      int            `json:"display_order"`
+	CreatedAt         time.Time      `json:"created_at,omitempty"`
 }
 
 type ExamPaperRule struct {
@@ -182,6 +190,10 @@ type ExamAttempt struct {
 type ExamAttemptQuestion struct {
 	QuestionID        int64          `json:"question_id"`
 	QuestionVersionID int64          `json:"question_version_id"`
+	VersionNo         int            `json:"version_no,omitempty"`
+	CurrentVersionID  *int64         `json:"current_version_id,omitempty"`
+	CurrentVersionNo  *int           `json:"current_version_no,omitempty"`
+	QuestionChanged   bool           `json:"question_changed"`
 	DisplayOrder      int            `json:"display_order"`
 	Score             float64        `json:"score"`
 	QuestionType      string         `json:"question_type,omitempty"`

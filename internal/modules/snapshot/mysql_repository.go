@@ -76,20 +76,21 @@ func (repo *MySQLRepository) ListEntitySnapshots(
 	filter EntitySnapshotListFilter,
 ) (PageResult[EntitySnapshot], error) {
 	base := `
-FROM entity_snapshots
+FROM entity_snapshots es
+LEFT JOIN users u ON u.id = es.operator_user_id
 WHERE 1 = 1
 `
 	args := make([]any, 0, 4)
 	if tenantID > 0 {
-		base += " AND tenant_id = ?"
+		base += " AND es.tenant_id = ?"
 		args = append(args, tenantID)
 	}
 	if filter.EntityType != "" {
-		base += " AND entity_type = ?"
+		base += " AND es.entity_type = ?"
 		args = append(args, filter.EntityType)
 	}
 	if filter.EntityID > 0 {
-		base += " AND entity_id = ?"
+		base += " AND es.entity_id = ?"
 		args = append(args, filter.EntityID)
 	}
 	total, err := repo.countRows(ctx, "SELECT COUNT(*) "+base, args...)
@@ -101,9 +102,10 @@ WHERE 1 = 1
 	pageSize := normalizePageSize(filter.PageSize)
 	offset := (page - 1) * pageSize
 	query := `
-SELECT id, tenant_id, entity_type, entity_id, snapshot_type, snapshot_json, version_no, trigger_event_type, created_at
+SELECT es.id, es.tenant_id, es.entity_type, es.entity_id, es.snapshot_type, es.snapshot_json, es.version_no,
+       es.trigger_event_type, es.operator_user_id, u.display_name, es.created_at
 ` + base + `
-ORDER BY created_at DESC, id DESC
+ORDER BY es.created_at DESC, es.id DESC
 LIMIT ? OFFSET ?
 `
 	rows, err := repo.db.QueryContext(ctx, query, append(args, pageSize, offset)...)
@@ -124,6 +126,104 @@ LIMIT ? OFFSET ?
 		return PageResult[EntitySnapshot]{}, err
 	}
 	return PageResult[EntitySnapshot]{Items: items, Page: page, PageSize: pageSize, Total: total}, nil
+}
+
+func (repo *MySQLRepository) ListEntityTimeline(
+	ctx context.Context,
+	tenantID int64,
+	filter EntityTimelineFilter,
+) (PageResult[EntitySnapshot], error) {
+	base := `
+FROM entity_snapshots es
+LEFT JOIN users u ON u.id = es.operator_user_id
+WHERE es.entity_type = ? AND es.entity_id = ?
+`
+	args := []any{filter.EntityType, filter.EntityID}
+	if tenantID > 0 {
+		base += " AND es.tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	total, err := repo.countRows(ctx, "SELECT COUNT(*) "+base, args...)
+	if err != nil {
+		return PageResult[EntitySnapshot]{}, err
+	}
+
+	page := normalizePage(filter.Page)
+	pageSize := normalizePageSize(filter.PageSize)
+	offset := (page - 1) * pageSize
+	query := `
+SELECT es.id, es.tenant_id, es.entity_type, es.entity_id, es.snapshot_type, es.snapshot_json, es.version_no,
+       es.trigger_event_type, es.operator_user_id, u.display_name, es.created_at
+` + base + `
+ORDER BY es.version_no ASC, es.created_at ASC, es.id ASC
+LIMIT ? OFFSET ?
+`
+	rows, err := repo.db.QueryContext(ctx, query, append(args, pageSize, offset)...)
+	if err != nil {
+		return PageResult[EntitySnapshot]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]EntitySnapshot, 0)
+	for rows.Next() {
+		item, err := scanEntitySnapshot(rows)
+		if err != nil {
+			return PageResult[EntitySnapshot]{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[EntitySnapshot]{}, err
+	}
+	return PageResult[EntitySnapshot]{Items: items, Page: page, PageSize: pageSize, Total: total}, nil
+}
+
+func (repo *MySQLRepository) CompareEntitySnapshots(
+	ctx context.Context,
+	tenantID int64,
+	filter EntitySnapshotCompareFilter,
+) (EntitySnapshotCompareResult, error) {
+	left, err := repo.getEntitySnapshotByVersion(ctx, tenantID, filter.EntityType, filter.EntityID, filter.LeftVersionNo)
+	if err != nil {
+		return EntitySnapshotCompareResult{}, err
+	}
+	right, err := repo.getEntitySnapshotByVersion(ctx, tenantID, filter.EntityType, filter.EntityID, filter.RightVersionNo)
+	if err != nil {
+		return EntitySnapshotCompareResult{}, err
+	}
+	return EntitySnapshotCompareResult{
+		EntityType: filter.EntityType,
+		EntityID:   filter.EntityID,
+		Left:       left,
+		Right:      right,
+	}, nil
+}
+
+func (repo *MySQLRepository) getEntitySnapshotByVersion(
+	ctx context.Context,
+	tenantID int64,
+	entityType string,
+	entityID int64,
+	versionNo int,
+) (EntitySnapshot, error) {
+	query := `
+SELECT es.id, es.tenant_id, es.entity_type, es.entity_id, es.snapshot_type, es.snapshot_json, es.version_no,
+       es.trigger_event_type, es.operator_user_id, u.display_name, es.created_at
+FROM entity_snapshots es
+LEFT JOIN users u ON u.id = es.operator_user_id
+WHERE es.entity_type = ? AND es.entity_id = ? AND es.version_no = ?
+`
+	args := []any{entityType, entityID, versionNo}
+	if tenantID > 0 {
+		query += " AND es.tenant_id = ?"
+		args = append(args, tenantID)
+	}
+	query += " LIMIT 1"
+	item, err := scanEntitySnapshot(repo.db.QueryRowContext(ctx, query, args...))
+	if err != nil {
+		return EntitySnapshot{}, wrapNotFound(err)
+	}
+	return item, nil
 }
 
 func (repo *MySQLRepository) ListStudentTransitions(
@@ -388,7 +488,7 @@ INSERT INTO student_transitions (
 		"to_class_id":       valueOrNil(transition.ToClassID),
 		"enrollment_status": enrollmentStatus,
 	}
-	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "student", input.StudentID, "transition", snapshotPayload, input.TransitionType, now); err != nil {
+	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "student", input.StudentID, "transition", snapshotPayload, input.TransitionType, operatorUserID, now); err != nil {
 		return StudentTransition{}, err
 	}
 	if err := repo.insertAuditLog(ctx, tx, tenantID, operatorUserID, "snapshot", "student_transition", "student", input.StudentID, nil, snapshotPayload, now); err != nil {
@@ -503,7 +603,7 @@ INSERT INTO teacher_assignment_histories (
 		"effective_from":  history.EffectiveFrom.Format(time.RFC3339),
 		"effective_to":    timeOrNil(history.EffectiveTo),
 	}
-	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "teacher_assignment", input.TeacherID, "event", snapshotPayload, input.ChangeType, now); err != nil {
+	if err := repo.insertEntitySnapshot(ctx, tx, tenantID, "teacher_assignment", input.TeacherID, "event", snapshotPayload, input.ChangeType, operatorUserID, now); err != nil {
 		return TeacherAssignmentHistory{}, err
 	}
 	if err := repo.insertAuditLog(ctx, tx, tenantID, operatorUserID, "snapshot", "teacher_assignment_change", "teacher_assignment", input.TeacherID, nil, snapshotPayload, now); err != nil {
@@ -661,6 +761,7 @@ func (repo *MySQLRepository) insertEntitySnapshot(
 	snapshotType string,
 	snapshotJSON map[string]any,
 	triggerEventType string,
+	operatorUserID int64,
 	createdAt time.Time,
 ) error {
 	versionNo, err := repo.nextSnapshotVersion(ctx, tx, tenantID, entityType, entityID)
@@ -673,9 +774,9 @@ func (repo *MySQLRepository) insertEntitySnapshot(
 	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO entity_snapshots (
-  tenant_id, entity_type, entity_id, snapshot_type, snapshot_json, version_no, trigger_event_type, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-`, tenantID, entityType, entityID, snapshotType, string(payload), versionNo, nullString(triggerEventType), createdAt)
+  tenant_id, entity_type, entity_id, snapshot_type, snapshot_json, version_no, trigger_event_type, operator_user_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, tenantID, entityType, entityID, snapshotType, string(payload), versionNo, nullString(triggerEventType), nullablePositiveInt64(operatorUserID), createdAt)
 	return err
 }
 
@@ -780,6 +881,8 @@ func scanEntitySnapshot(scanner interface{ Scan(dest ...any) error }) (EntitySna
 	var item EntitySnapshot
 	var payload string
 	var trigger sql.NullString
+	var operatorID sql.NullInt64
+	var operatorName sql.NullString
 	if err := scanner.Scan(
 		&item.ID,
 		&item.TenantID,
@@ -789,12 +892,16 @@ func scanEntitySnapshot(scanner interface{ Scan(dest ...any) error }) (EntitySna
 		&payload,
 		&item.VersionNo,
 		&trigger,
+		&operatorID,
+		&operatorName,
 		&item.CreatedAt,
 	); err != nil {
 		return EntitySnapshot{}, err
 	}
 	item.SnapshotJSON = parseJSONMap(payload)
 	item.TriggerEventType = nullableString(trigger)
+	item.OperatorUserID = nullableInt64(operatorID)
+	item.OperatorName = nullableString(operatorName)
 	return item, nil
 }
 
@@ -895,6 +1002,13 @@ func int64Ptr(value int64) *int64 {
 
 func nullString(value string) any {
 	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func nullablePositiveInt64(value int64) any {
+	if value <= 0 {
 		return nil
 	}
 	return value

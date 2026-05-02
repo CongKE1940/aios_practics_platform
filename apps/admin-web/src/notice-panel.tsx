@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 
-import type { Notice, NoticeInput, NoticeListQuery, NotificationItem, NotificationListQuery, PageResult } from "@aios/api-sdk";
+import type {
+  LoginOrganization,
+  Notice,
+  NoticeInput,
+  NoticeListQuery,
+  NotificationItem,
+  NotificationListQuery,
+  PageResult
+} from "@aios/api-sdk";
 import {
   ClearableFilterSelect,
   FixedActionList,
@@ -18,6 +26,7 @@ export interface NoticeApi {
   updateNotice(id: number, body: NoticeInput): Promise<Notice>;
   publishNotice(id: number): Promise<Notice>;
   recallNotice(id: number): Promise<Notice>;
+  listLoginOrganizations?(): Promise<LoginOrganization[]>;
   listNotifications?(query?: NotificationListQuery): Promise<PageResult<NotificationItem>>;
   markNotificationRead?(id: number): Promise<NotificationItem>;
 }
@@ -30,6 +39,9 @@ const defaultNoticeForm = {
   notice_type: "system",
   publish_scope_type: "all",
   publish_scope_text: "",
+  target_tenant_id: "",
+  class_ids: "",
+  user_types: [] as string[],
   publish_at: "",
   expire_at: ""
 };
@@ -92,6 +104,7 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [total, setTotal] = useState(0);
   const [modal, setModal] = useState<ModalState>(null);
+  const [organizations, setOrganizations] = useState<LoginOrganization[]>([]);
   const didLoadRef = useRef(false);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -102,6 +115,28 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
     }
     didLoadRef.current = true;
     void loadNotices(buildNoticeQuery("", "", 1, defaultPageSize));
+  }, [api]);
+
+  useEffect(() => {
+    if (!api.listLoginOrganizations) {
+      return;
+    }
+    let active = true;
+    api
+      .listLoginOrganizations()
+      .then((items) => {
+        if (active) {
+          setOrganizations(items);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setOrganizations([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [api]);
 
   async function loadNotices(query: NoticeListQuery = buildNoticeQuery(noticeType, status, page, pageSize)) {
@@ -214,6 +249,9 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
       notice_type: notice.notice_type,
       publish_scope_type: notice.publish_scope_type,
       publish_scope_text: formatScopeJson(notice.publish_scope),
+      target_tenant_id: String((notice.publish_scope?.target_tenant_id as number | undefined) ?? ""),
+      class_ids: formatIDList(notice.publish_scope?.class_ids),
+      user_types: readStringArray(notice.publish_scope?.user_types),
       publish_at: toDateTimeLocalValue(notice.publish_at),
       expire_at: toDateTimeLocalValue(notice.expire_at)
     });
@@ -377,12 +415,50 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
                         <select
                           id="notice_scope_type"
                           value={form.publish_scope_type}
-                          onChange={(event) => setForm((current) => ({ ...current, publish_scope_type: event.target.value }))}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              publish_scope_type: event.target.value,
+                              user_types: [],
+                              class_ids: "",
+                              publish_scope_text: ""
+                            }))
+                          }
                         >
                           <option value="all">全部用户</option>
-                          <option value="role">指定角色</option>
-                          <option value="class">指定班级</option>
+                          <option value="tenant_admins">租户/组织管理员</option>
+                          <option value="all_admins">全体管理员</option>
+                          <option value="non_students">除学生外</option>
+                          <option value="user_types">指定用户类型</option>
+                          <option value="exclude_user_types">排除用户类型</option>
+                          <option value="class_ids">指定班级</option>
+                          <option value="user_ids">指定用户</option>
                         </select>
+                      </div>
+                      <div className="ui-admin-form__field">
+                        <label htmlFor="notice_target_tenant">目标组织</label>
+                        {organizations.length > 0 ? (
+                          <select
+                            id="notice_target_tenant"
+                            value={form.target_tenant_id}
+                            onChange={(event) => setForm((current) => ({ ...current, target_tenant_id: event.target.value }))}
+                          >
+                            <option value="">本组织</option>
+                            {organizations.map((organization) => (
+                              <option key={organization.tenant_id} value={organization.tenant_id}>
+                                {formatOrganizationLabel(organization)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            id="notice_target_tenant"
+                            inputMode="numeric"
+                            placeholder="本组织可留空"
+                            value={form.target_tenant_id}
+                            onChange={(event) => setForm((current) => ({ ...current, target_tenant_id: event.target.value }))}
+                          />
+                        )}
                       </div>
                       <div className="ui-admin-form__field">
                         <label htmlFor="publish_at">发布时间</label>
@@ -402,15 +478,52 @@ export function NoticePanel({ api }: { api: NoticeApi }) {
                           onChange={(event) => setForm((current) => ({ ...current, expire_at: event.target.value }))}
                         />
                       </div>
-                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
-                        <label htmlFor="notice_scope_text">范围参数 JSON</label>
-                        <textarea
-                          id="notice_scope_text"
-                          placeholder='例如 {"role_ids":[1]}；全部用户可留空'
-                          value={form.publish_scope_text}
-                          onChange={(event) => setForm((current) => ({ ...current, publish_scope_text: event.target.value }))}
-                        />
-                      </div>
+                      {form.publish_scope_type === "class_ids" ? (
+                        <div className="ui-admin-form__field">
+                          <label htmlFor="notice_class_ids">班级 ID</label>
+                          <input
+                            id="notice_class_ids"
+                            placeholder="多个用逗号分隔"
+                            value={form.class_ids}
+                            onChange={(event) => setForm((current) => ({ ...current, class_ids: event.target.value }))}
+                          />
+                        </div>
+                      ) : null}
+                      {form.publish_scope_type === "user_ids" ? (
+                        <div className="ui-admin-form__field">
+                          <label htmlFor="notice_scope_text">用户 ID</label>
+                          <input
+                            id="notice_scope_text"
+                            placeholder="多个用逗号分隔"
+                            value={form.publish_scope_text}
+                            onChange={(event) => setForm((current) => ({ ...current, publish_scope_text: event.target.value }))}
+                          />
+                        </div>
+                      ) : null}
+                      {form.publish_scope_type === "user_types" || form.publish_scope_type === "exclude_user_types" ? (
+                        <fieldset className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                          <legend>用户类型</legend>
+                          <div className="ui-admin-actions-bar__group">
+                            {userTypeOptions.map((option) => (
+                              <label key={option.value} style={checkboxLabelStyle}>
+                                <input
+                                  type="checkbox"
+                                  checked={form.user_types.includes(option.value)}
+                                  onChange={(event) => {
+                                    setForm((current) => ({
+                                      ...current,
+                                      user_types: event.target.checked
+                                        ? [...current.user_types, option.value]
+                                        : current.user_types.filter((value) => value !== option.value)
+                                    }));
+                                  }}
+                                />
+                                {option.label}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ) : null}
                       <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                         <label htmlFor="notice_content">公告内容</label>
                         <textarea
@@ -456,7 +569,7 @@ function buildNoticePayload(form: NoticeFormState): NoticeInput | string {
     return "请填写公告内容。";
   }
 
-  const publishScope = parseScope(form.publish_scope_text);
+  const publishScope = buildPublishScope(form);
   if (typeof publishScope === "string") {
     return publishScope;
   }
@@ -468,24 +581,38 @@ function buildNoticePayload(form: NoticeFormState): NoticeInput | string {
     publish_scope_type: form.publish_scope_type,
     publish_scope: publishScope,
     publish_at: normalizeDateTimeValue(form.publish_at) ?? new Date().toISOString(),
-    expire_at: normalizeDateTimeValue(form.expire_at) ?? undefined
+    expire_at: normalizeDateTimeValue(form.expire_at) ?? undefined,
+    target_tenant_id: parseOptionalID(form.target_tenant_id)
   };
 }
 
-function parseScope(value: string): Record<string, unknown> | string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return {};
+function buildPublishScope(form: NoticeFormState): Record<string, unknown> | string {
+  const scope: Record<string, unknown> = {};
+  const targetTenantID = parseOptionalID(form.target_tenant_id);
+  if (targetTenantID) {
+    scope.target_tenant_id = targetTenantID;
   }
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return "范围参数必须是 JSON 对象。";
+  if (form.publish_scope_type === "user_ids") {
+    const userIDs = parseIDList(form.publish_scope_text);
+    if (userIDs.length === 0) {
+      return "请填写有效的用户 ID。";
     }
-    return parsed as Record<string, unknown>;
-  } catch {
-    return "范围参数 JSON 格式错误。";
+    scope.user_ids = userIDs;
   }
+  if (form.publish_scope_type === "class_ids") {
+    const classIDs = parseIDList(form.class_ids);
+    if (classIDs.length === 0) {
+      return "请填写有效的班级 ID。";
+    }
+    scope.class_ids = classIDs;
+  }
+  if (form.publish_scope_type === "user_types" || form.publish_scope_type === "exclude_user_types") {
+    if (form.user_types.length === 0) {
+      return "请至少选择一种用户类型。";
+    }
+    scope.user_types = form.user_types;
+  }
+  return scope;
 }
 
 function normalizeErrorMessage(message: string): string {
@@ -545,13 +672,64 @@ function formatScopeType(scopeType: string): string {
   switch (scopeType) {
     case "all":
       return "全部用户";
-    case "role":
-      return "指定角色";
-    case "class":
+    case "tenant_admins":
+      return "租户/组织管理员";
+    case "all_admins":
+      return "全体管理员";
+    case "non_students":
+      return "除学生外";
+    case "user_types":
+      return "指定用户类型";
+    case "exclude_user_types":
+      return "排除用户类型";
+    case "class_ids":
       return "指定班级";
+    case "user_ids":
+      return "指定用户";
     default:
       return scopeType || "-";
   }
+}
+
+const userTypeOptions = [
+  { value: "tenant_admin", label: "租户管理员" },
+  { value: "school_admin", label: "组织管理员" },
+  { value: "teacher", label: "教师" },
+  { value: "student", label: "学生" },
+  { value: "staff", label: "职员" }
+];
+
+function parseOptionalID(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseIDList(value: string): number[] {
+  return value
+    .split(/[,\s]+/)
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
+function formatIDList(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  return value
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .join(",");
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function formatOrganizationLabel(organization: LoginOrganization): string {
+  return `${organization.tenant_name}（${organization.tenant_code}）`;
 }
 
 function formatDateTime(value?: string | null): string {
@@ -633,4 +811,11 @@ const queryActionsStyle: CSSProperties = {
   alignItems: "center",
   paddingBottom: 1,
   whiteSpace: "nowrap"
+};
+
+const checkboxLabelStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  fontWeight: 700
 };
