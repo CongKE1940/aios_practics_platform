@@ -11,6 +11,13 @@ interface MetricItem {
   value: number;
 }
 
+interface CountRankingItem {
+  rank: number;
+  label: string;
+  count: number;
+  percent: number;
+}
+
 export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -49,28 +56,14 @@ export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
     [overview]
   );
 
-  const courseRanking = useMemo(
-    () =>
-      overview?.recent_audit_logs.slice(0, 5).map((item, index) => ({
-        rank: index + 1,
-        name: `${item.module_name} / ${item.action_name}`,
-        score: item.operator_name ?? "-"
-      })) ?? [],
+  const transitionBars = useMemo(
+    () => buildCountRanking(overview?.recent_transitions.map((item) => formatTransitionType(item.transition_type)) ?? []),
     [overview]
   );
-
-  const transitionBars = useMemo(() => {
-    const total = Math.max(
-      1,
-      ...(overview?.recent_transitions.map((item) => item.to_class_name?.length ?? item.transition_type.length) ?? [1])
-    );
-
-    return overview?.recent_transitions.slice(0, 5).map((item) => ({
-      label: item.student_name,
-      value: item.transition_type,
-      percent: Math.max(20, Math.round((((item.to_class_name?.length ?? item.transition_type.length) * 100) / total)))
-    })) ?? [];
-  }, [overview]);
+  const operationRanking = useMemo(
+    () => buildCountRanking(overview?.recent_audit_logs.map((item) => `${item.module_name} / ${item.action_name}`) ?? []),
+    [overview]
+  );
 
   return (
     <section aria-label="数据看板面板" className="ui-admin-page">
@@ -106,15 +99,15 @@ export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
             <section className="ui-admin-chart-card">
               <div className="ui-admin-chart-card__header">
                 <div>
-                  <h3>最近学籍变更</h3>
+                  <h3>学籍变更类型</h3>
                 </div>
               </div>
               <div className="ui-admin-bar-chart">
                 {transitionBars.map((item) => (
-                  <div key={`${item.label}-${item.value}`} className="ui-admin-bar-row">
+                  <div key={item.label} className="ui-admin-bar-row">
                     <header>
                       <span>{item.label}</span>
-                      <span>{item.value}</span>
+                      <span>{item.count} 次</span>
                     </header>
                     <div className="ui-admin-bar-track">
                       <div className="ui-admin-bar-fill" style={{ width: `${item.percent}%` }} />
@@ -149,7 +142,7 @@ export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
             <section className="ui-admin-table-card">
               <div className="ui-admin-table-card__header">
                 <div>
-                  <h3>课程热度榜</h3>
+                  <h3>操作类型分布</h3>
                 </div>
               </div>
               <table className="ui-admin-table">
@@ -157,15 +150,15 @@ export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
                   <tr>
                     <th>排名</th>
                     <th>模块 / 动作</th>
-                    <th>操作人</th>
+                    <th>次数</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {courseRanking.map((item) => (
-                    <tr key={`${item.rank}-${item.name}`}>
+                  {operationRanking.map((item) => (
+                    <tr key={`${item.rank}-${item.label}`}>
                       <td>{item.rank}</td>
-                      <td>{item.name}</td>
-                      <td>{item.score}</td>
+                      <td>{item.label}</td>
+                      <td>{item.count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -175,7 +168,7 @@ export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
             <section className="ui-admin-table-card">
               <div className="ui-admin-table-card__header">
                 <div>
-                  <h3>明细表</h3>
+                  <h3>学籍变更明细</h3>
                 </div>
               </div>
               <table className="ui-admin-table">
@@ -206,6 +199,39 @@ export function AnalyticsPanel({ api }: { api: AnalyticsPanelApi }) {
       ) : null}
     </section>
   );
+}
+
+function buildCountRanking(labels: string[]): CountRankingItem[] {
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  const ranked = [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, "zh-CN"))
+    .slice(0, 5);
+  const maxCount = Math.max(1, ...ranked.map((item) => item.count));
+
+  return ranked.map((item, index) => ({
+    rank: index + 1,
+    label: item.label,
+    count: item.count,
+    percent: Math.max(12, Math.round((item.count / maxCount) * 100))
+  }));
+}
+
+function formatTransitionType(value: string): string {
+  switch (value) {
+    case "promote":
+      return "升班";
+    case "transfer":
+      return "转班";
+    case "graduate":
+      return "毕业";
+    default:
+      return value;
+  }
 }
 
 function formatDateTime(value?: string | null): string {

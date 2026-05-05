@@ -230,7 +230,7 @@ export function AdminApp({
     if (noticeApi) {
       return noticeApi;
     }
-    if (!session || selectedPath !== "/admin/notices") {
+    if (!session || (selectedPath !== "/admin/notices" && selectedPath !== "/admin/workbench" && selectedPath !== "")) {
       return undefined;
     }
 
@@ -302,7 +302,7 @@ export function AdminApp({
     if (analyticsApi) {
       return analyticsApi;
     }
-    if (!session || selectedPath !== "/admin/analytics") {
+    if (!session || (selectedPath !== "/admin/analytics" && selectedPath !== "/admin/workbench" && selectedPath !== "")) {
       return undefined;
     }
 
@@ -699,10 +699,8 @@ export function AdminApp({
               questionApi={currentQuestionApi}
               questionBankApi={currentQuestionBankApi}
               userApi={currentUserApi}
-              menus={session.menus}
               userType={session.user.user_type}
               userDisplayName={session.user.display_name}
-              onSelect={setSelectedPath}
             />
           ) : isKnownAdminPath(selectedPath) && canOpenSelectedPath ? (
             currentView

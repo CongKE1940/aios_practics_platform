@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
-import type { MenuItem, PageResult } from "@aios/api-sdk";
+import type { PageResult } from "@aios/api-sdk";
 
 interface UserWorkbenchApi {
   listCourses?(query?: { status?: string; page?: number; page_size?: number }): Promise<PageResult<unknown>>;
@@ -12,11 +12,9 @@ interface UserWorkbenchApi {
 }
 
 interface UserWorkbenchPageProps {
-  menus: MenuItem[];
   api?: UserWorkbenchApi;
   userDisplayName: string;
   userTypeLabel: string;
-  onNavigate(path: string): void;
 }
 
 interface UserWorkbenchStats {
@@ -44,25 +42,12 @@ const emptyStats: UserWorkbenchStats = {
 };
 
 export function UserWorkbenchPage({
-  menus,
   api,
   userDisplayName,
-  userTypeLabel,
-  onNavigate
+  userTypeLabel
 }: UserWorkbenchPageProps) {
   const [stats, setStats] = useState<UserWorkbenchStats>(emptyStats);
   const [loading, setLoading] = useState(true);
-  const quickEntries = useMemo(
-    () =>
-      flattenMenuItems(menus)
-        .filter((item) => item.path && item.path !== "/app" && item.path !== "/app/workbench")
-        .slice(0, 6),
-    [menus]
-  );
-  const primaryEntry = quickEntries[0];
-  const secondaryEntry = quickEntries[1];
-  const primaryPath = primaryEntry?.path ?? "";
-  const secondaryPath = secondaryEntry?.path ?? "";
   const questionStateTotal = stats.wrongQuestionCount + stats.masteredQuestionCount + stats.confusedQuestionCount;
   const rhythmRows = [
     { label: "课程", value: stats.courseCount },
@@ -70,7 +55,8 @@ export function UserWorkbenchPage({
     { label: "考试", value: stats.examCount },
     { label: "未读通知", value: stats.unreadNotificationCount }
   ];
-  const resourceTotal = Math.max(1, stats.courseCount + stats.questionBankCount + stats.examCount + stats.notificationCount);
+  const resourceCount = stats.courseCount + stats.questionBankCount + stats.examCount + stats.notificationCount;
+  const resourceTotal = Math.max(1, resourceCount);
 
   useEffect(() => {
     let active = true;
@@ -98,18 +84,6 @@ export function UserWorkbenchPage({
           <span className="ui-hero-panel__eyebrow">Learning route</span>
           <h2>{userDisplayName}，把今天的学习推进到下一步。</h2>
           <p>{`${userTypeLabel}工作台把课程、练题、考试和通知组织成一条清晰路径；先进入最重要任务，再回看错题与反馈。`}</p>
-          <div className="ui-hero-panel__actions">
-            {primaryPath ? (
-              <button type="button" className="ui-button ui-button--primary" onClick={() => onNavigate(primaryPath)}>
-                继续 {primaryEntry.name}
-              </button>
-            ) : null}
-            {secondaryPath ? (
-              <button type="button" className="ui-button ui-button--ghost" onClick={() => onNavigate(secondaryPath)}>
-                查看 {secondaryEntry.name}
-              </button>
-            ) : null}
-          </div>
           <div className="ui-learning-strip" aria-label="学习路径要点">
             <span>课程入口</span>
             <span>练题闭环</span>
@@ -119,8 +93,8 @@ export function UserWorkbenchPage({
         </div>
         <aside className="ui-hero-panel__aside" aria-label="今日学习节奏">
           <div className="ui-hero-metric">
-            <span>可用入口</span>
-            <strong>{quickEntries.length}</strong>
+            <span>学习资源</span>
+            <strong>{loading ? "--" : formatNumber(resourceCount)}</strong>
           </div>
           <div className="ui-hero-metric">
             <span>待关注</span>
@@ -141,7 +115,7 @@ export function UserWorkbenchPage({
               <h3>学习节奏概览</h3>
               <p>把课程、练题、考试和通知放在同一张视图里。</p>
             </div>
-            <strong>{loading ? "--" : formatNumber(resourceTotal)}</strong>
+            <strong>{loading ? "--" : formatNumber(resourceCount)}</strong>
           </header>
           <BarChart rows={rhythmRows} loading={loading} />
         </section>
@@ -168,9 +142,9 @@ export function UserWorkbenchPage({
               <span style={donutCenterStyle}>{loading ? "--" : formatNumber(questionStateTotal)}</span>
             </div>
             <div style={legendListStyle}>
-              <LegendItem color="#ef4444" label="错题" value={formatNumber(stats.wrongQuestionCount)} />
-              <LegendItem color="#14b8a6" label="熟题" value={formatNumber(stats.masteredQuestionCount)} />
-              <LegendItem color="#f59e0b" label="疑惑题" value={formatNumber(stats.confusedQuestionCount)} />
+              <LegendItem color="#ef4444" label="错题" value={loading ? "--" : formatNumber(stats.wrongQuestionCount)} />
+              <LegendItem color="#14b8a6" label="熟题" value={loading ? "--" : formatNumber(stats.masteredQuestionCount)} />
+              <LegendItem color="#f59e0b" label="疑惑题" value={loading ? "--" : formatNumber(stats.confusedQuestionCount)} />
             </div>
           </div>
         </section>
@@ -206,45 +180,15 @@ export function UserWorkbenchPage({
             </li>
             <li>
               <strong>处理错题与疑惑</strong>
-              <small>{`当前待关注 ${formatNumber(stats.wrongQuestionCount + stats.confusedQuestionCount)} 题`}</small>
+              <small>{loading ? "当前待关注 -- 题" : `当前待关注 ${formatNumber(stats.wrongQuestionCount + stats.confusedQuestionCount)} 题`}</small>
             </li>
             <li>
               <strong>查看考试和通知</strong>
-              <small>{`未读通知 ${formatNumber(stats.unreadNotificationCount)} 条`}</small>
+              <small>{loading ? "未读通知 -- 条" : `未读通知 ${formatNumber(stats.unreadNotificationCount)} 条`}</small>
             </li>
           </ol>
         </section>
       </div>
-
-      <section className="ui-admin-chart-card" style={quickPanelStyle} aria-label="快捷入口">
-        <header className="ui-admin-chart-card__header">
-          <div>
-            <span className="ui-kicker">Launchpad</span>
-            <h3>快捷入口</h3>
-            <p>根据登录后菜单树展示当前账号可用功能。</p>
-          </div>
-        </header>
-        <div className="ui-quick-grid" style={quickGridStyle}>
-          {quickEntries.map((entry) => (
-            <button
-              key={`${entry.id}-${entry.path}`}
-              type="button"
-              className="ui-quick-button"
-              aria-label={`快捷进入${entry.name}`}
-              onClick={() => {
-                if (entry.path) {
-                  onNavigate(entry.path);
-                }
-              }}
-            >
-              <span className="ui-quick-button__icon" aria-hidden="true">
-                {entry.name.slice(0, 1)}
-              </span>
-              <strong>{entry.name}</strong>
-            </button>
-          ))}
-        </div>
-      </section>
     </section>
   );
 }
@@ -355,17 +299,6 @@ function buildDonutStyle(segments: Array<{ value: number; color: string }>): CSS
   return { ...donutStyle, background: `conic-gradient(${gradient})` };
 }
 
-function flattenMenuItems(menus: MenuItem[]): MenuItem[] {
-  const items: MenuItem[] = [];
-  for (const menu of menus) {
-    items.push(menu);
-    if (menu.children.length > 0) {
-      items.push(...flattenMenuItems(menu.children));
-    }
-  }
-  return items;
-}
-
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("zh-CN").format(value);
 }
@@ -438,15 +371,4 @@ const legendDotStyle: CSSProperties = {
 
 const stepListStyle: CSSProperties = {
   margin: 0
-};
-
-const quickPanelStyle: CSSProperties = {
-  display: "grid",
-  gap: 16,
-  padding: 20,
-  borderRadius: 20
-};
-
-const quickGridStyle: CSSProperties = {
-  gridTemplateColumns: "repeat(6, minmax(0, 1fr))"
 };

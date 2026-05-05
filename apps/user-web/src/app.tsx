@@ -504,11 +504,9 @@ function renderUserContent({
     <>
       {selectedRoute === "/app/workbench" ? (
         <UserWorkbenchPage
-          menus={session.menus}
           api={currentPracticeApi}
           userDisplayName={session.user.display_name}
           userTypeLabel={getUserTypeLabel(session.user.user_type)}
-          onNavigate={setSelectedPath}
         />
       ) : null}
       {selectedRoute === "/app/profile" ? (

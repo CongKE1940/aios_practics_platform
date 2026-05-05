@@ -20,14 +20,13 @@ interface AdminWorkbenchProps {
   userApi?: UserPanelApi;
   userType?: string;
   userDisplayName?: string;
-  menus?: unknown;
-  onSelect?: (path: string) => void;
 }
 
 interface WorkbenchStats {
   organizationCount: number;
   gradeCount: number;
   classCount: number;
+  courseCount: number;
   memberCount: number;
   teacherCount: number;
   studentCount: number;
@@ -53,6 +52,7 @@ const emptyStats: WorkbenchStats = {
   organizationCount: 0,
   gradeCount: 0,
   classCount: 0,
+  courseCount: 0,
   memberCount: 0,
   teacherCount: 0,
   studentCount: 0,
@@ -86,9 +86,7 @@ export function AdminWorkbench({
   questionBankApi,
   userApi,
   userType,
-  userDisplayName,
-  menus = [],
-  onSelect
+  userDisplayName
 }: AdminWorkbenchProps) {
   const fallbackApi = useMemo(() => createWorkbenchApi(), []);
   const resolvedUserType = useMemo(() => resolveWorkbenchUserType(userType, userDisplayName), [userType, userDisplayName]);
@@ -140,23 +138,16 @@ export function AdminWorkbench({
   ]);
 
   const cards = buildDashboardCards(stats, resolvedUserType === "sys_admin");
-  const quickEntries = useMemo(
-    () =>
-      flattenMenuItems(Array.isArray(menus) ? (menus as MenuLike[]) : [])
-        .filter((item) => item.path && item.path !== "/admin/workbench")
-        .slice(0, 5),
-    [menus]
-  );
   const organizationRows = [
     { label: "学校/组织", value: stats.organizationCount },
     { label: "年级", value: stats.gradeCount },
     { label: "班级", value: stats.classCount }
   ];
   const contentRows = [
+    { label: "课程", value: stats.courseCount },
     { label: "题库", value: stats.questionBankCount },
     { label: "题目", value: stats.questionCount },
-    { label: "考试", value: stats.examCount },
-    { label: "公告", value: stats.noticeCount }
+    { label: "考试", value: stats.examCount }
   ];
   const memberTotal = Math.max(1, stats.teacherCount + stats.studentCount);
   const noticeTotal = Math.max(1, stats.noticeReadCount + stats.noticeUnreadCount);
@@ -185,7 +176,7 @@ export function AdminWorkbench({
               <span className="ui-kicker">Structure</span>
               <h3>组织结构分布</h3>
             </div>
-            <strong>{formatNumber(stats.organizationCount + stats.gradeCount + stats.classCount)}</strong>
+            <strong>{loading ? "--" : formatNumber(stats.organizationCount + stats.gradeCount + stats.classCount)}</strong>
           </header>
           <BarChart rows={organizationRows} loading={loading} />
         </section>
@@ -196,7 +187,7 @@ export function AdminWorkbench({
               <span className="ui-kicker">Members</span>
               <h3>成员构成</h3>
             </div>
-            <strong>{formatNumber(stats.memberCount)}</strong>
+            <strong>{loading ? "--" : formatNumber(stats.memberCount)}</strong>
           </header>
           <div style={donutLayoutStyle}>
             <div
@@ -210,8 +201,8 @@ export function AdminWorkbench({
               <span style={donutCenterStyle}>{loading ? "--" : `${Math.round((stats.teacherCount / memberTotal) * 100)}%`}</span>
             </div>
             <div style={legendListStyle}>
-              <LegendItem color="#3d79f2" label="教师" value={formatNumber(stats.teacherCount)} />
-              <LegendItem color="#14b8a6" label="学生" value={formatNumber(stats.studentCount)} />
+              <LegendItem color="#3d79f2" label="教师" value={loading ? "--" : formatNumber(stats.teacherCount)} />
+              <LegendItem color="#14b8a6" label="学生" value={loading ? "--" : formatNumber(stats.studentCount)} />
             </div>
           </div>
         </section>
@@ -222,7 +213,7 @@ export function AdminWorkbench({
               <span className="ui-kicker">Content</span>
               <h3>内容与考试规模</h3>
             </div>
-            <strong>{formatPercent(stats.passRate)}</strong>
+            <strong>{loading ? "--" : formatPercent(stats.passRate)}</strong>
           </header>
           <BarChart rows={contentRows} loading={loading} />
         </section>
@@ -233,7 +224,7 @@ export function AdminWorkbench({
               <span className="ui-kicker">Notice</span>
               <h3>通知处理进度</h3>
             </div>
-            <strong>{formatNumber(stats.noticeCount)}</strong>
+            <strong>{loading ? "--" : formatNumber(stats.noticeCount)}</strong>
           </header>
           <div className="ui-admin-progress-list">
             <ProgressRow label="已读" value={stats.noticeReadCount} total={noticeTotal} loading={loading} />
@@ -243,32 +234,6 @@ export function AdminWorkbench({
         </section>
       </div>
 
-      {quickEntries.length > 0 ? (
-        <section className="ui-admin-chart-card" style={quickPanelStyle} aria-label="常用入口">
-          <header className="ui-admin-chart-card__header">
-            <div>
-              <span className="ui-kicker">Launchpad</span>
-              <h3>常用入口</h3>
-            </div>
-          </header>
-          <div style={quickButtonGridStyle}>
-            {quickEntries.map((entry) => (
-              <button
-                key={`${entry.id}-${entry.path}`}
-                type="button"
-                className="ui-quick-button"
-                aria-label={`快捷进入${entry.name}`}
-                onClick={() => entry.path && onSelect?.(entry.path)}
-              >
-                <span className="ui-quick-button__icon" aria-hidden="true">
-                  {entry.name.slice(0, 1)}
-                </span>
-                <strong>{entry.name}</strong>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </section>
   );
 }
@@ -300,6 +265,7 @@ async function loadWorkbenchStats(apis: {
     organizationCount: organizationStats.organizationCount || overviewSummary?.school_count || 0,
     gradeCount: organizationStats.gradeCount,
     classCount: organizationStats.classCount || overviewSummary?.class_count || 0,
+    courseCount: organizationStats.courseCount || overviewSummary?.course_count || 0,
     memberCount: teacherCount + studentCount,
     teacherCount,
     studentCount,
@@ -315,19 +281,21 @@ async function loadWorkbenchStats(apis: {
 
 async function loadOrganizationStats(api?: OrganizationApi) {
   if (!api) {
-    return { organizationCount: 0, gradeCount: 0, classCount: 0 };
+    return { organizationCount: 0, gradeCount: 0, classCount: 0, courseCount: 0 };
   }
 
-  const [schools, grades, classes] = await Promise.all([
+  const [schools, grades, classes, courses] = await Promise.all([
     settleValue(() => api.listSchools()),
     settleValue(() => api.listGrades()),
-    settleValue(() => api.listClasses())
+    settleValue(() => api.listClasses()),
+    settleValue(() => api.listCourses())
   ]);
 
   return {
     organizationCount: schools?.total ?? schools?.items.length ?? 0,
     gradeCount: grades?.total ?? grades?.items.length ?? 0,
-    classCount: classes?.total ?? classes?.items.length ?? 0
+    classCount: classes?.total ?? classes?.items.length ?? 0,
+    courseCount: courses?.total ?? courses?.items.length ?? 0
   };
 }
 
@@ -451,24 +419,6 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
       icon: "notice"
     }
   ];
-}
-
-interface MenuLike {
-  id: number;
-  name: string;
-  path: string;
-  children: MenuLike[];
-}
-
-function flattenMenuItems(menus: MenuLike[]): MenuLike[] {
-  const items: MenuLike[] = [];
-  for (const menu of menus) {
-    items.push(menu);
-    if (menu.children.length > 0) {
-      items.push(...flattenMenuItems(menu.children));
-    }
-  }
-  return items;
 }
 
 function BarChart({ rows, loading }: { rows: Array<{ label: string; value: number }>; loading: boolean }) {
@@ -756,18 +706,4 @@ const legendDotStyle: CSSProperties = {
   width: 10,
   height: 10,
   borderRadius: 999
-};
-
-const quickPanelStyle: CSSProperties = {
-  display: "grid",
-  gap: 16,
-  marginTop: 14,
-  padding: 20,
-  borderRadius: 20
-};
-
-const quickButtonGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  gap: 12
 };
