@@ -1,0 +1,53 @@
+# Git metadata
+.git
+.gitignore
+.github
+
+# Local env and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Node dependencies and build outputs
+node_modules
+.pnpm-store
+.turbo
+.vite
+.vitest
+coverage
+dist
+build
+
+# Go build outputs
+bin
+*.exe
+*.test
+*.out
+*.prof
+vendor
+
+# Runtime data, logs and temporary files
+data
+tmp
+temp
+logs
+*.log
+uploads
+exports
+
+# Database dumps
+*.dump
+*.sql.gz
+
+# IDE and system files
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+Desktop.ini
