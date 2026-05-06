@@ -26,6 +26,9 @@ WORKDIR /app
 
 COPY --from=build /out/aios-server /app/aios-server
 
+RUN mkdir -p /app/logs /data/file_assets \
+  && chown -R app:app /app /data
+
 USER app
 
 EXPOSE 18081
