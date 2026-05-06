@@ -9,6 +9,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json vitest.config.ts ./
 COPY apps ./apps
 COPY packages ./packages
+COPY docs ./docs
 
 RUN pnpm install --frozen-lockfile
 
