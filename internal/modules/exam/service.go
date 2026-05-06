@@ -64,11 +64,21 @@ func (service *Service) ListExamPapers(ctx context.Context, scope Scope, filter 
 	if service == nil || service.repo == nil {
 		return PageResult[ExamPaper]{}, ErrRepositoryUnavailable
 	}
-	if !canManageExam(scope) {
+	if scope.UserType == "student" {
+		if !canUsePractice(scope) {
+			return PageResult[ExamPaper]{}, ErrForbidden
+		}
+		if strings.TrimSpace(strings.ToLower(filter.Status)) != "" && strings.TrimSpace(strings.ToLower(filter.Status)) != ExamPaperStatusPublished {
+			return pageOf([]ExamPaper{}, filter.Page, filter.PageSize), nil
+		}
+		filter.Status = ExamPaperStatusPublished
+	} else if !canManageExam(scope) {
 		return PageResult[ExamPaper]{}, ErrForbidden
 	}
 	filter.Page = normalizePage(filter.Page)
 	filter.PageSize = normalizePageSize(filter.PageSize)
+	filter.Status = strings.TrimSpace(strings.ToLower(filter.Status))
+	filter.Keyword = strings.TrimSpace(filter.Keyword)
 	return service.repo.ListExamPapers(ctx, scopeForRead(scope), filter)
 }
 
@@ -90,13 +100,32 @@ func (service *Service) GetExamPaper(ctx context.Context, scope Scope, id int64)
 	if service == nil || service.repo == nil {
 		return ExamPaperDetail{}, ErrRepositoryUnavailable
 	}
-	if !canManageExam(scope) {
+	if scope.UserType == "student" {
+		if !canUsePractice(scope) {
+			return ExamPaperDetail{}, ErrForbidden
+		}
+	} else if !canManageExam(scope) {
 		return ExamPaperDetail{}, ErrForbidden
 	}
 	if id <= 0 {
 		return ExamPaperDetail{}, ErrInvalidInput
 	}
 	return service.repo.GetExamPaper(ctx, scopeForRead(scope), id)
+}
+
+func (service *Service) ListExamPaperPracticeRecords(ctx context.Context, scope Scope, paperID int64, filter ExamPaperPracticeRecordFilter) (PageResult[ExamPaperPracticeRecord], error) {
+	if service == nil || service.repo == nil {
+		return PageResult[ExamPaperPracticeRecord]{}, ErrRepositoryUnavailable
+	}
+	if scope.UserType != "student" || !canUsePractice(scope) {
+		return PageResult[ExamPaperPracticeRecord]{}, ErrForbidden
+	}
+	if paperID <= 0 || scope.UserID <= 0 || scope.TenantID <= 0 {
+		return PageResult[ExamPaperPracticeRecord]{}, ErrInvalidInput
+	}
+	filter.Page = normalizePage(filter.Page)
+	filter.PageSize = normalizePageSize(filter.PageSize)
+	return service.repo.ListExamPaperPracticeRecords(ctx, scope, paperID, filter)
 }
 
 func (service *Service) UpdateExamPaper(ctx context.Context, scope Scope, id int64, input ExamPaperInput) (ExamPaperDetail, error) {
@@ -351,15 +380,14 @@ func normalizeExamListFilter(filter ExamListFilter) (ExamListFilter, error) {
 }
 
 func normalizeStudentSelfTestInput(scope Scope, input ExamInput) ExamInput {
-	input.PaperID = nil
 	input.Targets = []ExamTargetInput{
 		{
 			TargetType: TargetTypeUser,
 			TargetID:   scope.UserID,
 		},
 	}
-	if input.ExamMode == ExamModePaper {
-		input.ExamMode = ""
+	if input.ExamMode != ExamModePaper {
+		input.PaperID = nil
 	}
 	return input
 }
@@ -464,6 +492,10 @@ func readTenantID(scope Scope) int64 {
 
 func canManageExam(scope Scope) bool {
 	return scope.UserType == "sys_admin" || scope.UserType == "teacher" || containsPermission(scope.Permissions, "exam:publish")
+}
+
+func canUsePractice(scope Scope) bool {
+	return containsPermission(scope.Permissions, "practice:use")
 }
 
 func (service *Service) ensureTeacherCanUseExamScope(ctx context.Context, scope Scope, input ExamInput) error {

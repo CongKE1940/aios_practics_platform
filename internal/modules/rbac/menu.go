@@ -152,6 +152,7 @@ var userMenus = []menuDef{
 			{id: 24, name: "错题本", path: "/app/practice/wrong", requiredPermissions: []string{"practice:use"}},
 			{id: 25, name: "熟题本", path: "/app/practice/mastered", requiredPermissions: []string{"practice:use"}},
 			{id: 26, name: "疑惑题", path: "/app/practice/confused", requiredPermissions: []string{"practice:use"}},
+			{id: 33, name: "试卷中心", path: "/app/exam-papers", requiredPermissions: []string{"practice:use"}},
 			{id: 27, name: "班级学习", path: "/app/class-learning", requiredPermissions: []string{"analytics:view"}},
 			{id: 28, name: "通知中心", path: "/app/notifications"},
 			{id: 32, name: "系统公告", path: "/app/announcements"},

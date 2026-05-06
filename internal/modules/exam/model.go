@@ -171,6 +171,29 @@ type ExamPaperListFilter struct {
 	PageSize int
 }
 
+type ExamPaperPracticeRecordFilter struct {
+	Page     int
+	PageSize int
+}
+
+type ExamPaperPracticeRecord struct {
+	ExamID          int64      `json:"exam_id"`
+	AttemptID       int64      `json:"attempt_id"`
+	PaperID         int64      `json:"paper_id"`
+	ExamName        string     `json:"exam_name"`
+	PaperName       string     `json:"paper_name"`
+	Status          string     `json:"status"`
+	DurationMinutes int        `json:"duration_minutes"`
+	TotalScore      float64    `json:"total_score"`
+	ObjectiveScore  float64    `json:"objective_score"`
+	SubjectiveScore float64    `json:"subjective_score"`
+	FinalScore      float64    `json:"final_score"`
+	StartAt         *time.Time `json:"start_at,omitempty"`
+	SubmitAt        *time.Time `json:"submit_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at,omitempty"`
+	UpdatedAt       time.Time  `json:"updated_at,omitempty"`
+}
+
 type ExamAttempt struct {
 	ID              int64      `json:"id"`
 	ExamID          int64      `json:"exam_id"`
@@ -255,6 +278,7 @@ type Repository interface {
 	GetExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error)
 	UpdateExamPaper(ctx context.Context, scope Scope, id int64, input ExamPaperInput) (ExamPaperDetail, error)
 	PublishExamPaper(ctx context.Context, scope Scope, id int64) (ExamPaperDetail, error)
+	ListExamPaperPracticeRecords(ctx context.Context, scope Scope, paperID int64, filter ExamPaperPracticeRecordFilter) (PageResult[ExamPaperPracticeRecord], error)
 	StartAttempt(ctx context.Context, scope Scope, examID int64) (ExamAttemptDetail, error)
 	GetAttempt(ctx context.Context, scope Scope, attemptID int64) (ExamAttemptDetail, error)
 	SaveAttemptAnswer(ctx context.Context, scope Scope, attemptID int64, input SaveAttemptAnswerInput) (ExamAttemptAnswer, error)

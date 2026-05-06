@@ -268,6 +268,97 @@ func TestHandler_StudentCanCreatePrivateSelfTestExam(t *testing.T) {
 	}
 }
 
+func TestHandler_StudentCanUsePublishedPaperForSelfTestAndRecords(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	repo := newMemoryExamRepository()
+	paper, err := repo.CreateExamPaper(context.Background(), Scope{TenantID: 1, UserID: 7, UserType: "teacher"}, ExamPaperInput{
+		PaperName: "公开试卷",
+		PaperType: ExamPaperTypeFixed,
+		FixedQuestions: []ExamFixedQuestionInput{
+			{QuestionID: 11, QuestionVersionID: 111, Score: 5, DisplayOrder: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateExamPaper() error = %v", err)
+	}
+	paper, err = repo.PublishExamPaper(context.Background(), Scope{TenantID: 1, UserID: 7, UserType: "teacher"}, paper.ID)
+	if err != nil {
+		t.Fatalf("PublishExamPaper() error = %v", err)
+	}
+	handler := NewHandler(NewService(repo), fakeExamTokenParser{
+		claims: auth.AccessClaims{
+			TenantID:    1,
+			UserID:      10001,
+			UserType:    "student",
+			Permissions: []string{"practice:use"},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	listRec := performExamAuthorizedRequest(router, http.MethodGet, "/api/v1/exam-papers", nil, "token")
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list papers status = %d, body = %s", listRec.Code, listRec.Body.String())
+	}
+	var listPayload examEnvelope[PageResult[ExamPaper]]
+	decodeExamBody(t, listRec, &listPayload)
+	if len(listPayload.Data.Items) != 1 || listPayload.Data.Items[0].ID != paper.ID {
+		t.Fatalf("paper items = %+v", listPayload.Data.Items)
+	}
+
+	detailRec := performExamAuthorizedRequest(router, http.MethodGet, "/api/v1/exam-papers/"+strconv.FormatInt(paper.ID, 10), nil, "token")
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("paper detail status = %d, body = %s", detailRec.Code, detailRec.Body.String())
+	}
+	var detailPayload examEnvelope[ExamPaperDetail]
+	decodeExamBody(t, detailRec, &detailPayload)
+	if len(detailPayload.Data.Questions) != 1 {
+		t.Fatalf("paper questions = %+v", detailPayload.Data.Questions)
+	}
+
+	examRec := performExamJSONRequest(router, http.MethodPost, "/api/v1/exams", map[string]any{
+		"name":             "公开试卷自测",
+		"exam_mode":        "paper",
+		"paper_id":         paper.ID,
+		"start_time":       "2026-04-23T09:00:00+08:00",
+		"end_time":         "2026-05-23T09:00:00+08:00",
+		"duration_minutes": 60,
+	})
+	if examRec.Code != http.StatusOK {
+		t.Fatalf("exam status = %d, body = %s", examRec.Code, examRec.Body.String())
+	}
+	var examPayload examEnvelope[ExamDetail]
+	decodeExamBody(t, examRec, &examPayload)
+	if examPayload.Data.PaperID == nil || *examPayload.Data.PaperID != paper.ID {
+		t.Fatalf("self test paper_id = %+v", examPayload.Data.PaperID)
+	}
+	if examPayload.Data.OwnerOrgType != OwnerOrgTypeUser || examPayload.Data.OwnerOrgID != 10001 {
+		t.Fatalf("self test owner = %s:%d", examPayload.Data.OwnerOrgType, examPayload.Data.OwnerOrgID)
+	}
+
+	publishRec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(examPayload.Data.ID, 10)+"/publish", nil, "token")
+	if publishRec.Code != http.StatusOK {
+		t.Fatalf("publish status = %d, body = %s", publishRec.Code, publishRec.Body.String())
+	}
+	attemptRec := performExamAuthorizedRequest(router, http.MethodPost, "/api/v1/exams/"+strconv.FormatInt(examPayload.Data.ID, 10)+"/attempts", nil, "token")
+	if attemptRec.Code != http.StatusOK {
+		t.Fatalf("attempt status = %d, body = %s", attemptRec.Code, attemptRec.Body.String())
+	}
+
+	recordsRec := performExamAuthorizedRequest(router, http.MethodGet, "/api/v1/exam-papers/"+strconv.FormatInt(paper.ID, 10)+"/practice-records", nil, "token")
+	if recordsRec.Code != http.StatusOK {
+		t.Fatalf("records status = %d, body = %s", recordsRec.Code, recordsRec.Body.String())
+	}
+	var recordsPayload examEnvelope[PageResult[ExamPaperPracticeRecord]]
+	decodeExamBody(t, recordsRec, &recordsPayload)
+	if len(recordsPayload.Data.Items) != 1 || recordsPayload.Data.Items[0].PaperID != paper.ID {
+		t.Fatalf("records = %+v", recordsPayload.Data.Items)
+	}
+}
+
 func TestService_TeacherCanCreateCourseExamForOwnCourse(t *testing.T) {
 	repo := newTeacherScopedExamRepository()
 	repo.teachCourses[10] = true
@@ -1210,6 +1301,41 @@ func (repo *memoryExamRepository) PublishExamPaper(_ context.Context, scope Scop
 	return current, nil
 }
 
+func (repo *memoryExamRepository) ListExamPaperPracticeRecords(_ context.Context, scope Scope, paperID int64, filter ExamPaperPracticeRecordFilter) (PageResult[ExamPaperPracticeRecord], error) {
+	items := make([]ExamPaperPracticeRecord, 0)
+	for _, detail := range repo.attempts {
+		exam, ok := repo.items[detail.Attempt.ExamID]
+		if !ok || exam.PaperID == nil || *exam.PaperID != paperID {
+			continue
+		}
+		if exam.TenantID != scope.TenantID || exam.OwnerOrgType != OwnerOrgTypeUser || exam.OwnerOrgID != scope.UserID || exam.CreatorID != scope.UserID {
+			continue
+		}
+		paper, ok := repo.papers[paperID]
+		if !ok {
+			continue
+		}
+		items = append(items, ExamPaperPracticeRecord{
+			ExamID:          exam.ID,
+			AttemptID:       detail.Attempt.ID,
+			PaperID:         paperID,
+			ExamName:        exam.Name,
+			PaperName:       paper.PaperName,
+			Status:          detail.Attempt.Status,
+			DurationMinutes: exam.DurationMinutes,
+			TotalScore:      paper.TotalScore,
+			ObjectiveScore:  detail.Attempt.ObjectiveScore,
+			SubjectiveScore: detail.Attempt.SubjectiveScore,
+			FinalScore:      detail.Attempt.FinalScore,
+			StartAt:         detail.Attempt.StartAt,
+			SubmitAt:        detail.Attempt.SubmitAt,
+			CreatedAt:       detail.Attempt.CreatedAt,
+			UpdatedAt:       detail.Attempt.UpdatedAt,
+		})
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
+}
+
 func (repo *memoryExamRepository) PublishExam(_ context.Context, scope Scope, id int64) (ExamDetail, error) {
 	current, ok := repo.items[id]
 	if !ok || current.TenantID != scope.TenantID {
@@ -1265,6 +1391,7 @@ func (repo *memoryExamRepository) StartAttempt(_ context.Context, scope Scope, e
 	}
 	questions := exam.FixedQuestions
 	if exam.PaperID != nil {
+		detail.Attempt.PaperID = *exam.PaperID
 		if paper, ok := repo.papers[*exam.PaperID]; ok {
 			questions = paper.Questions
 		}

@@ -45,6 +45,7 @@ import {
   type PracticeReviewApi
 } from "./practice-review-pages";
 import { StudentExamPage, type StudentExamApi } from "./student-exam-page";
+import { StudentPaperPage, type StudentPaperApi } from "./student-paper-page";
 import { TeacherQuestionBankPage, type TeacherQuestionBankApi } from "./teacher-question-bank-page";
 import { TeacherExamPage, type TeacherExamApi } from "./teacher-exam-page";
 import { UserWorkbenchPage } from "./user-workbench-page";
@@ -62,6 +63,7 @@ type UserPracticeApi = PracticePanelApi &
   Partial<StudentPracticeSessionDetailApi> &
   Partial<StudentPracticeSessionQuestionDetailApi> &
   Partial<StudentExamApi> &
+  Partial<StudentPaperApi> &
   Partial<TeacherExamApi> &
   Partial<UserProfileApi>;
 
@@ -597,6 +599,13 @@ function renderUserContent({
           <p>当前考试功能暂不可用。</p>
         )
       ) : null}
+      {selectedRoute === "/app/exam-papers" ? (
+        session.user.user_type === "student" && currentPracticeApi && isStudentPaperApi(currentPracticeApi) ? (
+          <StudentPaperPage api={currentPracticeApi} onPracticeCreated={setPendingPracticeSession} onNavigate={setSelectedPath} />
+        ) : (
+          <p>当前试卷功能暂不可用。</p>
+        )
+      ) : null}
       {selectedRoute === "/app/practice" && currentPracticeApi ? (
         <PracticePanel
           api={currentPracticeApi}
@@ -749,6 +758,21 @@ function isStudentExamApi(api: UserPracticeApi | undefined): api is UserPractice
   );
 }
 
+function isStudentPaperApi(api: UserPracticeApi | undefined): api is UserPracticeApi & StudentPaperApi {
+  return (
+    typeof api?.listExamPapers === "function" &&
+    typeof api?.getExamPaper === "function" &&
+    typeof api?.listExamPaperPracticeRecords === "function" &&
+    typeof api?.createExam === "function" &&
+    typeof api?.publishExam === "function" &&
+    typeof api?.startExamAttempt === "function" &&
+    typeof api?.saveExamAttemptAnswer === "function" &&
+    typeof api?.submitExamAttempt === "function" &&
+    typeof api?.getExamAttemptResult === "function" &&
+    typeof api?.createPracticeSessionFromQuestions === "function"
+  );
+}
+
 function isUserProfileApi(api: UserPracticeApi | undefined): api is UserPracticeApi & UserProfileApi {
   return (
     typeof api?.getMyProfile === "function" &&
@@ -869,6 +893,8 @@ function getUserPageTitle(selectedRoute: string): string {
       return "班级学习";
     case "/app/exams":
       return "考试中心";
+    case "/app/exam-papers":
+      return "试卷中心";
     case "/app/practice":
       return "练题中心";
     case "/app/practice/history":

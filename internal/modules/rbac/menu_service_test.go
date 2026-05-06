@@ -136,7 +136,7 @@ func TestBuildUserMenusIncludesPracticeCenter(t *testing.T) {
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 10 {
+	if len(menus[0].Children) != 11 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
 	if menus[0].Children[0].Path != "/app/workbench" {
@@ -153,11 +153,11 @@ func TestBuildUserMenusIncludesPracticeReviewEntries(t *testing.T) {
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 10 {
+	if len(menus[0].Children) != 11 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
-	wantPaths := []string{"/app/workbench", "/app/courses", "/app/practice", "/app/practice/history", "/app/practice/wrong", "/app/practice/mastered", "/app/practice/confused", "/app/notifications", "/app/announcements", "/app/exams"}
-	wantNames := []string{"工作台", "我的课程", "练题中心", "练题记录", "错题本", "熟题本", "疑惑题", "通知中心", "系统公告", "考试入口"}
+	wantPaths := []string{"/app/workbench", "/app/courses", "/app/practice", "/app/practice/history", "/app/practice/wrong", "/app/practice/mastered", "/app/practice/confused", "/app/exam-papers", "/app/notifications", "/app/announcements", "/app/exams"}
+	wantNames := []string{"工作台", "我的课程", "练题中心", "练题记录", "错题本", "熟题本", "疑惑题", "试卷中心", "通知中心", "系统公告", "考试入口"}
 	for i := range wantPaths {
 		if menus[0].Children[i].Path != wantPaths[i] {
 			t.Fatalf("child[%d].Path = %q", i, menus[0].Children[i].Path)
@@ -174,20 +174,20 @@ func TestBuildUserMenusIncludesClassLearningWithAnalyticsPermission(t *testing.T
 	if len(menus) != 1 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[0].Children) != 11 {
+	if len(menus[0].Children) != 12 {
 		t.Fatalf("len(children) = %d", len(menus[0].Children))
 	}
-	if menus[0].Children[7].Path != "/app/class-learning" {
-		t.Fatalf("class learning path = %q", menus[0].Children[7].Path)
+	if menus[0].Children[8].Path != "/app/class-learning" {
+		t.Fatalf("class learning path = %q", menus[0].Children[8].Path)
 	}
-	if menus[0].Children[7].Name != "班级学习" {
-		t.Fatalf("class learning name = %q", menus[0].Children[7].Name)
+	if menus[0].Children[8].Name != "班级学习" {
+		t.Fatalf("class learning name = %q", menus[0].Children[8].Name)
 	}
-	if menus[0].Children[10].Path != "/app/exams" {
-		t.Fatalf("exam path = %q", menus[0].Children[10].Path)
+	if menus[0].Children[11].Path != "/app/exams" {
+		t.Fatalf("exam path = %q", menus[0].Children[11].Path)
 	}
-	if menus[0].Children[10].Name != "考试入口" {
-		t.Fatalf("exam name = %q", menus[0].Children[10].Name)
+	if menus[0].Children[11].Name != "考试入口" {
+		t.Fatalf("exam name = %q", menus[0].Children[11].Name)
 	}
 }
 

@@ -124,6 +124,7 @@ export interface ApiClient {
   getExamPaper(id: number): Promise<ExamPaperDetail>;
   updateExamPaper(id: number, body: ExamPaperInput): Promise<ExamPaperDetail>;
   publishExamPaper(id: number): Promise<ExamPaperDetail>;
+  listExamPaperPracticeRecords(id: number, query?: ExamPaperPracticeRecordQuery): Promise<PageResult<ExamPaperPracticeRecord>>;
   startExamAttempt(id: number): Promise<ExamAttemptDetail>;
   getExamAttempt(id: number): Promise<ExamAttemptDetail>;
   saveExamAttemptAnswer(id: number, body: ExamAttemptAnswerInput): Promise<ExamAttemptAnswer>;
@@ -575,6 +576,11 @@ export interface ExamListQuery {
 export interface ExamPaperListQuery {
   status?: string;
   keyword?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ExamPaperPracticeRecordQuery {
   page?: number;
   page_size?: number;
 }
@@ -1326,6 +1332,24 @@ export interface ExamPaperDetail extends ExamPaper {
   paper_rules: ExamPaperRule[];
 }
 
+export interface ExamPaperPracticeRecord {
+  exam_id: number;
+  attempt_id: number;
+  paper_id: number;
+  exam_name: string;
+  paper_name: string;
+  status: string;
+  duration_minutes: number;
+  total_score: number;
+  objective_score: number;
+  subjective_score: number;
+  final_score: number;
+  start_at?: string | null;
+  submit_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ExamDetail extends Exam {
   targets: ExamTarget[];
   fixed_questions: ExamFixedQuestion[];
@@ -1863,6 +1887,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     updateExamPaper: (id, body) =>
       request(fetcher, options, `/exam-papers/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     publishExamPaper: (id) => request(fetcher, options, `/exam-papers/${id}/publish`, { method: "POST" }),
+    listExamPaperPracticeRecords: (id, query) =>
+      request(fetcher, options, buildPath(`/exam-papers/${id}/practice-records`, query), { method: "GET" }),
     startExamAttempt: (id) => request(fetcher, options, `/exams/${id}/attempts`, { method: "POST" }),
     getExamAttempt: (id) => request(fetcher, options, `/exam-attempts/${id}`, { method: "GET" }),
     saveExamAttemptAnswer: (id, body) =>

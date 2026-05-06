@@ -827,8 +827,10 @@ WHERE 1 = 1
 		args = append(args, "%"+filter.Keyword+"%")
 	}
 	if scope.UserType == "student" {
-		query += " AND COALESCE(ep.creator_id, e.creator_id, 0) = ? AND (e.id IS NULL OR e.owner_org_type = ?)"
-		args = append(args, scope.UserID, OwnerOrgTypeUser)
+		query += " AND COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END) = ?"
+		args = append(args, ExamPaperStatusPublished)
+		query += " AND (e.id IS NULL OR e.owner_org_type <> ?)"
+		args = append(args, OwnerOrgTypeUser)
 	} else {
 		query += " AND (e.id IS NULL OR e.owner_org_type <> ?)"
 		args = append(args, OwnerOrgTypeUser)
@@ -938,8 +940,10 @@ WHERE ep.id = ?
 		args = append(args, scope.TenantID)
 	}
 	if scope.UserType == "student" {
-		query += " AND COALESCE(ep.creator_id, e.creator_id, 0) = ? AND (e.id IS NULL OR e.owner_org_type = ?)"
-		args = append(args, scope.UserID, OwnerOrgTypeUser)
+		query += " AND COALESCE(ep.status, CASE WHEN e.status = 'published' THEN 'published' ELSE 'draft' END) = ?"
+		args = append(args, ExamPaperStatusPublished)
+		query += " AND (e.id IS NULL OR e.owner_org_type <> ?)"
+		args = append(args, OwnerOrgTypeUser)
 	} else {
 		query += " AND (e.id IS NULL OR e.owner_org_type <> ?)"
 		args = append(args, OwnerOrgTypeUser)
@@ -1062,6 +1066,59 @@ func (repo *MySQLRepository) PublishExamPaper(ctx context.Context, scope Scope, 
 		return ExamPaperDetail{}, ErrNotFound
 	}
 	return repo.GetExamPaper(ctx, scope, id)
+}
+
+func (repo *MySQLRepository) ListExamPaperPracticeRecords(ctx context.Context, scope Scope, paperID int64, filter ExamPaperPracticeRecordFilter) (PageResult[ExamPaperPracticeRecord], error) {
+	if repo == nil || repo.db == nil {
+		return PageResult[ExamPaperPracticeRecord]{}, ErrRepositoryUnavailable
+	}
+	const query = `
+SELECT
+  e.id AS exam_id,
+  ea.id AS attempt_id,
+  e.paper_id,
+  e.name AS exam_name,
+  ep.paper_name,
+  ea.status,
+  e.duration_minutes,
+  ep.total_score,
+  ea.objective_score,
+  ea.subjective_score,
+  ea.final_score,
+  ea.start_at,
+  ea.submit_at,
+  ea.created_at,
+  ea.updated_at
+FROM exam_attempts ea
+JOIN exams e ON e.id = ea.exam_id
+JOIN exam_papers ep ON ep.id = e.paper_id
+WHERE ea.tenant_id = ?
+  AND ea.user_id = ?
+  AND e.tenant_id = ?
+  AND e.owner_org_type = ?
+  AND e.owner_org_id = ?
+  AND e.creator_id = ?
+  AND e.paper_id = ?
+ORDER BY ea.created_at DESC, ea.id DESC
+`
+	rows, err := repo.db.QueryContext(ctx, query, scope.TenantID, scope.UserID, scope.TenantID, OwnerOrgTypeUser, scope.UserID, scope.UserID, paperID)
+	if err != nil {
+		return PageResult[ExamPaperPracticeRecord]{}, err
+	}
+	defer rows.Close()
+
+	items := make([]ExamPaperPracticeRecord, 0)
+	for rows.Next() {
+		item, err := scanExamPaperPracticeRecord(rows)
+		if err != nil {
+			return PageResult[ExamPaperPracticeRecord]{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return PageResult[ExamPaperPracticeRecord]{}, err
+	}
+	return pageOf(items, filter.Page, filter.PageSize), nil
 }
 
 func (repo *MySQLRepository) replaceTargets(ctx context.Context, tx *sql.Tx, examID int64, targets []ExamTargetInput) error {
@@ -1884,6 +1941,41 @@ func scanExamPaper(scanner interface{ Scan(dest ...any) error }) (ExamPaper, err
 	if updatedAt.Valid {
 		value := updatedAt.Time
 		item.UpdatedAt = &value
+	}
+	return item, nil
+}
+
+func scanExamPaperPracticeRecord(scanner interface{ Scan(dest ...any) error }) (ExamPaperPracticeRecord, error) {
+	var item ExamPaperPracticeRecord
+	var startAt sql.NullTime
+	var submitAt sql.NullTime
+	err := scanner.Scan(
+		&item.ExamID,
+		&item.AttemptID,
+		&item.PaperID,
+		&item.ExamName,
+		&item.PaperName,
+		&item.Status,
+		&item.DurationMinutes,
+		&item.TotalScore,
+		&item.ObjectiveScore,
+		&item.SubjectiveScore,
+		&item.FinalScore,
+		&startAt,
+		&submitAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		return ExamPaperPracticeRecord{}, err
+	}
+	if startAt.Valid {
+		value := startAt.Time
+		item.StartAt = &value
+	}
+	if submitAt.Valid {
+		value := submitAt.Time
+		item.SubmitAt = &value
 	}
 	return item, nil
 }

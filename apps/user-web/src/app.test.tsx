@@ -430,6 +430,168 @@ describe("UserApp", () => {
     });
   });
 
+  it("opens student paper center from the user menu", async () => {
+    const listExamPapers = vi.fn(async () => ({
+      items: [
+        {
+          id: 701,
+          tenant_id: 1,
+          creator_id: 7,
+          paper_type: "fixed",
+          paper_name: "函数公开试卷",
+          source_type: "manual",
+          status: "published",
+          total_score: 10,
+          question_count: 1,
+          created_at: "2026-04-24T09:00:00+08:00"
+        }
+      ],
+      page: 1,
+      page_size: 10,
+      total: 1
+    }));
+
+    render(
+      <UserApp
+        authApi={createAuthApiMock()}
+        practiceApi={{
+          ...createPracticeApiMock(),
+          listExamPapers,
+          getExamPaper: async () => ({
+            id: 701,
+            tenant_id: 1,
+            creator_id: 7,
+            paper_type: "fixed",
+            paper_name: "函数公开试卷",
+            source_type: "manual",
+            status: "published",
+            total_score: 10,
+            question_count: 1,
+            questions: [],
+            paper_rules: []
+          }),
+          listExamPaperPracticeRecords: async () => ({ items: [], page: 1, page_size: 20, total: 0 }),
+          createPracticeSessionFromQuestions: async () => ({
+            id: 501,
+            tenant_id: 1,
+            user_id: 7,
+            practice_mode: "sequential",
+            source_mode: "question_list",
+            flow_mode: "fixed_count",
+            bank_scope: {},
+            bank_ids: [],
+            exclude_mastered: false,
+            question_count: 1,
+            random_seed: 0,
+            round_no: 1,
+            status: "active",
+            questions: []
+          }),
+          createExam: async (body) => ({
+            id: 302,
+            tenant_id: 1,
+            owner_org_type: "user",
+            owner_org_id: 7,
+            creator_id: 7,
+            status: "draft",
+            total_score: 10,
+            ...body,
+            fixed_questions: body.fixed_questions ?? [],
+            targets: body.targets ?? [],
+            paper_rules: body.paper_rules ?? []
+          }),
+          publishExam: async (id) => ({
+            id,
+            tenant_id: 1,
+            owner_org_type: "user",
+            owner_org_id: 7,
+            creator_id: 7,
+            name: "函数公开试卷 自测",
+            exam_mode: "paper",
+            paper_id: 701,
+            status: "published",
+            start_time: "2026-04-24T09:00:00+08:00",
+            end_time: "2026-05-24T09:00:00+08:00",
+            duration_minutes: 60,
+            total_score: 10,
+            targets: [{ target_type: "user", target_id: 7 }],
+            fixed_questions: [],
+            paper_rules: []
+          }),
+          startExamAttempt: async () => ({
+            attempt: {
+              id: 801,
+              exam_id: 302,
+              paper_id: 701,
+              tenant_id: 1,
+              user_id: 7,
+              status: "in_progress",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            questions: [],
+            answers: []
+          }),
+          saveExamAttemptAnswer: async (_attemptId, body) => ({
+            attempt_id: 801,
+            question_id: 101,
+            question_version_id: 1001,
+            display_order: body.display_order,
+            answer: body.answer,
+            score: 0
+          }),
+          submitExamAttempt: async () => ({
+            attempt: {
+              id: 801,
+              exam_id: 302,
+              paper_id: 701,
+              tenant_id: 1,
+              user_id: 7,
+              status: "submitted",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            answers: [],
+            objective_score: 0,
+            final_score: 0
+          }),
+          getExamAttemptResult: async () => ({
+            attempt: {
+              id: 801,
+              exam_id: 302,
+              paper_id: 701,
+              tenant_id: 1,
+              user_id: 7,
+              status: "submitted",
+              objective_score: 0,
+              subjective_score: 0,
+              final_score: 0
+            },
+            answers: [],
+            objective_score: 0,
+            final_score: 0
+          })
+        }}
+        sessionStore={createSessionStore(
+          createSession([
+            { id: 21, name: "我的课程", path: "/app/courses", children: [] },
+            { id: 33, name: "试卷中心", path: "/app/exam-papers", children: [] }
+          ])
+        )}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "试卷中心" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "公开试卷" })).toBeTruthy();
+      expect(screen.getByText("函数公开试卷")).toBeTruthy();
+      expect(listExamPapers).toHaveBeenCalledWith(expect.objectContaining({ status: "published", page: 1, page_size: 10 }));
+    });
+  });
+
   it("renders question feedback page from direct route", async () => {
     render(
       <UserApp

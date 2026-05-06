@@ -30,6 +30,7 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.GET("/exam-papers", handler.listExamPapers)
 	router.POST("/exam-papers", handler.createExamPaper)
 	router.GET("/exam-papers/:id", handler.getExamPaper)
+	router.GET("/exam-papers/:id/practice-records", handler.listExamPaperPracticeRecords)
 	router.PUT("/exam-papers/:id", handler.updateExamPaper)
 	router.POST("/exam-papers/:id/publish", handler.publishExamPaper)
 	router.GET("/exams", handler.listExams)
@@ -48,7 +49,7 @@ func (handler *Handler) listExamPapers(ctx *gin.Context) {
 	if !handler.ready(ctx) {
 		return
 	}
-	scope, ok := handler.authorize(ctx)
+	scope, ok := handler.authorizeNoPermission(ctx)
 	if !ok {
 		return
 	}
@@ -90,11 +91,30 @@ func (handler *Handler) getExamPaper(ctx *gin.Context) {
 	if !handler.ready(ctx) {
 		return
 	}
-	scope, id, ok := handler.authorizeWithID(ctx)
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
 	if !ok {
 		return
 	}
 	result, err := handler.service.GetExamPaper(ctx.Request.Context(), scope, id)
+	if err != nil {
+		writeExamError(ctx, err)
+		return
+	}
+	ctx.JSON(http.StatusOK, response.Success(result, requestID(ctx)))
+}
+
+func (handler *Handler) listExamPaperPracticeRecords(ctx *gin.Context) {
+	if !handler.ready(ctx) {
+		return
+	}
+	scope, id, ok := handler.authorizeWithIDNoPermission(ctx)
+	if !ok {
+		return
+	}
+	result, err := handler.service.ListExamPaperPracticeRecords(ctx.Request.Context(), scope, id, ExamPaperPracticeRecordFilter{
+		Page:     parseInt(ctx.Query("page")),
+		PageSize: parseInt(ctx.Query("page_size")),
+	})
 	if err != nil {
 		writeExamError(ctx, err)
 		return
