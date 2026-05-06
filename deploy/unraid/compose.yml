@@ -1,0 +1,59 @@
+networks:
+  br0_network:
+    external: true
+    name: br0
+
+services:
+  api:
+    image: ${AIOS_API_IMAGE:-ghcr.io/congke1940/aios-api}:${AIOS_VERSION:-latest}
+    container_name: aios_api
+    restart: unless-stopped
+    networks:
+      br0_network:
+        ipv4_address: ${AIOS_API_IP:-192.168.1.132}
+    ports:
+      - "${AIOS_API_PORT:-18081}:18081"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      AIOS_APP_NAME: aios-practice-platform
+      AIOS_APP_ENV: ${AIOS_APP_ENV:-prod}
+      AIOS_HTTP_ADDR: :18081
+      AIOS_MYSQL_DSN: ${AIOS_MYSQL_DSN}
+      AIOS_REDIS_ADDR: ${AIOS_REDIS_ADDR:-192.168.1.131:6379}
+      AIOS_JWT_SECRET: ${AIOS_JWT_SECRET}
+      AIOS_FILE_STORAGE_DIR: /data/file_assets
+      AIOS_PLATFORM_TENANT_ID: ${AIOS_PLATFORM_TENANT_ID:-1}
+    volumes:
+      - /mnt/user/docker/aios/file_assets:/data/file_assets
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:18081/healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  admin-web:
+    image: ${AIOS_ADMIN_WEB_IMAGE:-ghcr.io/congke1940/aios-admin-web}:${AIOS_VERSION:-latest}
+    container_name: aios_admin_web
+    restart: unless-stopped
+    networks:
+      br0_network:
+        ipv4_address: ${AIOS_ADMIN_WEB_IP:-192.168.1.133}
+    ports:
+      - "${AIOS_ADMIN_WEB_PORT:-18082}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  user-web:
+    image: ${AIOS_USER_WEB_IMAGE:-ghcr.io/congke1940/aios-user-web}:${AIOS_VERSION:-latest}
+    container_name: aios_user_web
+    restart: unless-stopped
+    networks:
+      br0_network:
+        ipv4_address: ${AIOS_USER_WEB_IP:-192.168.1.134}
+    ports:
+      - "${AIOS_USER_WEB_PORT:-18083}:80"
+    depends_on:
+      api:
+        condition: service_healthy
