@@ -12,6 +12,10 @@ var allowedOrigins = map[string]struct{}{
 	"http://127.0.0.1:5174": {},
 	"http://localhost:5173": {},
 	"http://localhost:5174": {},
+	"https://admin.congke.top": {},
+	"https://admin.congke.top:50443": {},
+	"https://user.congke.top": {},
+	"https://user.congke.top:50443": {},
 }
 
 func corsMiddleware() gin.HandlerFunc {
