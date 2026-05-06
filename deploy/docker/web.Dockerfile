@@ -23,6 +23,8 @@ RUN pnpm --filter ${APP_FILTER} build
 
 FROM nginx:1.27-alpine
 
+ARG APP_DIR
+
 COPY deploy/nginx/spa.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /src/apps/${APP_DIR}/dist /usr/share/nginx/html
 
