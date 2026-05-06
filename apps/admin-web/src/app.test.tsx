@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { QuestionChallengeReviewInput } from "@aios/api-sdk";
-import { afterEach, describe, expect, it } from "vitest";
+import { ApiError, PASSWORD_CHANGE_REQUIRED_CODE, type LoginRequest, type QuestionChallengeReviewInput } from "@aios/api-sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AdminApp, type SessionState, type SessionStore } from "./app";
 
@@ -97,6 +97,81 @@ describe("AdminApp", () => {
     expect(screen.getByRole("button", { name: "公告通知" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "工作台" })).toBeTruthy();
     expect(screen.getByText("成员数")).toBeTruthy();
+  });
+
+  it("opens a standalone initial password change page before entering admin shell", async () => {
+    const sessionStore = createMemorySessionStore();
+    const changeInitialPassword = vi.fn(async () => true);
+    const login = vi.fn(async (body: LoginRequest) => {
+      if (body.password === "Init@123456") {
+        throw new ApiError({
+          code: PASSWORD_CHANGE_REQUIRED_CODE,
+          message: "需要修改初始密码",
+          status: 428
+        });
+      }
+
+      return {
+        access_token: "access_token",
+        refresh_token: "refresh_token",
+        expires_in: 7200,
+        user: {
+          id: 1,
+          tenant_id: 1,
+          display_name: "系统管理员",
+          user_type: "sys_admin",
+          roles: ["sys_admin"],
+          permissions: ["notice:manage"]
+        }
+      };
+    });
+
+    render(
+      <AdminApp
+        sessionStore={sessionStore}
+        authApi={{
+          listLoginOrganizations: async () => createLoginOrganizations(),
+          login,
+          changeInitialPassword,
+          logout: async () => true,
+          menus: async () => [{ id: 1, name: "工作台", path: "/admin/workbench", children: [] }]
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "平台管理（platform）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "platform" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Init@123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("form", { name: "初始密码修改表单" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("form", { name: "登录表单" })).toBeNull();
+    expect(screen.queryByLabelText("组织")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "Safe@123456" } });
+    fireEvent.change(screen.getByLabelText("确认新密码"), { target: { value: "Safe@123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "修改密码并登录" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("系统管理员").length).toBeGreaterThan(0);
+    });
+    expect(changeInitialPassword).toHaveBeenCalledWith({
+      tenant_code: "platform",
+      username: "admin",
+      old_password: "Init@123456",
+      new_password: "Safe@123456"
+    });
+    expect(login).toHaveBeenLastCalledWith({
+      tenant_code: "platform",
+      username: "admin",
+      password: "Safe@123456"
+    });
+    expect(sessionStore.savedSession?.user.display_name).toBe("系统管理员");
   });
 
   it("returns to login form after logout", async () => {
