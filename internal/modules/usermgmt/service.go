@@ -50,6 +50,7 @@ func (service *Service) CreateUser(ctx context.Context, scope Scope, input UserI
 		Username:           input.Username,
 		Phone:              input.Phone,
 		Email:              input.Email,
+		AvatarURL:          strings.TrimSpace(input.AvatarURL),
 		DisplayName:        input.DisplayName,
 		UserType:           input.UserType,
 		Status:             UserStatusActive,
@@ -85,6 +86,7 @@ func (service *Service) updateUser(ctx context.Context, scope Scope, id int64, i
 	current.Username = input.Username
 	current.Phone = input.Phone
 	current.Email = input.Email
+	current.AvatarURL = strings.TrimSpace(input.AvatarURL)
 	current.DisplayName = input.DisplayName
 	current.UserType = input.UserType
 	current.RoleIDs = append([]int64{}, input.RoleIDs...)
@@ -106,6 +108,7 @@ func (service *Service) UpdateCurrentUserProfile(ctx context.Context, tenantID i
 	current.DisplayName = strings.TrimSpace(input.DisplayName)
 	current.Phone = strings.TrimSpace(input.Phone)
 	current.Email = strings.TrimSpace(input.Email)
+	current.AvatarURL = strings.TrimSpace(input.AvatarURL)
 	return service.repo.UpdateProfile(ctx, current)
 }
 

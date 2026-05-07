@@ -17,6 +17,16 @@ import type {
 } from "@aios/api-sdk";
 import { ClearableFilterInput, ClearableFilterSelect } from "@aios/ui-web";
 
+import {
+  LabeledQuestionContentBlockView,
+  QuestionContentBlockView,
+  QuestionOptionBody,
+  extractQuestionOptions,
+  getOptionGroupBlock,
+  getStemBlock,
+  type RenderableOption
+} from "./question-content-render";
+
 export interface TeacherExamApi {
   listExams(query?: { page?: number; page_size?: number; status?: string; keyword?: string }): Promise<PageResult<Exam>>;
   createExam(body: ExamInput): Promise<ExamDetail>;
@@ -960,6 +970,8 @@ function AttemptReviewQuestionDetail({
     setMessage("");
   }, [question]);
 
+  const options = questionOptions(question.content, question.question_type);
+
   async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const score = Number(scoreText);
@@ -984,16 +996,18 @@ function AttemptReviewQuestionDetail({
       <p>
         第 {question.display_order} 题（{question.question_type}）
       </p>
-      <p>题干：{extractStem(question.content)}</p>
-      {questionOptions(question.content, question.question_type).length > 0 ? (
+      <LabeledQuestionContentBlockView label="题干" block={getStemBlock(question.content)} />
+      <QuestionContentBlockView block={getOptionGroupBlock(question.content)} />
+      {options.length > 0 ? (
         <ul>
-          {questionOptions(question.content, question.question_type).map((option) => (
+          {options.map((option) => (
             <li key={option.key}>
               <p>
-                {option.key}. {option.text}
+                {option.key}.
                 {isOptionSelected(question.student_answer, option.key) ? " / 学生已选" : ""}
                 {isOptionCorrect(question.correct_answer, option.key) ? " / 正确答案" : ""}
               </p>
+              <QuestionOptionBody option={option} />
             </li>
           ))}
         </ul>
@@ -1258,33 +1272,8 @@ function buildOverviewQuery(
   return query;
 }
 
-function extractStem(content: Record<string, unknown>): string {
-  const stem = content.stem;
-  if (typeof stem !== "object" || stem === null) {
-    return "-";
-  }
-  const text = (stem as { text?: unknown }).text;
-  return typeof text === "string" && text.trim() !== "" ? text : "-";
-}
-
-function questionOptions(content: Record<string, unknown>, questionType: string): Array<{ key: string; text: string }> {
-  const options = Array.isArray(content.options) ? content.options : [];
-  if (options.length > 0) {
-    return options.map((option) => {
-      const typed = option as { key?: unknown; text?: unknown };
-      return {
-        key: typeof typed.key === "string" ? typed.key : "",
-        text: typeof typed.text === "string" ? typed.text : ""
-      };
-    });
-  }
-  if (questionType === "true_false") {
-    return [
-      { key: "true", text: "正确" },
-      { key: "false", text: "错误" }
-    ];
-  }
-  return [];
+function questionOptions(content: Record<string, unknown>, questionType: string): RenderableOption[] {
+  return extractQuestionOptions(content, questionType).filter((option) => option.key !== "");
 }
 
 function formatAnswerText(answer?: Record<string, unknown>): string {

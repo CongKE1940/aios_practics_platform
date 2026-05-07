@@ -16,6 +16,7 @@ type User struct {
 	Username           string
 	PasswordHash       string
 	DisplayName        string
+	AvatarURL          string
 	UserType           string
 	Status             string
 	MustChangePassword bool
@@ -59,6 +60,7 @@ type CurrentUser struct {
 	ID                 int64    `json:"id"`
 	TenantID           int64    `json:"tenant_id"`
 	DisplayName        string   `json:"display_name"`
+	AvatarURL          string   `json:"avatar_url,omitempty"`
 	UserType           string   `json:"user_type"`
 	MustChangePassword bool     `json:"must_change_password"`
 	Roles              []string `json:"roles"`

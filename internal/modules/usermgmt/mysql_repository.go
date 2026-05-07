@@ -16,7 +16,7 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 
 func (repo *MySQLRepository) ListUsers(ctx context.Context, tenantID int64, filter UserListFilter) (PageResult[User], error) {
 	query := `
-SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password, created_at, updated_at
+SELECT id, tenant_id, username, phone, email, avatar_url, password_hash, display_name, user_type, status, must_change_password, created_at, updated_at
 FROM users
 WHERE deleted_at IS NULL
 `
@@ -61,7 +61,7 @@ WHERE deleted_at IS NULL
 
 func (repo *MySQLRepository) GetUser(ctx context.Context, tenantID int64, id int64) (User, error) {
 	query := `
-SELECT id, tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password, created_at, updated_at
+SELECT id, tenant_id, username, phone, email, avatar_url, password_hash, display_name, user_type, status, must_change_password, created_at, updated_at
 FROM users
 `
 	args := []any{id}
@@ -92,11 +92,12 @@ func (repo *MySQLRepository) CreateUser(ctx context.Context, user User, password
 
 	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO users (tenant_id, username, phone, email, password_hash, display_name, user_type, status, must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (tenant_id, username, phone, email, avatar_url, password_hash, display_name, user_type, status, must_change_password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.TenantID,
 		user.Username,
 		nullString(user.Phone),
 		nullString(user.Email),
+		nullString(user.AvatarURL),
 		passwordHash,
 		user.DisplayName,
 		user.UserType,
@@ -128,10 +129,11 @@ func (repo *MySQLRepository) UpdateUser(ctx context.Context, user User) (User, e
 
 	result, err := tx.ExecContext(
 		ctx,
-		`UPDATE users SET username = ?, phone = ?, email = ?, display_name = ?, user_type = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		`UPDATE users SET username = ?, phone = ?, email = ?, avatar_url = ?, display_name = ?, user_type = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
 		user.Username,
 		nullString(user.Phone),
 		nullString(user.Email),
+		nullString(user.AvatarURL),
 		user.DisplayName,
 		user.UserType,
 		user.ID,
@@ -159,9 +161,10 @@ func (repo *MySQLRepository) UpdateUser(ctx context.Context, user User) (User, e
 func (repo *MySQLRepository) UpdateProfile(ctx context.Context, user User) (User, error) {
 	if err := repo.execAffectingOne(
 		ctx,
-		`UPDATE users SET phone = ?, email = ?, display_name = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		`UPDATE users SET phone = ?, email = ?, avatar_url = ?, display_name = ? WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
 		nullString(user.Phone),
 		nullString(user.Email),
+		nullString(user.AvatarURL),
 		user.DisplayName,
 		user.ID,
 		user.TenantID,
@@ -305,7 +308,8 @@ func scanUserScanner(scanner interface{ Scan(dest ...any) error }) (User, error)
 	var user User
 	var phone sql.NullString
 	var email sql.NullString
-	err := scanner.Scan(&user.ID, &user.TenantID, &user.Username, &phone, &email, &user.PasswordHash, &user.DisplayName, &user.UserType, &user.Status, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
+	var avatarURL sql.NullString
+	err := scanner.Scan(&user.ID, &user.TenantID, &user.Username, &phone, &email, &avatarURL, &user.PasswordHash, &user.DisplayName, &user.UserType, &user.Status, &user.MustChangePassword, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return User{}, err
 	}
@@ -314,6 +318,9 @@ func scanUserScanner(scanner interface{ Scan(dest ...any) error }) (User, error)
 	}
 	if email.Valid {
 		user.Email = email.String
+	}
+	if avatarURL.Valid {
+		user.AvatarURL = avatarURL.String
 	}
 	return user, nil
 }

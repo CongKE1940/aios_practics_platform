@@ -211,6 +211,7 @@ export interface CurrentUser {
   id: number;
   tenant_id: number;
   display_name: string;
+  avatar_url?: string | null;
   user_type: string;
   must_change_password?: boolean;
   roles: string[];
@@ -350,6 +351,9 @@ export interface Question {
 export interface QuestionAsset {
   url: string;
   type: string;
+  file_asset_id?: number | null;
+  filename?: string | null;
+  mime_type?: string | null;
 }
 
 export interface QuestionContentBlock {
@@ -364,6 +368,7 @@ export interface QuestionOption extends QuestionContentBlock {
 
 export interface QuestionContentInput {
   stem: QuestionContentBlock;
+  option_group?: QuestionContentBlock;
   options?: QuestionOption[];
   option_order_randomizable?: boolean;
   ext?: Record<string, unknown>;
@@ -1120,6 +1125,7 @@ export interface ManagedUser {
   username: string;
   phone?: string | null;
   email?: string | null;
+  avatar_url?: string | null;
   display_name: string;
   user_type: string;
   status: string;
@@ -1455,6 +1461,7 @@ export interface ManagedUserInput {
   user_type: string;
   phone?: string | null;
   email?: string | null;
+  avatar_url?: string | null;
   password?: string | null;
   role_ids?: number[];
 }
@@ -1463,6 +1470,7 @@ export interface UserProfileInput {
   display_name: string;
   phone?: string | null;
   email?: string | null;
+  avatar_url?: string | null;
 }
 
 export interface ChangeMyPasswordInput {

@@ -109,7 +109,7 @@ func TestHandler_UploadImportAndGetDetail(t *testing.T) {
 func TestHandler_RejectsFileOperationsWithoutPermission(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 
-	handler := NewHandler(NewService(newMemoryRepository()), fakeTokenParser{
+	handler := NewHandler(NewService(newMemoryRepository(), newMemoryContentStore()), fakeTokenParser{
 		claims: auth.AccessClaims{
 			UserID:      1,
 			TenantID:    1,
@@ -122,9 +122,46 @@ func TestHandler_RejectsFileOperationsWithoutPermission(t *testing.T) {
 	api := router.Group("/api/v1")
 	handler.RegisterRoutes(api)
 
-	rec := performFileRequest(router, http.MethodGet, "/api/v1/files/1", nil, "token")
+	rec := performMultipartRequest(
+		router,
+		"/api/v1/files/upload",
+		"token",
+		"file",
+		"question.png",
+		[]byte("fake-image"),
+		map[string]string{"usage": "question_asset"},
+	)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestHandler_AllowsCurrentUserAvatarUploadWithoutFilePermission(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+
+	handler := NewHandler(NewService(newMemoryRepository(), newMemoryContentStore()), fakeTokenParser{
+		claims: auth.AccessClaims{
+			UserID:      1,
+			TenantID:    1,
+			Permissions: []string{},
+			TokenType:   auth.TokenTypeAccess,
+		},
+	})
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/v1"))
+
+	rec := performMultipartRequest(
+		router,
+		"/api/v1/files/upload",
+		"token",
+		"file",
+		"avatar.png",
+		[]byte("fake-image"),
+		map[string]string{"usage": "user_avatar"},
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload status = %d", rec.Code)
 	}
 }
 
@@ -187,7 +224,7 @@ func (repo *memoryRepository) GetByID(_ context.Context, tenantID int64, id int6
 	return item, nil
 }
 
-func (store *memoryContentStore) Save(_ context.Context, objectKey string, content io.Reader) error {
+func (store *memoryContentStore) Save(_ context.Context, objectKey string, content io.Reader, _ SaveOptions) error {
 	payload, err := io.ReadAll(content)
 	if err != nil {
 		return err

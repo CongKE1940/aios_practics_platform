@@ -24,6 +24,9 @@ func TestLoadUsesDefaultsForLocalDevelopment(t *testing.T) {
 	if cfg.PlatformTenantID != 1 {
 		t.Fatalf("PlatformTenantID = %d", cfg.PlatformTenantID)
 	}
+	if cfg.FileStorage.Driver != "local" {
+		t.Fatalf("FileStorage.Driver = %q", cfg.FileStorage.Driver)
+	}
 }
 
 func TestLoadRejectsInvalidPlatformTenantID(t *testing.T) {
@@ -31,6 +34,31 @@ func TestLoadRejectsInvalidPlatformTenantID(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid tenant id error")
+	}
+}
+
+func TestLoadReadsMinIOStorageSettings(t *testing.T) {
+	t.Setenv("AIOS_OBJECT_STORAGE_DRIVER", "minio")
+	t.Setenv("AIOS_S3_ENDPOINT", "http://192.168.1.135:9000")
+	t.Setenv("AIOS_S3_PUBLIC_ENDPOINT", "http://192.168.1.135:9000")
+	t.Setenv("AIOS_S3_BUCKET", "aios-assets")
+	t.Setenv("AIOS_S3_ACCESS_KEY_ID", "aios_minio_admin")
+	t.Setenv("AIOS_S3_SECRET_ACCESS_KEY", "local-secret")
+	t.Setenv("AIOS_S3_FORCE_PATH_STYLE", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.FileStorage.Driver != "minio" {
+		t.Fatalf("FileStorage.Driver = %q", cfg.FileStorage.Driver)
+	}
+	if cfg.FileStorage.S3.Bucket != "aios-assets" {
+		t.Fatalf("FileStorage.S3.Bucket = %q", cfg.FileStorage.S3.Bucket)
+	}
+	if !cfg.FileStorage.S3.ForcePathStyle {
+		t.Fatal("FileStorage.S3.ForcePathStyle = false")
 	}
 }
 

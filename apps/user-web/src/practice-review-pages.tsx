@@ -12,6 +12,8 @@ import type {
 } from "@aios/api-sdk";
 import { ClearableFilterInput } from "@aios/ui-web";
 
+import { QuestionContentBlockView, extractQuestionText, getOptionGroupBlock, getStemBlock } from "./question-content-render";
+
 export interface PracticeReviewApi {
   listPracticeSessions(query?: PracticeSessionListQuery): Promise<PageResult<PracticeSessionListItem>>;
   getPracticeSessionResults(id: number): Promise<PracticeSessionResults>;
@@ -184,7 +186,8 @@ export function PracticeSessionDetailPage({ api, sessionId, onNavigate }: Practi
             {result.questions.map((question) => (
               <li key={question.session_question_id}>
                 <p>题目 {question.display_order}</p>
-                <p>{questionStem(question.content)}</p>
+                <QuestionContentBlockView block={getStemBlock(question.content)} fallback="-" />
+                <QuestionContentBlockView block={getOptionGroupBlock(question.content)} compact />
                 <p>你的答案：{answerText(question.answer)}</p>
                 <p>正确答案：{answerText(question.correct_answer)}</p>
                 <p>{question.is_correct ? "答对" : "答错"}</p>
@@ -292,8 +295,7 @@ function stateTitle(stateType: PracticeStateListPageProps["stateType"]): string 
 }
 
 function questionStem(content: PracticeSessionResults["questions"][number]["content"] | UserQuestionState["content"] | undefined): string {
-  const stem = content && typeof content === "object" ? (content as { stem?: { text?: string } }).stem : undefined;
-  return stem?.text ?? "";
+  return extractQuestionText(content);
 }
 
 function answerText(answer: Record<string, unknown> | undefined): string {

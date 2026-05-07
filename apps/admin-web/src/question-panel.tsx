@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 import type {
   Course,
   CourseListQuery,
+  FileAsset,
   PageResult,
   Question,
   QuestionBank,
@@ -26,10 +27,19 @@ import {
 import { downloadCsv } from "./list-page-utils";
 import {
   buildTextQuestionOptions,
+  buildQuestionContentBlock,
+  createAssetDraftFromFileAsset,
+  createAssetDraftFromURL,
+  createContentDraft,
+  createContentDraftFromBlock,
   createDefaultOptionDrafts,
   createOptionDraft,
+  createOptionDraftFromOption,
   getOptionKey,
+  hasContentDraftValue,
   normalizeCorrectKey,
+  type QuestionAssetDraft,
+  type QuestionContentDraft,
   type QuestionOptionDraft
 } from "./question-option-draft";
 
@@ -41,6 +51,7 @@ export interface QuestionPanelApi {
   createQuestionVersion(id: number, body: QuestionVersionInput): Promise<QuestionVersion>;
   listQuestionBanks?(query?: QuestionBankListQuery): Promise<PageResult<QuestionBank>>;
   listCourses?(query?: CourseListQuery): Promise<PageResult<Course>>;
+  uploadFile?(body: FormData): Promise<FileAsset>;
 }
 
 const defaultPageSize = 10;
@@ -50,15 +61,19 @@ interface QuestionForm {
   difficulty: string;
   bank_id: string;
   course_id: string;
-  stem: string;
+  stem: QuestionContentDraft;
+  option_group: QuestionContentDraft;
   options: QuestionOptionDraft[];
   correct_key: string;
+  option_order_randomizable: boolean;
 }
 
 interface VersionForm {
-  stem: string;
+  stem: QuestionContentDraft;
+  option_group: QuestionContentDraft;
   options: QuestionOptionDraft[];
   correct_key: string;
+  option_order_randomizable: boolean;
   change_summary: string;
 }
 
@@ -68,9 +83,11 @@ function createDefaultQuestionForm(): QuestionForm {
     difficulty: "medium",
     bank_id: "",
     course_id: "",
-    stem: "",
+    stem: createContentDraft(),
+    option_group: createContentDraft(),
     options: createDefaultOptionDrafts("", ""),
-    correct_key: "B"
+    correct_key: "B",
+    option_order_randomizable: true
   };
 }
 
@@ -83,9 +100,11 @@ const defaultEditForm = {
 
 function createDefaultVersionForm(): VersionForm {
   return {
-    stem: "",
+    stem: createContentDraft(),
+    option_group: createContentDraft(),
     options: createDefaultOptionDrafts("1", "2"),
     correct_key: "B",
+    option_order_randomizable: true,
     change_summary: ""
   };
 }
@@ -254,7 +273,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
     await api.createQuestion({
       question_type: questionForm.question_type,
       difficulty: questionForm.difficulty,
-      content: buildChoiceContent(questionForm.stem, questionForm.options),
+      content: buildChoiceContent(questionForm.stem, questionForm.option_group, questionForm.options, questionForm.option_order_randomizable),
       answer: {
         judge_mode: "by_option_key",
         correct_keys: [normalizeCorrectKey(questionForm.correct_key, questionForm.options)]
@@ -289,7 +308,7 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
       return;
     }
     await api.createQuestionVersion(modal.item.id, {
-      content: buildChoiceContent(versionForm.stem, versionForm.options),
+      content: buildChoiceContent(versionForm.stem, versionForm.option_group, versionForm.options, versionForm.option_order_randomizable),
       answer: {
         judge_mode: "by_option_key",
         correct_keys: [normalizeCorrectKey(versionForm.correct_key, versionForm.options)]
@@ -305,10 +324,24 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
   async function openDetailModal(item: Question) {
     setModal({ type: "detail", item });
     try {
-      setVersions(await api.listQuestionVersions(item.id));
+      const nextVersions = await api.listQuestionVersions(item.id);
+      setVersions(nextVersions);
+      const latestVersion = versionsFromLatest(nextVersions);
+      if (latestVersion) {
+        setVersionForm(buildVersionFormFromVersion(latestVersion));
+      }
     } catch (error) {
       setVersions([]);
       setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "题目版本加载失败");
+    }
+  }
+
+  async function uploadQuestionAsset(file: File | null, usage: string): Promise<QuestionAssetDraft | null> {
+    try {
+      return await uploadAssetFile(api, file, usage);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? normalizeErrorMessage(error.message) : "图片上传失败");
+      return null;
     }
   }
 
@@ -326,6 +359,50 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
     setQuestionForm((current) => ({
       ...current,
       options: current.options.map((option, optionIndex) => (optionIndex === index ? { ...option, text } : option))
+    }));
+  }
+
+  async function addQuestionStemAsset(file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_stem");
+    if (!asset) {
+      return;
+    }
+    setQuestionForm((current) => ({ ...current, stem: { ...current.stem, assets: [...current.stem.assets, asset] } }));
+  }
+
+  function removeQuestionStemAsset(assetID: string) {
+    setQuestionForm((current) => ({ ...current, stem: removeContentAsset(current.stem, assetID) }));
+  }
+
+  async function addQuestionOptionGroupAsset(file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_option_group");
+    if (!asset) {
+      return;
+    }
+    setQuestionForm((current) => ({ ...current, option_group: { ...current.option_group, assets: [...current.option_group.assets, asset] } }));
+  }
+
+  function removeQuestionOptionGroupAsset(assetID: string) {
+    setQuestionForm((current) => ({ ...current, option_group: removeContentAsset(current.option_group, assetID) }));
+  }
+
+  async function addQuestionOptionAsset(index: number, file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_option");
+    if (!asset) {
+      return;
+    }
+    setQuestionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? { ...option, assets: [...option.assets, asset] } : option
+      )
+    }));
+  }
+
+  function removeQuestionOptionAsset(index: number, assetID: string) {
+    setQuestionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? removeOptionAsset(option, assetID) : option))
     }));
   }
 
@@ -354,6 +431,50 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
     setVersionForm((current) => ({
       ...current,
       options: current.options.map((option, optionIndex) => (optionIndex === index ? { ...option, text } : option))
+    }));
+  }
+
+  async function addVersionStemAsset(file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_stem");
+    if (!asset) {
+      return;
+    }
+    setVersionForm((current) => ({ ...current, stem: { ...current.stem, assets: [...current.stem.assets, asset] } }));
+  }
+
+  function removeVersionStemAsset(assetID: string) {
+    setVersionForm((current) => ({ ...current, stem: removeContentAsset(current.stem, assetID) }));
+  }
+
+  async function addVersionOptionGroupAsset(file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_option_group");
+    if (!asset) {
+      return;
+    }
+    setVersionForm((current) => ({ ...current, option_group: { ...current.option_group, assets: [...current.option_group.assets, asset] } }));
+  }
+
+  function removeVersionOptionGroupAsset(assetID: string) {
+    setVersionForm((current) => ({ ...current, option_group: removeContentAsset(current.option_group, assetID) }));
+  }
+
+  async function addVersionOptionAsset(index: number, file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_option");
+    if (!asset) {
+      return;
+    }
+    setVersionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? { ...option, assets: [...option.assets, asset] } : option
+      )
+    }));
+  }
+
+  function removeVersionOptionAsset(index: number, assetID: string) {
+    setVersionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? removeOptionAsset(option, assetID) : option))
     }));
   }
 
@@ -576,24 +697,45 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           ))}
                         </select>
                       </div>
-                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
-                        <label htmlFor="question_stem">题干</label>
-                        <textarea
-                          id="question_stem"
-                          value={questionForm.stem}
-                          onChange={(event) => setQuestionForm((current) => ({ ...current, stem: event.target.value }))}
-                        />
-                      </div>
+                      <ContentDraftFields
+                        idPrefix="question_stem"
+                        label="题干"
+                        draft={questionForm.stem}
+                        onTextChange={(text) => setQuestionForm((current) => ({ ...current, stem: { ...current.stem, text } }))}
+                        onAssetAdd={(file) => void addQuestionStemAsset(file)}
+                        onAssetRemove={removeQuestionStemAsset}
+                      />
+                      <ContentDraftFields
+                        idPrefix="question_option_group"
+                        label="选项整体图片/说明"
+                        draft={questionForm.option_group}
+                        onTextChange={(text) => setQuestionForm((current) => ({ ...current, option_group: { ...current.option_group, text } }))}
+                        onAssetAdd={(file) => void addQuestionOptionGroupAsset(file)}
+                        onAssetRemove={removeQuestionOptionGroupAsset}
+                      />
                       <OptionDraftFields
                         idPrefix="question"
                         options={questionForm.options}
                         correctKey={questionForm.correct_key}
                         correctKeyLabel="正确答案"
                         onOptionChange={updateQuestionOption}
+                        onOptionAssetAdd={(index, file) => void addQuestionOptionAsset(index, file)}
+                        onOptionAssetRemove={removeQuestionOptionAsset}
                         onAddOption={addQuestionOption}
                         onRemoveOption={removeQuestionOption}
                         onCorrectKeyChange={(correctKey) => setQuestionForm((current) => ({ ...current, correct_key: correctKey }))}
                       />
+                      <div className="ui-admin-form__field">
+                        <label className="ui-inline-checkbox" htmlFor="question_option_randomizable">
+                          <input
+                            id="question_option_randomizable"
+                            type="checkbox"
+                            checked={questionForm.option_order_randomizable}
+                            onChange={(event) => setQuestionForm((current) => ({ ...current, option_order_randomizable: event.target.checked }))}
+                          />
+                          <span>选项允许随机排序</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                   <div className="ui-admin-modal__footer">
@@ -758,24 +900,45 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
                   <form onSubmit={(event) => void handleCreateVersion(event)}>
                     <div className="ui-admin-form__grid">
-                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
-                        <label htmlFor="question_version_stem">版本题干</label>
-                        <textarea
-                          id="question_version_stem"
-                          value={versionForm.stem}
-                          onChange={(event) => setVersionForm((current) => ({ ...current, stem: event.target.value }))}
-                        />
-                      </div>
+                      <ContentDraftFields
+                        idPrefix="question_version_stem"
+                        label="版本题干"
+                        draft={versionForm.stem}
+                        onTextChange={(text) => setVersionForm((current) => ({ ...current, stem: { ...current.stem, text } }))}
+                        onAssetAdd={(file) => void addVersionStemAsset(file)}
+                        onAssetRemove={removeVersionStemAsset}
+                      />
+                      <ContentDraftFields
+                        idPrefix="question_version_option_group"
+                        label="版本选项整体图片/说明"
+                        draft={versionForm.option_group}
+                        onTextChange={(text) => setVersionForm((current) => ({ ...current, option_group: { ...current.option_group, text } }))}
+                        onAssetAdd={(file) => void addVersionOptionGroupAsset(file)}
+                        onAssetRemove={removeVersionOptionGroupAsset}
+                      />
                       <OptionDraftFields
                         idPrefix="question_version"
                         options={versionForm.options}
                         correctKey={versionForm.correct_key}
                         correctKeyLabel="版本正确答案"
                         onOptionChange={updateVersionOption}
+                        onOptionAssetAdd={(index, file) => void addVersionOptionAsset(index, file)}
+                        onOptionAssetRemove={removeVersionOptionAsset}
                         onAddOption={addVersionOption}
                         onRemoveOption={removeVersionOption}
                         onCorrectKeyChange={(correctKey) => setVersionForm((current) => ({ ...current, correct_key: correctKey }))}
                       />
+                      <div className="ui-admin-form__field">
+                        <label className="ui-inline-checkbox" htmlFor="question_version_option_randomizable">
+                          <input
+                            id="question_version_option_randomizable"
+                            type="checkbox"
+                            checked={versionForm.option_order_randomizable}
+                            onChange={(event) => setVersionForm((current) => ({ ...current, option_order_randomizable: event.target.checked }))}
+                          />
+                          <span>版本选项允许随机排序</span>
+                        </label>
+                      </div>
                       <div className="ui-admin-form__field">
                         <label htmlFor="question_version_change_summary">变更摘要</label>
                         <input
@@ -815,9 +978,39 @@ interface OptionDraftFieldsProps {
   correctKey: string;
   correctKeyLabel: string;
   onOptionChange(index: number, text: string): void;
+  onOptionAssetAdd(index: number, file: File | null): void;
+  onOptionAssetRemove(index: number, assetID: string): void;
   onAddOption(): void;
   onRemoveOption(index: number): void;
   onCorrectKeyChange(correctKey: string): void;
+}
+
+interface ContentDraftFieldsProps {
+  idPrefix: string;
+  label: string;
+  draft: QuestionContentDraft;
+  onTextChange(text: string): void;
+  onAssetAdd(file: File | null): void;
+  onAssetRemove(assetID: string): void;
+}
+
+function ContentDraftFields({ idPrefix, label, draft, onTextChange, onAssetAdd, onAssetRemove }: ContentDraftFieldsProps) {
+  return (
+    <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+      <label htmlFor={`${idPrefix}_text`}>{label}</label>
+      <textarea id={`${idPrefix}_text`} value={draft.text} onChange={(event) => onTextChange(event.target.value)} />
+      <AssetDraftList assets={draft.assets} onRemove={onAssetRemove} />
+      <input
+        id={`${idPrefix}_file`}
+        type="file"
+        accept="image/*"
+        onChange={(event) => {
+          onAssetAdd(event.target.files?.[0] ?? null);
+          event.currentTarget.value = "";
+        }}
+      />
+    </div>
+  );
 }
 
 function OptionDraftFields({
@@ -826,6 +1019,8 @@ function OptionDraftFields({
   correctKey,
   correctKeyLabel,
   onOptionChange,
+  onOptionAssetAdd,
+  onOptionAssetRemove,
   onAddOption,
   onRemoveOption,
   onCorrectKeyChange
@@ -861,6 +1056,16 @@ function OptionDraftFields({
                     删除
                   </button>
                 </div>
+                <AssetDraftList assets={option.assets} onRemove={(assetID) => onOptionAssetRemove(index, assetID)} />
+                <input
+                  id={`${optionInputID}_file`}
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    onOptionAssetAdd(index, event.target.files?.[0] ?? null);
+                    event.currentTarget.value = "";
+                  }}
+                />
               </div>
             );
           })}
@@ -880,6 +1085,26 @@ function OptionDraftFields({
         </select>
       </div>
     </>
+  );
+}
+
+function AssetDraftList({ assets, onRemove }: { assets: QuestionAssetDraft[]; onRemove(assetID: string): void }) {
+  const visibleAssets = assets.filter((asset) => asset.url.trim() !== "");
+  if (visibleAssets.length === 0) {
+    return null;
+  }
+  return (
+    <div style={assetListStyle}>
+      {visibleAssets.map((asset) => (
+        <span key={asset.draft_id} style={assetPreviewStyle}>
+          {asset.type === "image" ? <img src={asset.url} alt="" style={assetImageStyle} /> : null}
+          <span style={assetNameStyle}>{asset.filename || "图片"}</span>
+          <button type="button" className="ui-button ui-button--ghost" onClick={() => onRemove(asset.draft_id)}>
+            移除
+          </button>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -903,17 +1128,85 @@ function buildQuestionQuery(
   };
 }
 
-function buildChoiceContent(stem: string, options: QuestionOptionDraft[]): QuestionContentInput {
-  return {
-    stem: {
-      content_type: "text",
-      text: stem,
-      assets: []
-    },
+function buildChoiceContent(
+  stem: QuestionContentDraft,
+  optionGroup: QuestionContentDraft,
+  options: QuestionOptionDraft[],
+  optionOrderRandomizable: boolean
+): QuestionContentInput {
+  const content: QuestionContentInput = {
+    stem: buildQuestionContentBlock(stem),
     options: buildTextQuestionOptions(options),
-    option_order_randomizable: true,
+    option_order_randomizable: optionOrderRandomizable,
     ext: {}
   };
+  if (hasContentDraftValue(optionGroup)) {
+    content.option_group = buildQuestionContentBlock(optionGroup);
+  }
+  return content;
+}
+
+function versionsFromLatest(versions: QuestionVersion[]): QuestionVersion | null {
+  if (versions.length === 0) {
+    return null;
+  }
+  return versions.reduce((latest, version) => (version.version_no > latest.version_no ? version : latest), versions[0]);
+}
+
+function buildVersionFormFromVersion(version: QuestionVersion): VersionForm {
+  const content = version.content as {
+    stem?: { text?: string | null; assets?: QuestionAssetDraft[] | null };
+    option_group?: { text?: string | null; assets?: QuestionAssetDraft[] | null };
+    options?: Array<{ text?: string | null; assets?: QuestionAssetDraft[] | null }>;
+    option_order_randomizable?: boolean;
+  };
+  const options = content.options ?? [];
+  const optionDrafts = options.length > 0 ? options.map((option) => createOptionDraftFromOption(option)) : createDefaultOptionDrafts("", "");
+  const answer = version.answer as { correct_keys?: string[] };
+  return {
+    stem: createContentDraftFromBlock(content.stem),
+    option_group: createContentDraftFromBlock(content.option_group),
+    options: optionDrafts,
+    correct_key: normalizeCorrectKey(answer.correct_keys?.[0] ?? "A", optionDrafts),
+    option_order_randomizable: content.option_order_randomizable ?? true,
+    change_summary: version.change_summary ?? ""
+  };
+}
+
+async function uploadAssetFile(api: QuestionPanelApi, file: File | null, usage: string): Promise<QuestionAssetDraft | null> {
+  if (!file) {
+    return null;
+  }
+  if (api.uploadFile) {
+    const payload = new FormData();
+    payload.append("file", file);
+    payload.append("usage", usage);
+    return createAssetDraftFromFileAsset(await api.uploadFile(payload));
+  }
+  return createAssetDraftFromURL(await readFileAsDataURL(file), file.type.startsWith("image/") ? "image" : "file");
+}
+
+function removeContentAsset(draft: QuestionContentDraft, assetID: string): QuestionContentDraft {
+  return {
+    ...draft,
+    assets: draft.assets.filter((asset) => asset.draft_id !== assetID)
+  };
+}
+
+function removeOptionAsset(option: QuestionOptionDraft, assetID: string): QuestionOptionDraft {
+  return {
+    ...option,
+    assets: option.assets.filter((asset) => asset.draft_id !== assetID)
+  };
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function normalizeErrorMessage(message: string): string {
@@ -1080,4 +1373,38 @@ const optionInputRowStyle: CSSProperties = {
   gridTemplateColumns: "minmax(0, 1fr) auto",
   gap: 8,
   alignItems: "center"
+};
+
+const assetListStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginTop: 8
+};
+
+const assetPreviewStyle: CSSProperties = {
+  display: "inline-grid",
+  gridTemplateColumns: "40px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 8,
+  maxWidth: "100%",
+  padding: 6,
+  border: "1px solid var(--ui-color-border)",
+  borderRadius: 6,
+  background: "var(--ui-color-bg-elevated)"
+};
+
+const assetImageStyle: CSSProperties = {
+  width: 40,
+  height: 40,
+  objectFit: "cover",
+  borderRadius: 4,
+  border: "1px solid var(--ui-color-border)"
+};
+
+const assetNameStyle: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
 };

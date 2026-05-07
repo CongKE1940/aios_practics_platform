@@ -33,6 +33,7 @@ type User struct {
 	Username           string    `json:"username"`
 	Phone              string    `json:"phone,omitempty"`
 	Email              string    `json:"email,omitempty"`
+	AvatarURL          string    `json:"avatar_url,omitempty"`
 	PasswordHash       string    `json:"-"`
 	DisplayName        string    `json:"display_name"`
 	UserType           string    `json:"user_type"`
@@ -65,6 +66,7 @@ type UserInput struct {
 	UserType    string  `json:"user_type" binding:"required"`
 	Phone       string  `json:"phone"`
 	Email       string  `json:"email"`
+	AvatarURL   string  `json:"avatar_url"`
 	Password    string  `json:"password"`
 	RoleIDs     []int64 `json:"role_ids"`
 }
@@ -81,6 +83,7 @@ type ProfileInput struct {
 	DisplayName string `json:"display_name" binding:"required"`
 	Phone       string `json:"phone"`
 	Email       string `json:"email"`
+	AvatarURL   string `json:"avatar_url"`
 }
 
 type ChangePasswordInput struct {

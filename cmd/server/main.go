@@ -61,7 +61,10 @@ func main() {
 		dictionaryHandler := dictionary.NewHandler(dictionary.NewService(dictionary.NewMySQLRepository(db)), issuer)
 		rbacAdminHandler := rbac.NewAdminHandler(rbac.NewAdminService(rbac.NewMySQLAdminRepository(db)), issuer)
 		fileRepo := fileasset.NewMySQLRepository(db)
-		fileStore := fileasset.NewLocalContentStore(cfg.FileStorage.Dir)
+		fileStore, err := newFileContentStore(cfg.FileStorage)
+		if err != nil {
+			log.Fatalf("setup file storage: %v", err)
+		}
 		fileHandler := fileasset.NewHandler(
 			fileasset.NewService(fileRepo, fileStore),
 			issuer,
@@ -131,5 +134,24 @@ func main() {
 	log.Printf("aios practice platform server listening on %s", cfg.HTTP.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server stopped: %v", err)
+	}
+}
+
+func newFileContentStore(config config.FileStorageConfig) (fileasset.ContentStore, error) {
+	switch config.Driver {
+	case "", "local":
+		return fileasset.NewLocalContentStore(config.Dir), nil
+	case "minio", "s3":
+		return fileasset.NewMinIOContentStore(fileasset.MinIOConfig{
+			Endpoint:        config.S3.Endpoint,
+			PublicEndpoint:  config.S3.PublicEndpoint,
+			Bucket:          config.S3.Bucket,
+			Region:          config.S3.Region,
+			AccessKeyID:     config.S3.AccessKeyID,
+			SecretAccessKey: config.S3.SecretAccessKey,
+			ForcePathStyle:  config.S3.ForcePathStyle,
+		})
+	default:
+		return nil, fileasset.ErrInvalidInput
 	}
 }

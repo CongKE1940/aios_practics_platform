@@ -672,6 +672,7 @@ export function AdminApp({
         user: {
           ...session.user,
           display_name: user.display_name,
+          avatar_url: user.avatar_url,
           must_change_password: user.must_change_password
         }
       };
@@ -712,6 +713,7 @@ export function AdminApp({
             <AdminMenuTree menus={session.menus} selectedPath={selectedPath} onSelect={setSelectedPath} />
             <SidebarUserMenu
               displayName={session.user.display_name}
+              avatarUrl={session.user.avatar_url}
               userTypeLabel={getUserTypeLabel(session.user.user_type)}
               onProfile={() => setSelectedPath("/admin/profile")}
               onNotifications={() => setSelectedPath("/admin/notifications")}

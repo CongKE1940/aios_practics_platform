@@ -5,6 +5,7 @@ const DEFAULT_AVATAR_DATA_URI =
 
 export interface SidebarUserMenuProps {
   displayName: string;
+  avatarUrl?: string | null;
   userTypeLabel: string;
   onProfile?: () => void;
   onNotifications?: () => void;
@@ -14,6 +15,7 @@ export interface SidebarUserMenuProps {
 
 export function SidebarUserMenu({
   displayName,
+  avatarUrl,
   userTypeLabel,
   onProfile,
   onNotifications,
@@ -36,7 +38,7 @@ export function SidebarUserMenu({
         onClick={() => setOpen((current) => !current)}
       >
         <span className="ui-sidebar-user__avatar" aria-hidden="true">
-          <img className="ui-sidebar-user__avatar-image" src={DEFAULT_AVATAR_DATA_URI} alt="" />
+          <img className="ui-sidebar-user__avatar-image" src={avatarUrl || DEFAULT_AVATAR_DATA_URI} alt="" />
           {hasUnreadNotifications ? <span className="ui-sidebar-user__red-dot" /> : null}
         </span>
         <span className="ui-sidebar-user__copy">

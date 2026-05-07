@@ -25,6 +25,7 @@ SELECT
   u.username,
   u.password_hash,
   u.display_name,
+  COALESCE(u.avatar_url, ''),
   u.user_type,
   u.status,
   u.must_change_password
@@ -34,8 +35,8 @@ WHERE t.code = ? AND u.username = ? AND u.deleted_at IS NULL AND t.deleted_at IS
 LIMIT 1
 `)).
 		WithArgs("platform", "admin").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "username", "password_hash", "display_name", "user_type", "status", "must_change_password"}).
-			AddRow(1, 1, "admin", "hash", "系统管理员", "sys_admin", "active", false))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "tenant_id", "username", "password_hash", "display_name", "avatar_url", "user_type", "status", "must_change_password"}).
+			AddRow(1, 1, "admin", "hash", "系统管理员", "/api/v1/files/1/content", "sys_admin", "active", false))
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT r.code
@@ -68,6 +69,9 @@ ORDER BY p.code
 	}
 	if user.Roles[0] != "sys_admin" {
 		t.Fatalf("Roles = %+v", user.Roles)
+	}
+	if user.AvatarURL != "/api/v1/files/1/content" {
+		t.Fatalf("AvatarURL = %q", user.AvatarURL)
 	}
 	if len(user.Permissions) != 2 {
 		t.Fatalf("Permissions = %+v", user.Permissions)

@@ -269,7 +269,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
     if (api.uploadFile) {
       const payload = new FormData();
       payload.append("file", file);
-      payload.append("usage", "school_logo");
+      payload.append("usage", form.object_type === SchoolObjectTypeOrganization ? "organization_avatar" : "school_logo");
       const uploaded = await api.uploadFile(payload);
       setForm((current) => ({ ...current, logo_url: uploaded.url ?? uploaded.original_url ?? current.logo_url }));
       return;

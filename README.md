@@ -80,6 +80,18 @@ $env:AIOS_FILE_STORAGE_DIR="D:\workspace\projects\aios_practice_platform\data\fi
 go run .\cmd\server
 ```
 
+MinIO / S3 兼容对象存储示例：
+
+```powershell
+$env:AIOS_OBJECT_STORAGE_DRIVER="minio"
+$env:AIOS_S3_ENDPOINT="http://127.0.0.1:9000"
+$env:AIOS_S3_PUBLIC_ENDPOINT="http://127.0.0.1:9000"
+$env:AIOS_S3_BUCKET="aios-practice-platform"
+$env:AIOS_S3_ACCESS_KEY_ID="<minio-access-key>"
+$env:AIOS_S3_SECRET_ACCESS_KEY="<minio-secret-key>"
+$env:AIOS_S3_FORCE_PATH_STYLE="true"
+```
+
 常用环境变量：
 
 | 变量 | 默认值 | 用途 |
@@ -90,7 +102,15 @@ go run .\cmd\server
 | `AIOS_MYSQL_DSN` | 空 | MySQL 连接串 |
 | `AIOS_REDIS_ADDR` | `127.0.0.1:6379` | Redis 地址 |
 | `AIOS_JWT_SECRET` | `local-dev-secret` | JWT 密钥，本地可覆盖 |
+| `AIOS_OBJECT_STORAGE_DRIVER` | `local` | 文件存储驱动，支持 `local`、`minio`、`s3` |
 | `AIOS_FILE_STORAGE_DIR` | `data/file_assets` | 文件资源本地存储目录 |
+| `AIOS_S3_ENDPOINT` | 空 | MinIO / S3 内网访问地址 |
+| `AIOS_S3_PUBLIC_ENDPOINT` | 空 | 前端可访问的对象存储公开地址；为空时走后端 `/files/:id/content` |
+| `AIOS_S3_BUCKET` | 空 | MinIO / S3 Bucket 名称 |
+| `AIOS_S3_REGION` | `us-east-1` | S3 Region |
+| `AIOS_S3_ACCESS_KEY_ID` | 空 | MinIO / S3 Access Key |
+| `AIOS_S3_SECRET_ACCESS_KEY` | 空 | MinIO / S3 Secret Key |
+| `AIOS_S3_FORCE_PATH_STYLE` | `true` | 是否使用 path-style bucket 访问，MinIO 通常保持 `true` |
 | `AIOS_PLATFORM_TENANT_ID` | `1` | 平台级虚拟租户 ID |
 
 ### 3. 启动前端

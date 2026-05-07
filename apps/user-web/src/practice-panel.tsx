@@ -12,6 +12,15 @@ import type {
 } from "@aios/api-sdk";
 
 import { buildQuestionFeedbackPath } from "./question-feedback-page";
+import {
+  QuestionContentBlockView,
+  QuestionOptionBody,
+  extractQuestionOptions,
+  extractQuestionText,
+  getOptionGroupBlock,
+  getStemBlock,
+  type RenderableOption
+} from "./question-content-render";
 
 export interface PracticePanelApi {
   createPracticeSession(body: PracticeSessionInput): Promise<PracticeSessionDetail>;
@@ -414,7 +423,10 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
               <p className="ui-admin-subtle">选择答案后提交，可继续标熟、标疑惑或进入互动反馈。</p>
             </div>
           </div>
-          <p className="ui-practice-stem">{questionText(currentQuestion.content)}</p>
+          <div className="ui-practice-stem">
+            <QuestionContentBlockView block={getStemBlock(currentQuestion.content)} fallback="本题暂无题干文本。" />
+            <QuestionContentBlockView block={getOptionGroupBlock(currentQuestion.content)} compact />
+          </div>
           <ul className="ui-practice-options">
             {questionOptions(currentQuestion).map((option) => (
               <li key={option.key}>
@@ -425,9 +437,8 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
                     disabled={currentQuestion.answered || answering}
                     onChange={() => toggleKey(option.key)}
                   />
-                  <span>
-                    {option.key}. {option.text}
-                  </span>
+                  <span>{option.key}.</span>
+                  <QuestionOptionBody option={option} />
                 </label>
               </li>
             ))}
@@ -484,26 +495,11 @@ function parsePositiveNumber(value: string): number | undefined {
 }
 
 function questionText(content: PracticeSessionDetail["questions"][number]["content"]): string {
-  const stem = (content as { stem?: { text?: string } }).stem;
-  return stem?.text ?? "";
+  return extractQuestionText(content);
 }
 
-function questionOptions(question: PracticeSessionDetail["questions"][number]): Array<{ key: string; text: string }> {
-  const content = question.content as { options?: Array<{ key?: string; text?: string }> };
-  const options = content.options ?? [];
-  if (options.length > 0) {
-    return options.map((option) => ({
-      key: option.key ?? "",
-      text: option.text ?? ""
-    }));
-  }
-  if (question.question_type === "true_false") {
-    return [
-      { key: "true", text: "正确" },
-      { key: "false", text: "错误" }
-    ];
-  }
-  return [];
+function questionOptions(question: PracticeSessionDetail["questions"][number]): RenderableOption[] {
+  return extractQuestionOptions(question.content, question.question_type);
 }
 
 function toggleOptionSelection(current: string[], key: string, questionType: string): string[] {

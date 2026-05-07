@@ -1021,6 +1021,7 @@ CREATE TABLE `users` (
   `username` varchar(64) NOT NULL,
   `phone` varchar(32) DEFAULT NULL,
   `email` varchar(128) DEFAULT NULL,
+  `avatar_url` varchar(1024) DEFAULT NULL,
   `password_hash` varchar(255) NOT NULL,
   `display_name` varchar(128) NOT NULL,
   `user_type` varchar(32) NOT NULL,

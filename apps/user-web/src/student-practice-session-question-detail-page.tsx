@@ -8,6 +8,13 @@ import type {
 } from "@aios/api-sdk";
 
 import { buildQuestionFeedbackPath } from "./question-feedback-page";
+import {
+  LabeledQuestionContentBlockView,
+  QuestionContentBlockView,
+  extractQuestionText,
+  getOptionGroupBlock,
+  getStemBlock
+} from "./question-content-render";
 
 export interface StudentPracticeSessionQuestionDetailApi {
   getStudentPracticeSessionQuestionDetail(
@@ -174,7 +181,10 @@ export function StudentPracticeSessionQuestionDetailPage({
           <p>
             第 {question.display_order} 题（{question.question_type}）
           </p>
-          <p>题干：{extractStem(question.content)}</p>
+          <div>
+            <LabeledQuestionContentBlockView label="题干" block={getStemBlock(question.content)} />
+            <QuestionContentBlockView block={getOptionGroupBlock(question.content)} compact />
+          </div>
           <p>学生答案：{formatObject(question.student_answer)}</p>
           <p>正确答案：{formatObject(question.correct_answer)}</p>
           <p>结果：{formatResult(question)}</p>
@@ -279,15 +289,7 @@ function parsePositiveInt(value: string | null): number | null {
 }
 
 function extractStem(content: Record<string, unknown>): string {
-  const stem = content.stem;
-  if (typeof stem !== "object" || stem === null) {
-    return "-";
-  }
-  const text = (stem as { text?: unknown }).text;
-  if (typeof text !== "string" || text.trim() === "") {
-    return "-";
-  }
-  return text;
+  return extractQuestionText(content) || "-";
 }
 
 function extractAnalysis(analysis?: Record<string, unknown>): string {

@@ -23,7 +23,7 @@ func NewLocalContentStore(root string) *LocalContentStore {
 	return &LocalContentStore{root: root}
 }
 
-func (store *LocalContentStore) Save(ctx context.Context, objectKey string, content io.Reader) error {
+func (store *LocalContentStore) Save(ctx context.Context, objectKey string, content io.Reader, _ SaveOptions) error {
 	target, err := store.resolvePath(objectKey)
 	if err != nil {
 		return err

@@ -20,6 +20,7 @@ type AccessClaims struct {
 	TenantID           int64    `json:"tenant_id"`
 	Username           string   `json:"username"`
 	DisplayName        string   `json:"display_name"`
+	AvatarURL          string   `json:"avatar_url,omitempty"`
 	UserType           string   `json:"user_type"`
 	MustChangePassword bool     `json:"must_change_password"`
 	Roles              []string `json:"roles"`
@@ -59,6 +60,7 @@ func (issuer *JWTIssuer) IssuePair(_ context.Context, user User) (TokenPair, err
 		TenantID:           user.TenantID,
 		Username:           user.Username,
 		DisplayName:        user.DisplayName,
+		AvatarURL:          user.AvatarURL,
 		UserType:           user.UserType,
 		MustChangePassword: user.MustChangePassword,
 		Roles:              user.Roles,
@@ -79,6 +81,7 @@ func (issuer *JWTIssuer) IssuePair(_ context.Context, user User) (TokenPair, err
 		TenantID:           user.TenantID,
 		Username:           user.Username,
 		DisplayName:        user.DisplayName,
+		AvatarURL:          user.AvatarURL,
 		UserType:           user.UserType,
 		MustChangePassword: user.MustChangePassword,
 		Roles:              user.Roles,

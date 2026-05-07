@@ -38,7 +38,8 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 }
 
 func (handler *Handler) upload(ctx *gin.Context) {
-	claims, ok := handler.authorize(ctx)
+	usage := ctx.PostForm("usage")
+	claims, ok := handler.authorizeUpload(ctx, usage)
 	if !ok {
 		return
 	}
@@ -63,7 +64,7 @@ func (handler *Handler) upload(ctx *gin.Context) {
 	defer content.Close()
 
 	result, err := handler.service.CreateUpload(ctx.Request.Context(), claims.TenantID, claims.UserID, UploadInput{
-		Usage:            ctx.PostForm("usage"),
+		Usage:            usage,
 		OriginalFilename: fileHeader.Filename,
 		MimeType:         metadata.mimeType,
 		FileSize:         metadata.fileSize,
@@ -79,14 +80,13 @@ func (handler *Handler) upload(ctx *gin.Context) {
 }
 
 func (handler *Handler) importURL(ctx *gin.Context) {
-	claims, ok := handler.authorize(ctx)
-	if !ok {
-		return
-	}
-
 	var input ImportURLInput
 	if err := ctx.ShouldBindJSON(&input); err != nil {
 		ctx.JSON(http.StatusBadRequest, response.Failure(CodeInvalidInput, "请求参数错误", ctx.GetHeader("X-Request-Id")))
+		return
+	}
+	claims, ok := handler.authorizeUpload(ctx, input.Usage)
+	if !ok {
 		return
 	}
 
@@ -153,7 +153,15 @@ func (handler *Handler) authorize(ctx *gin.Context) (auth.AccessClaims, bool) {
 		ctx.JSON(http.StatusUnauthorized, response.Failure(auth.CodeInvalidToken, "令牌无效", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
-	if !containsPermission(claims.Permissions, "file:upload") {
+	return claims, true
+}
+
+func (handler *Handler) authorizeUpload(ctx *gin.Context, usage string) (auth.AccessClaims, bool) {
+	claims, ok := handler.authorize(ctx)
+	if !ok {
+		return auth.AccessClaims{}, false
+	}
+	if !canUploadUsage(claims, usage) {
 		ctx.JSON(http.StatusForbidden, response.Failure(CodeForbidden, "无权限访问", ctx.GetHeader("X-Request-Id")))
 		return auth.AccessClaims{}, false
 	}
@@ -199,6 +207,13 @@ func containsPermission(permissions []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func canUploadUsage(claims auth.AccessClaims, usage string) bool {
+	if usage == "user_avatar" && claims.UserID > 0 {
+		return true
+	}
+	return containsPermission(claims.Permissions, "file:upload")
 }
 
 type fileMetadata struct {

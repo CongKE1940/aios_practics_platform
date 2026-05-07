@@ -21,6 +21,15 @@ import {
   type FixedActionListRowId
 } from "@aios/ui-web";
 
+import {
+  QuestionContentBlockView,
+  QuestionOptionBody,
+  extractQuestionOptions,
+  getOptionGroupBlock,
+  getStemBlock,
+  type RenderableOption
+} from "./question-content-render";
+
 export interface StudentExamApi {
   listExams(query?: ExamListQuery): Promise<PageResult<Exam>>;
   createExam(body: ExamInput): Promise<ExamDetail>;
@@ -670,7 +679,10 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
                     <h3>{`${formatQuestionType(currentQuestion.question_type ?? "")} · ${currentQuestion.score} 分`}</h3>
                   </div>
                 </div>
-                <p className="ui-admin-subtle">{questionText(currentQuestion) || "本题暂无题干文本。"}</p>
+                <div className="ui-admin-subtle">
+                  <QuestionContentBlockView block={getStemBlock(currentQuestion.content)} fallback="本题暂无题干文本。" />
+                  <QuestionContentBlockView block={getOptionGroupBlock(currentQuestion.content)} compact />
+                </div>
                 <div className="ui-admin-tree">
                   {questionOptions(currentQuestion).map((option) => (
                     <label key={option.key} className="ui-admin-tree__leaf" aria-label={`选项 ${option.key}`}>
@@ -681,7 +693,7 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
                         onChange={() => toggleKey(option.key)}
                       />
                       <strong>{option.key}</strong>
-                      <span>{option.text}</span>
+                      <QuestionOptionBody option={option} />
                     </label>
                   ))}
                   {questionOptions(currentQuestion).length === 0 ? <div className="ui-admin-empty-inline">暂无选项数据</div> : null}
@@ -989,27 +1001,8 @@ function mergeSavedAnswer(
   return { ...detail, answers: [...answers, nextAnswer] };
 }
 
-function questionText(question: ExamAttemptQuestion): string {
-  const stem = (question.content as { stem?: { text?: string } } | undefined)?.stem;
-  return stem?.text ?? "";
-}
-
-function questionOptions(question: ExamAttemptQuestion): Array<{ key: string; text: string }> {
-  const content = question.content as { options?: Array<{ key?: string; text?: string }> } | undefined;
-  const options = content?.options ?? [];
-  if (options.length > 0) {
-    return options.map((option) => ({
-      key: option.key ?? "",
-      text: option.text ?? ""
-    }));
-  }
-  if (question.question_type === "true_false") {
-    return [
-      { key: "true", text: "正确" },
-      { key: "false", text: "错误" }
-    ];
-  }
-  return [];
+function questionOptions(question: ExamAttemptQuestion): RenderableOption[] {
+  return extractQuestionOptions(question.content, question.question_type);
 }
 
 function normalizeErrorMessage(message: string): string {

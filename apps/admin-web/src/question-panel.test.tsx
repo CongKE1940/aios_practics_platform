@@ -66,7 +66,11 @@ describe("QuestionPanel", () => {
           question_id: 1001,
           version_no: 1,
           content: {
-            stem: { content_type: "text", text: "1+1等于几？", assets: [] }
+            stem: { content_type: "text", text: "1+1等于几？", assets: [] },
+            options: [
+              { key: "A", content_type: "text", text: "1", assets: [] },
+              { key: "B", content_type: "text", text: "2", assets: [] }
+            ]
           },
           answer: { judge_mode: "by_option_key", correct_keys: ["B"] },
           analysis: { text: "基础算术" },

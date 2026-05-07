@@ -52,6 +52,7 @@ SELECT
   u.username,
   u.password_hash,
   u.display_name,
+  COALESCE(u.avatar_url, ''),
   u.user_type,
   u.status,
   u.must_change_password
@@ -68,6 +69,7 @@ LIMIT 1
 		&user.Username,
 		&user.PasswordHash,
 		&user.DisplayName,
+		&user.AvatarURL,
 		&user.UserType,
 		&user.Status,
 		&user.MustChangePassword,

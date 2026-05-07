@@ -76,6 +76,7 @@ func TestHandler_UserLifecycleAndRoleAssignment(t *testing.T) {
 		"user_type":    "teacher",
 		"phone":        "13800000001",
 		"email":        "teacher001@example.com",
+		"avatar_url":   "https://example.com/avatar.png",
 		"role_ids":     []int64{3},
 	}, "token")
 	if updateRec.Code != http.StatusOK {
@@ -85,6 +86,9 @@ func TestHandler_UserLifecycleAndRoleAssignment(t *testing.T) {
 	decodeUserBody(t, updateRec, &updated)
 	if updated.Data.DisplayName != "张老师-更新" {
 		t.Fatalf("display_name = %q", updated.Data.DisplayName)
+	}
+	if updated.Data.AvatarURL != "https://example.com/avatar.png" {
+		t.Fatalf("avatar_url = %q", updated.Data.AvatarURL)
 	}
 
 	assignRec := performUserRequest(
@@ -283,9 +287,13 @@ func TestHandler_CurrentUserProfileAndPassword(t *testing.T) {
 		"display_name": "张老师-个人",
 		"phone":        "13900000000",
 		"email":        "teacher@example.com",
+		"avatar_url":   "https://example.com/me.png",
 	}, "token")
 	if updateRec.Code != http.StatusOK {
 		t.Fatalf("update profile status = %d", updateRec.Code)
+	}
+	if repo.users[1].AvatarURL != "https://example.com/me.png" {
+		t.Fatalf("profile avatar_url = %q", repo.users[1].AvatarURL)
 	}
 
 	passwordRec := performUserRequest(router, http.MethodPut, "/api/v1/users/me/password", map[string]any{
@@ -412,6 +420,7 @@ func (repo *memoryRepository) UpdateProfile(_ context.Context, user User) (User,
 	current.DisplayName = user.DisplayName
 	current.Phone = user.Phone
 	current.Email = user.Email
+	current.AvatarURL = user.AvatarURL
 	repo.users[user.ID] = current
 	return current, nil
 }

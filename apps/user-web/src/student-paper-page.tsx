@@ -20,6 +20,16 @@ import type {
 } from "@aios/api-sdk";
 import { ToastNotice } from "@aios/ui-web";
 
+import {
+  QuestionContentBlockView,
+  QuestionOptionBody,
+  extractQuestionOptions,
+  extractQuestionText,
+  getOptionGroupBlock,
+  getStemBlock,
+  type RenderableOption
+} from "./question-content-render";
+
 export interface StudentPaperApi {
   listExamPapers(query?: ExamPaperListQuery): Promise<PageResult<ExamPaper>>;
   getExamPaper(id: number): Promise<ExamPaperDetail>;
@@ -532,7 +542,8 @@ export function StudentPaperPage({ api, onPracticeCreated, onNavigate }: Student
                 <div className="ui-admin-card__header">
                   <div>
                     <h3>{`${formatQuestionType(currentQuestion.question_type ?? "")} · ${formatScore(currentQuestion.score)} 分`}</h3>
-                    <p>{questionText(currentQuestion) || "本题暂无题干文本。"}</p>
+                    <QuestionContentBlockView block={getStemBlock(currentQuestion.content)} fallback="本题暂无题干文本。" />
+                    <QuestionContentBlockView block={getOptionGroupBlock(currentQuestion.content)} />
                   </div>
                 </div>
                 <div className="ui-admin-tree">
@@ -545,7 +556,7 @@ export function StudentPaperPage({ api, onPracticeCreated, onNavigate }: Student
                         onChange={() => toggleKey(currentQuestion, option.key)}
                       />
                       <strong>{option.key}</strong>
-                      <span>{option.text}</span>
+                      <QuestionOptionBody option={option} />
                     </label>
                   ))}
                 </div>
@@ -677,18 +688,11 @@ function sameStringArray(left: string[], right: string[]): boolean {
 }
 
 function questionText(question: ExamAttemptQuestion | ExamFixedQuestion): string {
-  const stem = (question.content as { stem?: { text?: string } } | undefined)?.stem;
-  return stem?.text ?? "";
+  return extractQuestionText(question.content);
 }
 
-function questionOptions(question: ExamAttemptQuestion): Array<{ key: string; text: string }> {
-  const content = question.content as { options?: Array<{ key?: string; text?: string }> } | undefined;
-  return (content?.options ?? [])
-    .map((option) => ({
-      key: option.key ?? "",
-      text: option.text ?? ""
-    }))
-    .filter((option) => option.key !== "");
+function questionOptions(question: ExamAttemptQuestion): RenderableOption[] {
+  return extractQuestionOptions(question.content, question.question_type).filter((option) => option.key !== "");
 }
 
 function recordToExam(record: ExamPaperPracticeRecord): Exam {

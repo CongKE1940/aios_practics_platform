@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 
 import type {
   CurrentUser,
+  FileAsset,
   ManagedUser,
   ManagedUserInput,
   ManagedUserListQuery,
@@ -29,6 +30,7 @@ export interface UserPanelApi {
   listRoles(query?: RoleListQuery): Promise<PageResult<RoleItem>>;
   updateUser?(id: number, body: ManagedUserInput): Promise<ManagedUser>;
   resetUserPassword?(id: number): Promise<ManagedUser>;
+  uploadFile?(body: FormData): Promise<FileAsset>;
 }
 
 const defaultPageSize = 10;
@@ -39,6 +41,7 @@ const defaultForm = {
   user_type: "teacher",
   phone: "",
   email: "",
+  avatar_url: "",
   role_id: ""
 };
 
@@ -236,6 +239,22 @@ export function UserPanel({ api, currentUser }: { api: UserPanelApi; currentUser
     }
   }
 
+  async function handleAvatarFile(file: File | null) {
+    if (!file) {
+      return;
+    }
+    if (api.uploadFile) {
+      const payload = new FormData();
+      payload.append("file", file);
+      payload.append("usage", "user_avatar");
+      const uploaded = await api.uploadFile(payload);
+      setForm((current) => ({ ...current, avatar_url: uploaded.url ?? uploaded.original_url ?? current.avatar_url }));
+      return;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    setForm((current) => ({ ...current, avatar_url: dataUrl }));
+  }
+
   function handleExport() {
     downloadCsv(
       "users.csv",
@@ -271,6 +290,7 @@ export function UserPanel({ api, currentUser }: { api: UserPanelApi; currentUser
       user_type: user.user_type,
       phone: user.phone ?? "",
       email: user.email ?? "",
+      avatar_url: user.avatar_url ?? "",
       role_id: user.role_ids?.[0] ? String(user.role_ids[0]) : ""
     });
     setModal({ type: "edit", user });
@@ -375,6 +395,16 @@ export function UserPanel({ api, currentUser }: { api: UserPanelApi; currentUser
                     <div>
                       <dt>姓名</dt>
                       <dd>{modal.user.display_name}</dd>
+                    </div>
+                    <div>
+                      <dt>头像</dt>
+                      <dd>
+                        {modal.user.avatar_url ? (
+                          <img src={modal.user.avatar_url} alt="" style={avatarPreviewStyle} />
+                        ) : (
+                          "-"
+                        )}
+                      </dd>
                     </div>
                     <div>
                       <dt>类型</dt>
@@ -492,6 +522,26 @@ export function UserPanel({ api, currentUser }: { api: UserPanelApi; currentUser
                         />
                       </div>
                       <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                        <label htmlFor="managed_avatar_url">头像地址</label>
+                        <div style={avatarEditorStyle}>
+                          {form.avatar_url ? <img src={form.avatar_url} alt="" style={avatarPreviewStyle} /> : <span style={avatarPlaceholderStyle}>暂无头像</span>}
+                          <div style={avatarFieldStackStyle}>
+                            <input
+                              id="managed_avatar_url"
+                              value={form.avatar_url}
+                              placeholder="可粘贴图片 URL，也可上传文件"
+                              onChange={(event) => setForm((current) => ({ ...current, avatar_url: event.target.value }))}
+                            />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              aria-label="上传用户头像"
+                              onChange={(event) => void handleAvatarFile(event.target.files?.[0] ?? null)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                         <label htmlFor="managed_default_role">默认角色</label>
                         <select
                           id="managed_default_role"
@@ -542,8 +592,18 @@ function buildUserPayload(form: UserFormState): ManagedUserInput {
     user_type: form.user_type,
     phone: form.phone || undefined,
     email: form.email || undefined,
+    avatar_url: form.avatar_url || undefined,
     role_ids: form.role_id ? [Number(form.role_id)] : []
   };
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("头像文件读取失败"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function buildInitialPasswordNotice(title: string, user: ManagedUser): { tone: "success"; title: string; description: string } {
@@ -693,4 +753,37 @@ const queryActionsStyle: CSSProperties = {
   alignItems: "center",
   paddingBottom: 1,
   whiteSpace: "nowrap"
+};
+
+const avatarEditorStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "72px minmax(0, 1fr)",
+  gap: 12,
+  alignItems: "center"
+};
+
+const avatarFieldStackStyle: CSSProperties = {
+  display: "grid",
+  gap: 8
+};
+
+const avatarPreviewStyle: CSSProperties = {
+  width: 64,
+  height: 64,
+  borderRadius: "50%",
+  objectFit: "cover",
+  border: "1px solid var(--ui-color-border)",
+  background: "var(--ui-color-bg-elevated)"
+};
+
+const avatarPlaceholderStyle: CSSProperties = {
+  width: 64,
+  height: 64,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  fontSize: 12,
+  color: "var(--ui-color-text-muted)",
+  border: "1px solid var(--ui-color-border)",
+  background: "var(--ui-color-bg-elevated)"
 };

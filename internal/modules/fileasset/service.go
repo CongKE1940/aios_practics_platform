@@ -34,12 +34,19 @@ func (service *Service) CreateUpload(ctx context.Context, tenantID int64, upload
 	}
 
 	objectKey := buildObjectKey(tenantID, input.Usage, input.OriginalFilename, service.now())
+	var publicURL string
 	if service.store != nil {
 		if input.Content == nil {
 			return FileAsset{}, ErrInvalidInput
 		}
-		if err := service.store.Save(ctx, objectKey, input.Content); err != nil {
+		if err := service.store.Save(ctx, objectKey, input.Content, SaveOptions{
+			MimeType: strings.TrimSpace(input.MimeType),
+			FileSize: input.FileSize,
+		}); err != nil {
 			return FileAsset{}, err
+		}
+		if provider, ok := service.store.(PublicURLProvider); ok {
+			publicURL = provider.PublicURL(objectKey)
 		}
 	}
 
@@ -49,6 +56,7 @@ func (service *Service) CreateUpload(ctx context.Context, tenantID int64, upload
 		SourceType:       SourceTypeUpload,
 		OriginalFilename: input.OriginalFilename,
 		ObjectKey:        objectKey,
+		URL:              publicURL,
 		MimeType:         input.MimeType,
 		FileSize:         input.FileSize,
 		Checksum:         input.Checksum,
@@ -125,7 +133,15 @@ func decorateAsset(asset FileAsset) FileAsset {
 
 func isAllowedUsage(usage string) bool {
 	switch usage {
-	case "question_asset", "challenge_attachment", "import_file":
+	case "question_asset",
+		"question_stem",
+		"question_option",
+		"question_option_group",
+		"challenge_attachment",
+		"import_file",
+		"school_logo",
+		"organization_avatar",
+		"user_avatar":
 		return true
 	default:
 		return false

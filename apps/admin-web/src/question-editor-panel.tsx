@@ -5,25 +5,38 @@ import type { Question, QuestionVersion } from "@aios/api-sdk";
 import type { QuestionPanelApi } from "./question-panel";
 import {
   buildTextQuestionOptions,
+  buildQuestionContentBlock,
+  createAssetDraftFromFileAsset,
+  createAssetDraftFromURL,
+  createContentDraft,
+  createContentDraftFromBlock,
   createDefaultOptionDrafts,
   createOptionDraft,
+  createOptionDraftFromOption,
   getOptionKey,
+  hasContentDraftValue,
   normalizeCorrectKey,
+  type QuestionAssetDraft,
+  type QuestionContentDraft,
   type QuestionOptionDraft
 } from "./question-option-draft";
 
 interface EditorForm {
-  stem: string;
+  stem: QuestionContentDraft;
+  optionGroup: QuestionContentDraft;
   options: QuestionOptionDraft[];
   correctKey: string;
+  optionOrderRandomizable: boolean;
   changeSummary: string;
 }
 
 function createDefaultForm(): EditorForm {
   return {
-    stem: "",
+    stem: createContentDraft(),
+    optionGroup: createContentDraft(),
     options: createDefaultOptionDrafts("", ""),
     correctKey: "A",
+    optionOrderRandomizable: true,
     changeSummary: ""
   };
 }
@@ -87,8 +100,10 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
 
     await api.createQuestionVersion(selectedQuestionID, {
       content: {
-        stem: { content_type: "text", text: form.stem },
-        options: buildTextQuestionOptions(form.options)
+        stem: buildQuestionContentBlock(form.stem),
+        option_group: hasContentDraftValue(form.optionGroup) ? buildQuestionContentBlock(form.optionGroup) : undefined,
+        options: buildTextQuestionOptions(form.options),
+        option_order_randomizable: form.optionOrderRandomizable
       },
       answer: {
         judge_mode: "by_option_key",
@@ -110,6 +125,53 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
     setForm((current) => ({
       ...current,
       options: current.options.map((option, optionIndex) => (optionIndex === index ? { ...option, text } : option))
+    }));
+  }
+
+  async function uploadQuestionAsset(file: File | null, usage: string): Promise<QuestionAssetDraft | null> {
+    if (!file) {
+      return null;
+    }
+    try {
+      if (api.uploadFile) {
+        const payload = new FormData();
+        payload.append("file", file);
+        payload.append("usage", usage);
+        return createAssetDraftFromFileAsset(await api.uploadFile(payload));
+      }
+      return createAssetDraftFromURL(await readFileAsDataURL(file), file.type.startsWith("image/") ? "image" : "file");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "图片上传失败");
+      return null;
+    }
+  }
+
+  async function addStemAsset(file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_stem");
+    if (!asset) {
+      return;
+    }
+    setForm((current) => ({ ...current, stem: { ...current.stem, assets: [...current.stem.assets, asset] } }));
+  }
+
+  async function addOptionGroupAsset(file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_option_group");
+    if (!asset) {
+      return;
+    }
+    setForm((current) => ({ ...current, optionGroup: { ...current.optionGroup, assets: [...current.optionGroup.assets, asset] } }));
+  }
+
+  async function addOptionAsset(index: number, file: File | null) {
+    const asset = await uploadQuestionAsset(file, "question_option");
+    if (!asset) {
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) =>
+        optionIndex === index ? { ...option, assets: [...option.assets, asset] } : option
+      )
     }));
   }
 
@@ -182,10 +244,22 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
             </div>
             {selectedQuestion ? (
               <form className="ui-admin-form__grid" onSubmit={(event) => void handleSubmit(event)}>
-                <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="editor_stem">题干</label>
-                  <textarea id="editor_stem" value={form.stem} onChange={(event) => setForm((current) => ({ ...current, stem: event.target.value }))} />
-                </div>
+                <ContentDraftFields
+                  idPrefix="editor_stem"
+                  label="题干"
+                  draft={form.stem}
+                  onTextChange={(text) => setForm((current) => ({ ...current, stem: { ...current.stem, text } }))}
+                  onAssetAdd={(file) => void addStemAsset(file)}
+                  onAssetRemove={(assetID) => setForm((current) => ({ ...current, stem: removeContentAsset(current.stem, assetID) }))}
+                />
+                <ContentDraftFields
+                  idPrefix="editor_option_group"
+                  label="选项整体图片/说明"
+                  draft={form.optionGroup}
+                  onTextChange={(text) => setForm((current) => ({ ...current, optionGroup: { ...current.optionGroup, text } }))}
+                  onAssetAdd={(file) => void addOptionGroupAsset(file)}
+                  onAssetRemove={(assetID) => setForm((current) => ({ ...current, optionGroup: removeContentAsset(current.optionGroup, assetID) }))}
+                />
                 <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
                   <div style={optionSectionHeaderStyle}>
                     <span style={optionSectionTitleStyle}>选项</span>
@@ -211,6 +285,26 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
                               删除
                             </button>
                           </div>
+                          <AssetDraftList
+                            assets={option.assets}
+                            onRemove={(assetID) =>
+                              setForm((current) => ({
+                                ...current,
+                                options: current.options.map((currentOption, optionIndex) =>
+                                  optionIndex === index ? removeOptionAsset(currentOption, assetID) : currentOption
+                                )
+                              }))
+                            }
+                          />
+                          <input
+                            id={`${optionInputID}_file`}
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              void addOptionAsset(index, event.target.files?.[0] ?? null);
+                              event.currentTarget.value = "";
+                            }}
+                          />
                         </div>
                       );
                     })}
@@ -241,6 +335,17 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
                     onChange={(event) => setForm((current) => ({ ...current, changeSummary: event.target.value }))}
                   />
                 </div>
+                <div className="ui-admin-form__field">
+                  <label className="ui-inline-checkbox" htmlFor="editor_option_randomizable">
+                    <input
+                      id="editor_option_randomizable"
+                      type="checkbox"
+                      checked={form.optionOrderRandomizable}
+                      onChange={(event) => setForm((current) => ({ ...current, optionOrderRandomizable: event.target.checked }))}
+                    />
+                    <span>选项允许随机排序</span>
+                  </label>
+                </div>
                 <div className="ui-admin-form__actions" style={{ gridColumn: "1 / -1" }}>
                   <button type="submit" className="ui-button ui-button--primary">
                     保存为新版本
@@ -262,12 +367,12 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
               <div className="ui-admin-mini-list">
                 <article className="ui-admin-mini-item">
                   <strong>题干</strong>
-                  <p>{form.stem || "请输入题干"}</p>
+                  <p>{form.stem.text || (form.stem.assets.length > 0 ? "已上传题干图片" : "请输入题干")}</p>
                 </article>
                 {form.options.map((option, index) => (
                   <article key={option.draft_id} className="ui-admin-mini-item">
                     <strong>{`选项 ${getOptionKey(index)}`}</strong>
-                    <p>{option.text || "未填写"}</p>
+                    <p>{option.text || (option.assets.length > 0 ? "已上传选项图片" : "未填写")}</p>
                   </article>
                 ))}
                 <article className="ui-admin-mini-item">
@@ -304,17 +409,95 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
 }
 
 function buildFormFromVersion(version: QuestionVersion): EditorForm {
-  const content = version.content as { stem?: { text?: string | null }; options?: Array<{ key?: string; text?: string | null }> };
+  const content = version.content as {
+    stem?: { text?: string | null; assets?: QuestionAssetDraft[] | null };
+    option_group?: { text?: string | null; assets?: QuestionAssetDraft[] | null };
+    options?: Array<{ key?: string; text?: string | null; assets?: QuestionAssetDraft[] | null }>;
+    option_order_randomizable?: boolean;
+  };
   const options = content.options ?? [];
   const answer = version.answer as { correct_keys?: string[] };
-  const optionDrafts = options.length > 0 ? options.map((item) => createOptionDraft(item.text ?? "")) : createDefaultOptionDrafts("", "");
+  const optionDrafts = options.length > 0 ? options.map((item) => createOptionDraftFromOption(item)) : createDefaultOptionDrafts("", "");
 
   return {
-    stem: content.stem?.text ?? "",
+    stem: createContentDraftFromBlock(content.stem),
+    optionGroup: createContentDraftFromBlock(content.option_group),
     options: optionDrafts,
     correctKey: normalizeCorrectKey(answer.correct_keys?.[0] ?? "A", optionDrafts),
+    optionOrderRandomizable: content.option_order_randomizable ?? true,
     changeSummary: version.change_summary ?? ""
   };
+}
+
+interface ContentDraftFieldsProps {
+  idPrefix: string;
+  label: string;
+  draft: QuestionContentDraft;
+  onTextChange(text: string): void;
+  onAssetAdd(file: File | null): void;
+  onAssetRemove(assetID: string): void;
+}
+
+function ContentDraftFields({ idPrefix, label, draft, onTextChange, onAssetAdd, onAssetRemove }: ContentDraftFieldsProps) {
+  return (
+    <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+      <label htmlFor={`${idPrefix}_text`}>{label}</label>
+      <textarea id={`${idPrefix}_text`} value={draft.text} onChange={(event) => onTextChange(event.target.value)} />
+      <AssetDraftList assets={draft.assets} onRemove={onAssetRemove} />
+      <input
+        id={`${idPrefix}_file`}
+        type="file"
+        accept="image/*"
+        onChange={(event) => {
+          onAssetAdd(event.target.files?.[0] ?? null);
+          event.currentTarget.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
+function AssetDraftList({ assets, onRemove }: { assets: QuestionAssetDraft[]; onRemove(assetID: string): void }) {
+  const visibleAssets = assets.filter((asset) => asset.url.trim() !== "");
+  if (visibleAssets.length === 0) {
+    return null;
+  }
+  return (
+    <div style={assetListStyle}>
+      {visibleAssets.map((asset) => (
+        <span key={asset.draft_id} style={assetPreviewStyle}>
+          {asset.type === "image" ? <img src={asset.url} alt="" style={assetImageStyle} /> : null}
+          <span style={assetNameStyle}>{asset.filename || "图片"}</span>
+          <button type="button" className="ui-button ui-button--ghost" onClick={() => onRemove(asset.draft_id)}>
+            移除
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function removeContentAsset(draft: QuestionContentDraft, assetID: string): QuestionContentDraft {
+  return {
+    ...draft,
+    assets: draft.assets.filter((asset) => asset.draft_id !== assetID)
+  };
+}
+
+function removeOptionAsset(option: QuestionOptionDraft, assetID: string): QuestionOptionDraft {
+  return {
+    ...option,
+    assets: option.assets.filter((asset) => asset.draft_id !== assetID)
+  };
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
 }
 
 const optionSectionHeaderStyle: CSSProperties = {
@@ -345,4 +528,38 @@ const optionInputRowStyle: CSSProperties = {
   gridTemplateColumns: "minmax(0, 1fr) auto",
   gap: 8,
   alignItems: "center"
+};
+
+const assetListStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginTop: 8
+};
+
+const assetPreviewStyle: CSSProperties = {
+  display: "inline-grid",
+  gridTemplateColumns: "40px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 8,
+  maxWidth: "100%",
+  padding: 6,
+  border: "1px solid var(--ui-color-border)",
+  borderRadius: 6,
+  background: "var(--ui-color-bg-elevated)"
+};
+
+const assetImageStyle: CSSProperties = {
+  width: 40,
+  height: 40,
+  objectFit: "cover",
+  borderRadius: 4,
+  border: "1px solid var(--ui-color-border)"
+};
+
+const assetNameStyle: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
 };

@@ -47,6 +47,11 @@ type UploadInput struct {
 	Content          io.Reader
 }
 
+type SaveOptions struct {
+	MimeType string
+	FileSize int64
+}
+
 type ImportURLInput struct {
 	URL   string `json:"url" binding:"required,url"`
 	Usage string `json:"usage" binding:"required"`
@@ -58,6 +63,10 @@ type Repository interface {
 }
 
 type ContentStore interface {
-	Save(ctx context.Context, objectKey string, content io.Reader) error
+	Save(ctx context.Context, objectKey string, content io.Reader, options SaveOptions) error
 	Open(ctx context.Context, objectKey string) (io.ReadCloser, error)
+}
+
+type PublicURLProvider interface {
+	PublicURL(objectKey string) string
 }

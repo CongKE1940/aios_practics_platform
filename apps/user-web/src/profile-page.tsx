@@ -1,12 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 
-import type { ChangeMyPasswordInput, ManagedUser, UserProfileInput } from "@aios/api-sdk";
+import type { ChangeMyPasswordInput, FileAsset, ManagedUser, UserProfileInput } from "@aios/api-sdk";
 import { PageSection, StatusNotice, ToastNotice } from "@aios/ui-web";
 
 export interface UserProfileApi {
   getMyProfile(): Promise<ManagedUser>;
   updateMyProfile(body: UserProfileInput): Promise<ManagedUser>;
   changeMyPassword(body: ChangeMyPasswordInput): Promise<ManagedUser>;
+  uploadFile?(body: FormData): Promise<FileAsset>;
 }
 
 interface ProfilePageProps {
@@ -16,7 +17,7 @@ interface ProfilePageProps {
 
 export function ProfilePage({ api, onUserUpdated }: ProfilePageProps) {
   const [profile, setProfile] = useState<ManagedUser | null>(null);
-  const [profileForm, setProfileForm] = useState<UserProfileInput>({ display_name: "", phone: "", email: "" });
+  const [profileForm, setProfileForm] = useState<UserProfileInput>({ display_name: "", phone: "", email: "", avatar_url: "" });
   const [passwordForm, setPasswordForm] = useState({ old_password: "", new_password: "", confirm_password: "" });
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -38,7 +39,8 @@ export function ProfilePage({ api, onUserUpdated }: ProfilePageProps) {
         setProfileForm({
           display_name: user.display_name,
           phone: user.phone ?? "",
-          email: user.email ?? ""
+          email: user.email ?? "",
+          avatar_url: user.avatar_url ?? ""
         });
       })
       .catch((error) => {
@@ -66,7 +68,8 @@ export function ProfilePage({ api, onUserUpdated }: ProfilePageProps) {
       const updated = await api.updateMyProfile({
         display_name: profileForm.display_name,
         phone: profileForm.phone || undefined,
-        email: profileForm.email || undefined
+        email: profileForm.email || undefined,
+        avatar_url: profileForm.avatar_url || undefined
       });
       setProfile(updated);
       onUserUpdated?.(updated);
@@ -107,6 +110,27 @@ export function ProfilePage({ api, onUserUpdated }: ProfilePageProps) {
     }
   }
 
+  async function handleAvatarFile(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setNotice(null);
+    try {
+      if (api.uploadFile) {
+        const payload = new FormData();
+        payload.append("file", file);
+        payload.append("usage", "user_avatar");
+        const uploaded = await api.uploadFile(payload);
+        setProfileForm((current) => ({ ...current, avatar_url: uploaded.url ?? uploaded.original_url ?? current.avatar_url }));
+        return;
+      }
+      const dataUrl = await readFileAsDataURL(file);
+      setProfileForm((current) => ({ ...current, avatar_url: dataUrl }));
+    } catch (error) {
+      setNotice({ tone: "danger", title: "头像上传失败", description: error instanceof Error ? error.message : "头像上传失败" });
+    }
+  }
+
   return (
     <section aria-label="个人信息页面" className="ui-admin-page ui-user-page">
       {notice ? <ToastNotice tone={notice.tone} title={notice.title} description={notice.description} onClose={() => setNotice(null)} /> : null}
@@ -134,6 +158,16 @@ export function ProfilePage({ api, onUserUpdated }: ProfilePageProps) {
       <section className="ui-admin-card" aria-label="编辑个人信息">
         <form onSubmit={(event) => void handleProfileSubmit(event)}>
           <div className="ui-admin-form__grid">
+            <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="user_profile_avatar_file">头像</label>
+              {profileForm.avatar_url ? <img src={profileForm.avatar_url} alt="" style={avatarPreviewStyle} /> : null}
+              <input
+                id="user_profile_avatar_file"
+                type="file"
+                accept="image/*"
+                onChange={(event) => void handleAvatarFile(event.target.files?.[0] ?? null)}
+              />
+            </div>
             <div className="ui-admin-form__field">
               <label htmlFor="user_profile_display_name">姓名</label>
               <input
@@ -209,6 +243,24 @@ export function ProfilePage({ api, onUserUpdated }: ProfilePageProps) {
     </section>
   );
 }
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+const avatarPreviewStyle: CSSProperties = {
+  width: 88,
+  height: 88,
+  objectFit: "cover",
+  borderRadius: 8,
+  border: "1px solid var(--ui-color-border)",
+  background: "var(--ui-color-bg-elevated)"
+};
 
 function formatUserType(userType: string): string {
   switch (userType) {

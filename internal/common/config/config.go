@@ -39,7 +39,19 @@ type AuthConfig struct {
 }
 
 type FileStorageConfig struct {
-	Dir string
+	Driver string
+	Dir    string
+	S3     S3Config
+}
+
+type S3Config struct {
+	Endpoint        string
+	PublicEndpoint  string
+	Bucket          string
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	ForcePathStyle  bool
 }
 
 func Load() (Config, error) {
@@ -67,7 +79,17 @@ func Load() (Config, error) {
 			AccessTokenTTLSeconds: 7200,
 		},
 		FileStorage: FileStorageConfig{
-			Dir: getenvDefault("AIOS_FILE_STORAGE_DIR", "data/file_assets"),
+			Driver: getenvDefault("AIOS_OBJECT_STORAGE_DRIVER", "local"),
+			Dir:    getenvDefault("AIOS_FILE_STORAGE_DIR", "data/file_assets"),
+			S3: S3Config{
+				Endpoint:        os.Getenv("AIOS_S3_ENDPOINT"),
+				PublicEndpoint:  os.Getenv("AIOS_S3_PUBLIC_ENDPOINT"),
+				Bucket:          os.Getenv("AIOS_S3_BUCKET"),
+				Region:          getenvDefault("AIOS_S3_REGION", "us-east-1"),
+				AccessKeyID:     os.Getenv("AIOS_S3_ACCESS_KEY_ID"),
+				SecretAccessKey: os.Getenv("AIOS_S3_SECRET_ACCESS_KEY"),
+				ForcePathStyle:  boolFromEnv("AIOS_S3_FORCE_PATH_STYLE", true),
+			},
 		},
 		PlatformTenantID: platformTenantID,
 	}, nil
@@ -92,4 +114,16 @@ func int64FromEnv(key string, fallback int64) (int64, error) {
 		return 0, fmt.Errorf("%s must be an int64: %w", key, err)
 	}
 	return parsed, nil
+}
+
+func boolFromEnv(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
