@@ -49,7 +49,7 @@ func TestMenuHandlerReturnsFilteredAdminMenus(t *testing.T) {
 	if body.Code != 0 {
 		t.Fatalf("Code = %d", body.Code)
 	}
-	if len(body.Data) != 5 {
+	if len(body.Data) != 13 {
 		t.Fatalf("Data = %+v", body.Data)
 	}
 	if body.Data[0].Path != "/admin/workbench" {
@@ -61,8 +61,29 @@ func TestMenuHandlerReturnsFilteredAdminMenus(t *testing.T) {
 	if body.Data[2].Path != "/admin/courses" {
 		t.Fatalf("Third menu path = %q", body.Data[2].Path)
 	}
-	if len(body.Data[3].Children) == 0 {
-		t.Fatalf("system children = %+v", body.Data[3].Children)
+	systemMenu := findMenuByPath(body.Data, "/admin/system")
+	if systemMenu == nil || len(systemMenu.Children) == 0 {
+		t.Fatalf("system children = %+v", systemMenu)
+	}
+	for _, child := range systemMenu.Children {
+		switch child.Path {
+		case "/admin/question-banks", "/admin/questions", "/admin/imports", "/admin/exams", "/admin/exam-papers", "/admin/exams/assembly", "/admin/challenges", "/admin/analytics":
+			t.Fatalf("business menu should not be nested under system: %+v", child)
+		}
+	}
+	for _, path := range []string{
+		"/admin/question-banks",
+		"/admin/questions",
+		"/admin/imports",
+		"/admin/exams",
+		"/admin/exam-papers",
+		"/admin/exams/assembly",
+		"/admin/challenges",
+		"/admin/analytics",
+	} {
+		if !containsTopLevelMenuPath(body.Data, path) {
+			t.Fatalf("top-level business menu missing: %s | %+v", path, body.Data)
+		}
 	}
 	if !containsMenuPath(body.Data, "/admin/system/config") {
 		t.Fatalf("system config menu missing: %+v", body.Data)
@@ -98,4 +119,22 @@ func (parser *fakeMenuTokenParser) ParseToken(_ context.Context, token string, t
 		return auth.AccessClaims{}, parser.err
 	}
 	return parser.claims, nil
+}
+
+func containsTopLevelMenuPath(menus []MenuItem, path string) bool {
+	for _, menu := range menus {
+		if menu.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func findMenuByPath(menus []MenuItem, path string) *MenuItem {
+	for index := range menus {
+		if menus[index].Path == path {
+			return &menus[index]
+		}
+	}
+	return nil
 }

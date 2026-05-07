@@ -32,20 +32,17 @@ func TestBuildMenusFiltersByPermissions(t *testing.T) {
 func TestBuildMenusIncludesQuestionBankEntries(t *testing.T) {
 	menus := BuildMenus("admin", []string{"question_bank:manage", "question:manage"})
 
-	if len(menus) != 2 {
+	if len(menus) != 4 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[1].Children) != 3 {
-		t.Fatalf("len(children) = %d", len(menus[1].Children))
+	if menus[1].Path != "/admin/question-banks" {
+		t.Fatalf("menu[1].Path = %q", menus[1].Path)
 	}
-	if menus[1].Children[0].Path != "/admin/question-banks" {
-		t.Fatalf("child[0].Path = %q", menus[1].Children[0].Path)
+	if menus[2].Path != "/admin/questions" {
+		t.Fatalf("menu[2].Path = %q", menus[2].Path)
 	}
-	if menus[1].Children[1].Path != "/admin/questions" {
-		t.Fatalf("child[1].Path = %q", menus[1].Children[1].Path)
-	}
-	if menus[1].Children[2].Path != "/admin/challenges" {
-		t.Fatalf("child[2].Path = %q", menus[1].Children[2].Path)
+	if menus[3].Path != "/admin/challenges" {
+		t.Fatalf("menu[3].Path = %q", menus[3].Path)
 	}
 }
 
@@ -55,63 +52,57 @@ func TestBuildMenusIncludesImportCenterEntry(t *testing.T) {
 	if len(menus) != 2 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[1].Children) != 1 {
-		t.Fatalf("len(children) = %d", len(menus[1].Children))
+	if menus[1].Path != "/admin/imports" {
+		t.Fatalf("menu[1].Path = %q", menus[1].Path)
 	}
-	if menus[1].Children[0].Path != "/admin/imports" {
-		t.Fatalf("child[0].Path = %q", menus[1].Children[0].Path)
-	}
-	if menus[1].Children[0].Name != "导入中心" {
-		t.Fatalf("child[0].Name = %q", menus[1].Children[0].Name)
+	if menus[1].Name != "导入中心" {
+		t.Fatalf("menu[1].Name = %q", menus[1].Name)
 	}
 }
 
 func TestBuildMenusIncludesAnalyticsAndHistoryEntries(t *testing.T) {
 	menus := BuildMenus("admin", []string{"analytics:view", "audit:view"})
 
-	if len(menus) != 2 {
+	if len(menus) != 3 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[1].Children) != 2 {
-		t.Fatalf("len(children) = %d", len(menus[1].Children))
+	if menus[1].Path != "/admin/analytics" {
+		t.Fatalf("menu[1].Path = %q", menus[1].Path)
 	}
-	if menus[1].Children[0].Path != "/admin/analytics" {
-		t.Fatalf("child[0].Path = %q", menus[1].Children[0].Path)
+	if menus[1].Name != "数据看板" {
+		t.Fatalf("menu[1].Name = %q", menus[1].Name)
 	}
-	if menus[1].Children[0].Name != "数据看板" {
-		t.Fatalf("child[0].Name = %q", menus[1].Children[0].Name)
+	if len(menus[2].Children) != 1 {
+		t.Fatalf("len(system children) = %d", len(menus[2].Children))
 	}
-	if menus[1].Children[1].Path != "/admin/history" {
-		t.Fatalf("child[1].Path = %q", menus[1].Children[1].Path)
+	if menus[2].Children[0].Path != "/admin/history" {
+		t.Fatalf("system child[0].Path = %q", menus[2].Children[0].Path)
 	}
-	if menus[1].Children[1].Name != "快照历史" {
-		t.Fatalf("child[1].Name = %q", menus[1].Children[1].Name)
+	if menus[2].Children[0].Name != "快照历史" {
+		t.Fatalf("system child[0].Name = %q", menus[2].Children[0].Name)
 	}
 }
 
 func TestBuildMenusIncludesExamAndChallengeEntries(t *testing.T) {
 	menus := BuildMenus("admin", []string{"exam:manage", "question:manage"})
 
-	if len(menus) != 2 {
+	if len(menus) != 6 {
 		t.Fatalf("len(menus) = %d", len(menus))
 	}
-	if len(menus[1].Children) != 5 {
-		t.Fatalf("len(children) = %d", len(menus[1].Children))
+	if menus[1].Path != "/admin/questions" {
+		t.Fatalf("menu[1].Path = %q", menus[1].Path)
 	}
-	if menus[1].Children[0].Path != "/admin/questions" {
-		t.Fatalf("child[0].Path = %q", menus[1].Children[0].Path)
+	if menus[2].Path != "/admin/exams" {
+		t.Fatalf("menu[2].Path = %q", menus[2].Path)
 	}
-	if menus[1].Children[1].Path != "/admin/exams" {
-		t.Fatalf("child[1].Path = %q", menus[1].Children[1].Path)
+	if menus[3].Path != "/admin/exam-papers" {
+		t.Fatalf("menu[3].Path = %q", menus[3].Path)
 	}
-	if menus[1].Children[2].Path != "/admin/exam-papers" {
-		t.Fatalf("child[2].Path = %q", menus[1].Children[2].Path)
+	if menus[4].Path != "/admin/exams/assembly" {
+		t.Fatalf("menu[4].Path = %q", menus[4].Path)
 	}
-	if menus[1].Children[3].Path != "/admin/exams/assembly" {
-		t.Fatalf("child[3].Path = %q", menus[1].Children[3].Path)
-	}
-	if menus[1].Children[4].Path != "/admin/challenges" {
-		t.Fatalf("child[4].Path = %q", menus[1].Children[4].Path)
+	if menus[5].Path != "/admin/challenges" {
+		t.Fatalf("menu[5].Path = %q", menus[5].Path)
 	}
 }
 

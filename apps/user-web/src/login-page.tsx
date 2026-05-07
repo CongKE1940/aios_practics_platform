@@ -60,8 +60,8 @@ export function LoginPage({
     <form aria-label="登录表单" className="ui-auth-form" onSubmit={handleSubmit}>
       <header className="ui-auth-form__header">
         <img src={brandIcon} alt="" className="ui-brand-mark" />
-        <h2>欢迎回来</h2>
-        <p>科技连接未来，创新改变世界</p>
+        <h2>学习端登录</h2>
+        <p>进入课程、练题、考试和通知组成的学习工作台。</p>
       </header>
       <div className="ui-field">
         <label htmlFor="tenant_code">组织</label>

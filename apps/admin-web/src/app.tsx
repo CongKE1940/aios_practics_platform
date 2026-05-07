@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import {
   ApiError,
@@ -124,6 +124,7 @@ export function AdminApp({
   const [passwordChangeState, setPasswordChangeState] = useState<ChangeInitialPasswordRequest | null>(null);
   const [passwordChangeConfirm, setPasswordChangeConfirm] = useState("");
   const [passwordChanging, setPasswordChanging] = useState(false);
+  const refreshedMenuTokenRef = useRef("");
 
   const api = useMemo<AuthApi>(() => {
     if (authApi) {
@@ -141,6 +142,47 @@ export function AdminApp({
       menus: (accessToken) => createApiClient({ baseUrl, accessToken }).menus("admin")
     };
   }, [authApi]);
+
+  useEffect(() => {
+    if (!session) {
+      refreshedMenuTokenRef.current = "";
+      return;
+    }
+    if (refreshedMenuTokenRef.current === session.accessToken) {
+      return;
+    }
+
+    refreshedMenuTokenRef.current = session.accessToken;
+    const accessToken = session.accessToken;
+    let active = true;
+
+    api
+      .menus(accessToken)
+      .then((menus) => {
+        if (!active) {
+          return;
+        }
+        const normalizedMenus = normalizeAdminMenus(menus);
+        setSession((current) => {
+          if (!current || current.accessToken !== accessToken || areMenuTreesEqual(current.menus, normalizedMenus)) {
+            return current;
+          }
+          const nextSession = {
+            ...current,
+            menus: normalizedMenus
+          };
+          store.save(nextSession);
+          return nextSession;
+        });
+      })
+      .catch(() => {
+        // 保留已缓存菜单，避免短暂网络问题打断当前操作。
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [api, session, store]);
 
   useEffect(() => {
     if (session) {
@@ -509,7 +551,9 @@ export function AdminApp({
       <main className="ui-auth-page">
         <img src={sceneBackground} alt="" className="ui-scene-image" />
         <section className="ui-auth-hero">
-          <span className="ui-auth-hero__sr">AIOS 管理端登录背景</span>
+          <span className="ui-auth-hero__sr">AIOS 管理端登录说明</span>
+          <h1 className="ui-auth-hero__title">进入题练通管理工作台</h1>
+          <p className="ui-auth-hero__copy">按学校或组织进入对应租户，处理题库、导入、考试、公告、权限和审计任务。</p>
         </section>
         <section className="ui-auth-card">
           <form
@@ -519,8 +563,8 @@ export function AdminApp({
           >
             <header className="ui-auth-form__header">
               <img src={brandIcon} alt="" className="ui-brand-mark" />
-              <h1>欢迎回来</h1>
-              <p>科技连接未来，创新改变世界</p>
+              <h2>管理端登录</h2>
+              <p>选择组织后登录，进入学校运营与教学管理任务。</p>
             </header>
             <div className="ui-field">
               <label htmlFor="tenant_code">组织</label>
@@ -649,7 +693,7 @@ export function AdminApp({
             <div className="ui-brand-block">
               <div className="ui-brand-block__row">
                 <img src={brandIcon} alt="" className="ui-brand-block__icon" />
-                <strong>智慧教育平台</strong>
+                <strong>题练通 AIOS</strong>
               </div>
             </div>
             <button
@@ -701,6 +745,8 @@ export function AdminApp({
               userApi={currentUserApi}
               userType={session.user.user_type}
               userDisplayName={session.user.display_name}
+              availablePaths={collectMenuPaths(session.menus)}
+              onNavigate={setSelectedPath}
             />
           ) : isKnownAdminPath(selectedPath) && canOpenSelectedPath ? (
             currentView
@@ -1056,4 +1102,15 @@ function hasMenuPath(menus: MenuItem[], selectedPath: string): boolean {
     }
   }
   return false;
+}
+
+function collectMenuPaths(menus: MenuItem[]): string[] {
+  return menus.flatMap((menu) => [
+    ...(menu.path ? [menu.path] : []),
+    ...collectMenuPaths(menu.children)
+  ]);
+}
+
+function areMenuTreesEqual(left: MenuItem[], right: MenuItem[]): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

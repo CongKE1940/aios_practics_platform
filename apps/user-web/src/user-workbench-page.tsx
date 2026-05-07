@@ -15,6 +15,8 @@ interface UserWorkbenchPageProps {
   api?: UserWorkbenchApi;
   userDisplayName: string;
   userTypeLabel: string;
+  availablePaths?: string[];
+  onNavigate?: (path: string) => void;
 }
 
 interface UserWorkbenchStats {
@@ -44,7 +46,9 @@ const emptyStats: UserWorkbenchStats = {
 export function UserWorkbenchPage({
   api,
   userDisplayName,
-  userTypeLabel
+  userTypeLabel,
+  availablePaths,
+  onNavigate
 }: UserWorkbenchPageProps) {
   const [stats, setStats] = useState<UserWorkbenchStats>(emptyStats);
   const [loading, setLoading] = useState(true);
@@ -57,6 +61,7 @@ export function UserWorkbenchPage({
   ];
   const resourceCount = stats.courseCount + stats.questionBankCount + stats.examCount + stats.notificationCount;
   const resourceTotal = Math.max(1, resourceCount);
+  const nextActions = buildNextActions(stats, userTypeLabel, availablePaths);
 
   useEffect(() => {
     let active = true;
@@ -81,9 +86,9 @@ export function UserWorkbenchPage({
     <section aria-label="用户工作台" className="ui-workbench ui-workbench--user" aria-busy={loading}>
       <div className="ui-hero-panel">
         <div className="ui-hero-panel__content">
-          <span className="ui-hero-panel__eyebrow">Learning route</span>
-          <h2>{userDisplayName}，把今天的学习推进到下一步。</h2>
-          <p>{`${userTypeLabel}工作台把课程、练题、考试和通知组织成一条清晰路径；先进入最重要任务，再回看错题与反馈。`}</p>
+          <span className="ui-hero-panel__eyebrow">学习路径</span>
+          <h2>{userDisplayName}，从今天最需要处理的学习任务开始。</h2>
+          <p>{`${userTypeLabel}工作台把课程、练题、考试、错题和通知放在同一条路径里；先进入当前任务，再回看结果与反馈。`}</p>
           <div className="ui-learning-strip" aria-label="学习路径要点">
             <span>课程入口</span>
             <span>练题闭环</span>
@@ -107,11 +112,38 @@ export function UserWorkbenchPage({
         </aside>
       </div>
 
+      <section className="ui-admin-card" aria-label="学习任务入口" style={taskPanelStyle}>
+        <div className="ui-admin-card__header">
+          <div>
+            <span className="ui-kicker">下一步</span>
+            <h3>学习任务入口</h3>
+            <p className="ui-admin-subtle">按当前身份展示常用入口，优先完成课程、练题、考试和反馈处理。</p>
+          </div>
+        </div>
+        <div className="ui-quick-grid">
+          {nextActions.map((action) => (
+            <button
+              key={action.path}
+              type="button"
+              className="ui-quick-button"
+              onClick={() => onNavigate?.(action.path)}
+              disabled={!onNavigate}
+            >
+              <span className="ui-quick-button__icon" aria-hidden="true">
+                {action.badge}
+              </span>
+              <strong>{action.title}</strong>
+              <small>{loading ? "数据加载中" : action.helper}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div style={visualGridStyle}>
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="学习节奏概览">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Rhythm</span>
+              <span className="ui-kicker">学习节奏</span>
               <h3>学习节奏概览</h3>
               <p>把课程、练题、考试和通知放在同一张视图里。</p>
             </div>
@@ -123,7 +155,7 @@ export function UserWorkbenchPage({
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="题目状态分布">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Question states</span>
+              <span className="ui-kicker">题目状态</span>
               <h3>题目状态分布</h3>
               <p>错题、熟题、疑惑题的沉淀情况。</p>
             </div>
@@ -134,17 +166,17 @@ export function UserWorkbenchPage({
               role="img"
               aria-label={`错题 ${stats.wrongQuestionCount}，熟题 ${stats.masteredQuestionCount}，疑惑题 ${stats.confusedQuestionCount}`}
               style={buildDonutStyle([
-                { value: stats.wrongQuestionCount, color: "#ef4444" },
-                { value: stats.masteredQuestionCount, color: "#14b8a6" },
-                { value: stats.confusedQuestionCount, color: "#f59e0b" }
+                { value: stats.wrongQuestionCount, color: "#a24b43" },
+                { value: stats.masteredQuestionCount, color: "#3f7a4f" },
+                { value: stats.confusedQuestionCount, color: "#b7832f" }
               ])}
             >
               <span style={donutCenterStyle}>{loading ? "--" : formatNumber(questionStateTotal)}</span>
             </div>
             <div style={legendListStyle}>
-              <LegendItem color="#ef4444" label="错题" value={loading ? "--" : formatNumber(stats.wrongQuestionCount)} />
-              <LegendItem color="#14b8a6" label="熟题" value={loading ? "--" : formatNumber(stats.masteredQuestionCount)} />
-              <LegendItem color="#f59e0b" label="疑惑题" value={loading ? "--" : formatNumber(stats.confusedQuestionCount)} />
+              <LegendItem color="#a24b43" label="错题" value={loading ? "--" : formatNumber(stats.wrongQuestionCount)} />
+              <LegendItem color="#3f7a4f" label="熟题" value={loading ? "--" : formatNumber(stats.masteredQuestionCount)} />
+              <LegendItem color="#b7832f" label="疑惑题" value={loading ? "--" : formatNumber(stats.confusedQuestionCount)} />
             </div>
           </div>
         </section>
@@ -152,7 +184,7 @@ export function UserWorkbenchPage({
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="学习资源占比">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Resources</span>
+              <span className="ui-kicker">学习资源</span>
               <h3>学习资源占比</h3>
               <p>当前账号可触达资源的粗略分布。</p>
             </div>
@@ -168,7 +200,7 @@ export function UserWorkbenchPage({
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="下一步行动">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Next</span>
+              <span className="ui-kicker">行动顺序</span>
               <h3>下一步行动</h3>
               <p>按“先学习、再巩固、最后处理提醒”的顺序推进。</p>
             </div>
@@ -191,6 +223,60 @@ export function UserWorkbenchPage({
       </div>
     </section>
   );
+}
+
+function buildNextActions(stats: UserWorkbenchStats, userTypeLabel: string, availablePaths?: string[]) {
+  const sharedActions = [
+    {
+      title: "进入我的课程",
+      helper: `可用课程 ${formatNumber(stats.courseCount)} 门`,
+      path: "/app/courses",
+      badge: "课"
+    },
+    {
+      title: "开始练题",
+      helper: `历史练习 ${formatNumber(stats.practiceSessionCount)} 次`,
+      path: "/app/practice",
+      badge: "练"
+    },
+    {
+      title: "处理错题与疑惑",
+      helper: `错题 ${formatNumber(stats.wrongQuestionCount)} 道，疑惑 ${formatNumber(stats.confusedQuestionCount)} 道`,
+      path: stats.wrongQuestionCount > 0 ? "/app/practice/wrong" : "/app/practice/confused",
+      badge: "错"
+    },
+    {
+      title: "查看考试",
+      helper: `考试 ${formatNumber(stats.examCount)} 场`,
+      path: "/app/exams",
+      badge: "考"
+    },
+    {
+      title: "查看通知",
+      helper: `未读 ${formatNumber(stats.unreadNotificationCount)} 条`,
+      path: "/app/notifications",
+      badge: "通"
+    }
+  ];
+
+  const actions = userTypeLabel.includes("教师")
+    ? [
+      ...sharedActions,
+      {
+        title: "维护我的题库",
+        helper: `题库 ${formatNumber(stats.questionBankCount)} 个`,
+        path: "/app/teacher-banks",
+        badge: "库"
+      }
+    ]
+    : sharedActions;
+
+  if (!availablePaths) {
+    return actions;
+  }
+
+  const pathSet = new Set(availablePaths);
+  return actions.filter((action) => pathSet.has(action.path));
 }
 
 async function loadUserWorkbenchStats(api?: UserWorkbenchApi): Promise<UserWorkbenchStats> {
@@ -344,8 +430,8 @@ const donutCenterStyle: CSSProperties = {
   width: 78,
   height: 78,
   borderRadius: "50%",
-  background: "rgba(255, 255, 255, 0.92)",
-  color: "#214382",
+  background: "var(--ui-color-surface)",
+  color: "var(--ui-color-ink)",
   fontWeight: 800
 };
 
@@ -359,7 +445,7 @@ const legendItemStyle: CSSProperties = {
   gridTemplateColumns: "12px minmax(0, 1fr) auto",
   alignItems: "center",
   gap: 10,
-  color: "#4f6998",
+  color: "var(--ui-color-text-muted)",
   fontSize: 13
 };
 
@@ -371,4 +457,9 @@ const legendDotStyle: CSSProperties = {
 
 const stepListStyle: CSSProperties = {
   margin: 0
+};
+
+const taskPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 14
 };

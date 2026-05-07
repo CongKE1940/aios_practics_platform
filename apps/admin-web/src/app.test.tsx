@@ -24,7 +24,7 @@ describe("AdminApp", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { name: "欢迎回来" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "管理端登录" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "学习端入口" })).toBeTruthy();
     expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
@@ -90,13 +90,14 @@ describe("AdminApp", () => {
     expect(sessionStore.savedSession?.user.display_name).toBe("系统管理员");
     openAdminUserMenu();
     expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeTruthy();
-    expect(screen.getByText("智慧教育平台")).toBeTruthy();
+    expect(screen.getByText("题练通 AIOS")).toBeTruthy();
     expect(screen.getByLabelText("管理菜单")).toBeTruthy();
     expect(screen.getByRole("button", { name: "组织管理" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "学校管理" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "公告通知" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "工作台" })).toBeTruthy();
     expect(screen.getByText("成员数")).toBeTruthy();
+    expect(screen.getByText("运营任务入口")).toBeTruthy();
   });
 
   it("returns to login form after logout", async () => {

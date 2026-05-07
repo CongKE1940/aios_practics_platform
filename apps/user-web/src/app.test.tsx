@@ -20,8 +20,8 @@ describe("UserApp", () => {
   it("shows login form when no session exists", () => {
     render(<UserApp authApi={createAuthApiMock()} />);
 
-    expect(screen.getByRole("heading", { name: "AIOS 学生端" })).toBeTruthy();
-    expect(screen.getByText("把课程、练题、班级学习和考试放进一个统一工作台。")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "进入题练通学习工作台" })).toBeTruthy();
+    expect(screen.getByText("选择所在学校或组织后登录，继续课程练习、考试测评、错题巩固和班级学习。")).toBeTruthy();
     expect(screen.getByRole("form", { name: "登录表单" })).toBeTruthy();
     expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
@@ -152,7 +152,7 @@ describe("UserApp", () => {
       />
     );
 
-    expect(screen.getByText("智慧教育平台")).toBeTruthy();
+    expect(screen.getByText("题练通 AIOS")).toBeTruthy();
     expect(screen.getByText("学习导航")).toBeTruthy();
     expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "我的课程" })).toBeTruthy();
@@ -161,6 +161,8 @@ describe("UserApp", () => {
     expect(screen.getByRole("button", { name: "错题本" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "熟题本" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "疑惑题" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "工作台" }));
+    expect(screen.getByText("学习任务入口")).toBeTruthy();
   });
 
   it("opens teacher exam management from the user menu", async () => {

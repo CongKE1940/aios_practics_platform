@@ -20,6 +20,8 @@ interface AdminWorkbenchProps {
   userApi?: UserPanelApi;
   userType?: string;
   userDisplayName?: string;
+  availablePaths?: string[];
+  onNavigate?: (path: string) => void;
 }
 
 interface WorkbenchStats {
@@ -46,6 +48,13 @@ interface DashboardCard {
   value: string;
   helper: string;
   icon: WorkbenchIconName;
+}
+
+interface WorkbenchTask {
+  title: string;
+  helper: string;
+  path: string;
+  badge: string;
 }
 
 const emptyStats: WorkbenchStats = {
@@ -86,7 +95,9 @@ export function AdminWorkbench({
   questionBankApi,
   userApi,
   userType,
-  userDisplayName
+  userDisplayName,
+  availablePaths,
+  onNavigate
 }: AdminWorkbenchProps) {
   const fallbackApi = useMemo(() => createWorkbenchApi(), []);
   const resolvedUserType = useMemo(() => resolveWorkbenchUserType(userType, userDisplayName), [userType, userDisplayName]);
@@ -149,12 +160,43 @@ export function AdminWorkbench({
     { label: "题目", value: stats.questionCount },
     { label: "考试", value: stats.examCount }
   ];
+  const taskRows = buildWorkbenchTasks(stats, availablePaths);
   const memberTotal = Math.max(1, stats.teacherCount + stats.studentCount);
   const noticeTotal = Math.max(1, stats.noticeReadCount + stats.noticeUnreadCount);
 
   return (
     <section aria-label="管理工作台" className="ui-workbench ui-workbench--admin" style={workbenchStyle} aria-busy={loading}>
       <h2 style={visuallyHiddenStyle}>工作台</h2>
+      <section className="ui-hero-panel" aria-label="管理端运营总览">
+        <div className="ui-hero-panel__content">
+          <span className="ui-hero-panel__eyebrow">运营总览</span>
+          <h2>{userDisplayName ? `${userDisplayName}，查看今日教学运营状态。` : "查看今日教学运营状态。"}</h2>
+          <p>
+            管理端围绕组织、成员、题库、导入、考试、公告和审计形成闭环；优先处理影响教学交付的任务，再进入明细页面核查。
+          </p>
+          <div className="ui-dashboard-strip" aria-label="管理重点">
+            <span>租户边界</span>
+            <span>题库质量</span>
+            <span>考试流程</span>
+            <span>审计追踪</span>
+          </div>
+        </div>
+        <aside className="ui-hero-panel__aside" aria-label="关键待办">
+          <div className="ui-hero-metric">
+            <span>待关注通知</span>
+            <strong>{loading ? "--" : formatNumber(stats.noticeUnreadCount)}</strong>
+          </div>
+          <div className="ui-hero-metric">
+            <span>教学资源</span>
+            <strong>{loading ? "--" : formatNumber(stats.courseCount + stats.questionBankCount + stats.questionCount)}</strong>
+          </div>
+          <div className="ui-hero-metric">
+            <span>考试测评</span>
+            <strong>{loading ? "--" : formatNumber(stats.examCount)}</strong>
+          </div>
+        </aside>
+      </section>
+
       <div className="ui-stat-grid" style={statGridStyle}>
         {cards.map((card) => (
           <article key={card.title} className="ui-stat-card" style={statCardStyle}>
@@ -169,12 +211,41 @@ export function AdminWorkbench({
           </article>
         ))}
       </div>
+
+      <section className="ui-admin-card" aria-label="运营任务入口" style={taskPanelStyle}>
+        <div className="ui-admin-card__header">
+          <div>
+            <span className="ui-kicker">下一步</span>
+            <h3>运营任务入口</h3>
+            <p className="ui-admin-subtle">按教学交付顺序处理题库、导入、考试、通知和审计。</p>
+          </div>
+        </div>
+        <div className="ui-quick-grid">
+          {taskRows.map((task) => (
+            <button
+              key={task.path}
+              type="button"
+              className="ui-quick-button"
+              onClick={() => onNavigate?.(task.path)}
+              disabled={!onNavigate}
+            >
+              <span className="ui-quick-button__icon" aria-hidden="true">
+                {task.badge}
+              </span>
+              <strong>{task.title}</strong>
+              <small>{loading ? "数据加载中" : task.helper}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div style={visualGridStyle}>
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="组织结构分布">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Structure</span>
+              <span className="ui-kicker">组织结构</span>
               <h3>组织结构分布</h3>
+              <p>学校、年级和班级是后续课程、成员与考试目标的基础。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(stats.organizationCount + stats.gradeCount + stats.classCount)}</strong>
           </header>
@@ -184,8 +255,9 @@ export function AdminWorkbench({
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="成员构成">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Members</span>
+              <span className="ui-kicker">成员构成</span>
               <h3>成员构成</h3>
+              <p>教师与学生规模影响练题、批阅、考试统计和通知触达。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(stats.memberCount)}</strong>
           </header>
@@ -194,15 +266,15 @@ export function AdminWorkbench({
               role="img"
               aria-label={`教师 ${stats.teacherCount} 人，学生 ${stats.studentCount} 人`}
               style={buildDonutStyle([
-                { value: stats.teacherCount, color: "#3d79f2" },
-                { value: stats.studentCount, color: "#14b8a6" }
+                { value: stats.teacherCount, color: "#1f5f5b" },
+                { value: stats.studentCount, color: "#b7832f" }
               ])}
             >
               <span style={donutCenterStyle}>{loading ? "--" : `${Math.round((stats.teacherCount / memberTotal) * 100)}%`}</span>
             </div>
             <div style={legendListStyle}>
-              <LegendItem color="#3d79f2" label="教师" value={loading ? "--" : formatNumber(stats.teacherCount)} />
-              <LegendItem color="#14b8a6" label="学生" value={loading ? "--" : formatNumber(stats.studentCount)} />
+              <LegendItem color="#1f5f5b" label="教师" value={loading ? "--" : formatNumber(stats.teacherCount)} />
+              <LegendItem color="#b7832f" label="学生" value={loading ? "--" : formatNumber(stats.studentCount)} />
             </div>
           </div>
         </section>
@@ -210,8 +282,9 @@ export function AdminWorkbench({
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="内容与考试规模">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Content</span>
+              <span className="ui-kicker">内容测评</span>
               <h3>内容与考试规模</h3>
+              <p>题库、题目和考试共同构成练习与测评供给。</p>
             </div>
             <strong>{loading ? "--" : formatPercent(stats.passRate)}</strong>
           </header>
@@ -221,8 +294,9 @@ export function AdminWorkbench({
         <section className="ui-admin-chart-card" style={visualPanelStyle} aria-label="通知处理进度">
           <header className="ui-admin-chart-card__header">
             <div>
-              <span className="ui-kicker">Notice</span>
+              <span className="ui-kicker">通知触达</span>
               <h3>通知处理进度</h3>
+              <p>未读通知是运营沟通需要继续跟进的信号。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(stats.noticeCount)}</strong>
           </header>
@@ -421,6 +495,52 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
   ];
 }
 
+function buildWorkbenchTasks(stats: WorkbenchStats, availablePaths?: string[]): WorkbenchTask[] {
+  const tasks = [
+    {
+      title: "维护题库与题目",
+      helper: `题库 ${formatNumber(stats.questionBankCount)} 个，题目 ${formatNumber(stats.questionCount)} 道`,
+      path: "/admin/questions",
+      badge: "题"
+    },
+    {
+      title: "处理导入任务",
+      helper: "下载模板、创建任务、查看行级错误和失败报告",
+      path: "/admin/imports",
+      badge: "入"
+    },
+    {
+      title: "推进考试流程",
+      helper: `当前考试 ${formatNumber(stats.examCount)} 场，通过率 ${formatPercent(stats.passRate)}`,
+      path: "/admin/exams",
+      badge: "考"
+    },
+    {
+      title: "发布公告通知",
+      helper: `未读 ${formatNumber(stats.noticeUnreadCount)} 条，已读 ${formatNumber(stats.noticeReadCount)} 条`,
+      path: "/admin/notices",
+      badge: "告"
+    },
+    {
+      title: "核查数据看板",
+      helper: "查看指标、异常、趋势和教学运营概览",
+      path: "/admin/analytics",
+      badge: "数"
+    },
+    {
+      title: "追踪审计快照",
+      helper: "回看实体变更、学籍变更和任课变更记录",
+      path: "/admin/history",
+      badge: "审"
+    }
+  ];
+  if (!availablePaths) {
+    return tasks;
+  }
+  const pathSet = new Set(availablePaths);
+  return tasks.filter((task) => pathSet.has(task.path));
+}
+
 function BarChart({ rows, loading }: { rows: Array<{ label: string; value: number }>; loading: boolean }) {
   const maxValue = Math.max(1, ...rows.map((row) => row.value));
   return (
@@ -613,8 +733,9 @@ function formatPercent(value: number): string {
 
 const workbenchStyle: CSSProperties = {
   minHeight: "100%",
-  padding: 22,
-  display: "block"
+  padding: 0,
+  display: "grid",
+  gap: 14
 };
 
 const statGridStyle: CSSProperties = {
@@ -649,7 +770,7 @@ const visualGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   gap: 14,
-  marginTop: 16
+  marginTop: 0
 };
 
 const visualPanelStyle: CSSProperties = {
@@ -683,8 +804,8 @@ const donutCenterStyle: CSSProperties = {
   width: 78,
   height: 78,
   borderRadius: "50%",
-  background: "rgba(255, 255, 255, 0.92)",
-  color: "#214382",
+  background: "var(--ui-color-surface)",
+  color: "var(--ui-color-ink)",
   fontWeight: 800
 };
 
@@ -698,7 +819,7 @@ const legendItemStyle: CSSProperties = {
   gridTemplateColumns: "12px minmax(0, 1fr) auto",
   alignItems: "center",
   gap: 10,
-  color: "#4f6998",
+  color: "var(--ui-color-text-muted)",
   fontSize: 13
 };
 
@@ -706,4 +827,9 @@ const legendDotStyle: CSSProperties = {
   width: 10,
   height: 10,
   borderRadius: 999
+};
+
+const taskPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 14
 };

@@ -352,9 +352,9 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
       <main className="ui-auth-page ui-auth-page--learner">
         <img src={sceneBackground} alt="" className="ui-scene-image" />
         <section className="ui-auth-hero">
-          <span className="ui-auth-hero__sr">AIOS 学习端登录背景</span>
-          <h1 className="ui-auth-hero__title">AIOS 学生端</h1>
-          <p className="ui-auth-hero__copy">把课程、练题、班级学习和考试放进一个统一工作台。</p>
+          <span className="ui-auth-hero__sr">AIOS 学习端登录说明</span>
+          <h1 className="ui-auth-hero__title">进入题练通学习工作台</h1>
+          <p className="ui-auth-hero__copy">选择所在学校或组织后登录，继续课程练习、考试测评、错题巩固和班级学习。</p>
         </section>
         <section className="ui-auth-card">
           <LoginPage
@@ -418,7 +418,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
             <div className="ui-brand-block">
               <div className="ui-brand-block__row">
                 <img src={brandIcon} alt="" className="ui-brand-block__icon" />
-                <strong>智慧教育平台</strong>
+                <strong>题练通 AIOS</strong>
               </div>
             </div>
             <button
@@ -509,6 +509,8 @@ function renderUserContent({
           api={currentPracticeApi}
           userDisplayName={session.user.display_name}
           userTypeLabel={getUserTypeLabel(session.user.user_type)}
+          availablePaths={collectMenuPaths(session.menus)}
+          onNavigate={setSelectedPath}
         />
       ) : null}
       {selectedRoute === "/app/profile" ? (
@@ -855,6 +857,13 @@ function findMenuTrail(menus: MenuItem[], selectedPath: string, trail: string[] 
     }
   }
   return [];
+}
+
+function collectMenuPaths(menus: MenuItem[]): string[] {
+  return menus.flatMap((menu) => [
+    ...(menu.path ? [getRoutePath(menu.path)] : []),
+    ...collectMenuPaths(menu.children)
+  ]);
 }
 
 function getUserPageTitle(selectedRoute: string): string {
