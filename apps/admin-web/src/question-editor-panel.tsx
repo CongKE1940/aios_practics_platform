@@ -1,28 +1,32 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 
 import type { Question, QuestionVersion } from "@aios/api-sdk";
 
 import type { QuestionPanelApi } from "./question-panel";
+import {
+  buildTextQuestionOptions,
+  createDefaultOptionDrafts,
+  createOptionDraft,
+  getOptionKey,
+  normalizeCorrectKey,
+  type QuestionOptionDraft
+} from "./question-option-draft";
 
 interface EditorForm {
   stem: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
+  options: QuestionOptionDraft[];
   correctKey: string;
   changeSummary: string;
 }
 
-const defaultForm: EditorForm = {
-  stem: "",
-  optionA: "",
-  optionB: "",
-  optionC: "",
-  optionD: "",
-  correctKey: "A",
-  changeSummary: ""
-};
+function createDefaultForm(): EditorForm {
+  return {
+    stem: "",
+    options: createDefaultOptionDrafts("", ""),
+    correctKey: "A",
+    changeSummary: ""
+  };
+}
 
 export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
   const [loading, setLoading] = useState(true);
@@ -30,7 +34,7 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [versions, setVersions] = useState<QuestionVersion[]>([]);
   const [selectedQuestionID, setSelectedQuestionID] = useState<number | null>(null);
-  const [form, setForm] = useState<EditorForm>(defaultForm);
+  const [form, setForm] = useState<EditorForm>(() => createDefaultForm());
 
   useEffect(() => {
     void loadQuestions();
@@ -84,16 +88,11 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
     await api.createQuestionVersion(selectedQuestionID, {
       content: {
         stem: { content_type: "text", text: form.stem },
-        options: [
-          { key: "A", content_type: "text", text: form.optionA },
-          { key: "B", content_type: "text", text: form.optionB },
-          { key: "C", content_type: "text", text: form.optionC },
-          { key: "D", content_type: "text", text: form.optionD }
-        ]
+        options: buildTextQuestionOptions(form.options)
       },
       answer: {
         judge_mode: "by_option_key",
-        correct_keys: [form.correctKey]
+        correct_keys: [normalizeCorrectKey(form.correctKey, form.options)]
       },
       analysis: {},
       change_summary: form.changeSummary || undefined
@@ -106,6 +105,34 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
     () => questions.find((item) => item.id === selectedQuestionID) ?? questions[0] ?? null,
     [questions, selectedQuestionID]
   );
+
+  function updateOption(index: number, text: string) {
+    setForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? { ...option, text } : option))
+    }));
+  }
+
+  function addOption() {
+    setForm((current) => ({
+      ...current,
+      options: [...current.options, createOptionDraft()]
+    }));
+  }
+
+  function removeOption(index: number) {
+    setForm((current) => {
+      if (current.options.length <= 1) {
+        return current;
+      }
+      const options = current.options.filter((_, optionIndex) => optionIndex !== index);
+      return {
+        ...current,
+        options,
+        correctKey: normalizeCorrectKey(current.correctKey, options)
+      };
+    });
+  }
 
   return (
     <section aria-label="题目编辑器面板" className="ui-admin-page">
@@ -159,29 +186,51 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
                   <label htmlFor="editor_stem">题干</label>
                   <textarea id="editor_stem" value={form.stem} onChange={(event) => setForm((current) => ({ ...current, stem: event.target.value }))} />
                 </div>
-                <div className="ui-admin-form__field">
-                  <label htmlFor="editor_option_a">选项 A</label>
-                  <input id="editor_option_a" value={form.optionA} onChange={(event) => setForm((current) => ({ ...current, optionA: event.target.value }))} />
-                </div>
-                <div className="ui-admin-form__field">
-                  <label htmlFor="editor_option_b">选项 B</label>
-                  <input id="editor_option_b" value={form.optionB} onChange={(event) => setForm((current) => ({ ...current, optionB: event.target.value }))} />
-                </div>
-                <div className="ui-admin-form__field">
-                  <label htmlFor="editor_option_c">选项 C</label>
-                  <input id="editor_option_c" value={form.optionC} onChange={(event) => setForm((current) => ({ ...current, optionC: event.target.value }))} />
-                </div>
-                <div className="ui-admin-form__field">
-                  <label htmlFor="editor_option_d">选项 D</label>
-                  <input id="editor_option_d" value={form.optionD} onChange={(event) => setForm((current) => ({ ...current, optionD: event.target.value }))} />
+                <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+                  <div style={optionSectionHeaderStyle}>
+                    <span style={optionSectionTitleStyle}>选项</span>
+                    <button type="button" className="ui-button ui-button--ghost" onClick={addOption}>
+                      增加选项
+                    </button>
+                  </div>
+                  <div style={optionListStyle}>
+                    {form.options.map((option, index) => {
+                      const optionKey = getOptionKey(index);
+                      const optionInputID = `editor_option_${option.draft_id}`;
+                      return (
+                        <div key={option.draft_id} style={optionRowStyle}>
+                          <label htmlFor={optionInputID}>{`选项 ${optionKey}`}</label>
+                          <div style={optionInputRowStyle}>
+                            <input id={optionInputID} value={option.text} onChange={(event) => updateOption(index, event.target.value)} />
+                            <button
+                              type="button"
+                              className="ui-button ui-button--ghost"
+                              onClick={() => removeOption(index)}
+                              disabled={form.options.length <= 1}
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="ui-admin-form__field">
                   <label htmlFor="editor_correct_key">正确答案</label>
-                  <select id="editor_correct_key" value={form.correctKey} onChange={(event) => setForm((current) => ({ ...current, correctKey: event.target.value }))}>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="C">C</option>
-                    <option value="D">D</option>
+                  <select
+                    id="editor_correct_key"
+                    value={normalizeCorrectKey(form.correctKey, form.options)}
+                    onChange={(event) => setForm((current) => ({ ...current, correctKey: event.target.value }))}
+                  >
+                    {form.options.map((_, index) => {
+                      const optionKey = getOptionKey(index);
+                      return (
+                        <option key={optionKey} value={optionKey}>
+                          {optionKey}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div className="ui-admin-form__field">
@@ -215,15 +264,10 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
                   <strong>题干</strong>
                   <p>{form.stem || "请输入题干"}</p>
                 </article>
-                {[
-                  ["A", form.optionA],
-                  ["B", form.optionB],
-                  ["C", form.optionC],
-                  ["D", form.optionD]
-                ].map(([key, value]) => (
-                  <article key={key} className="ui-admin-mini-item">
-                    <strong>{`选项 ${key}`}</strong>
-                    <p>{value || "未填写"}</p>
+                {form.options.map((option, index) => (
+                  <article key={option.draft_id} className="ui-admin-mini-item">
+                    <strong>{`选项 ${getOptionKey(index)}`}</strong>
+                    <p>{option.text || "未填写"}</p>
                   </article>
                 ))}
                 <article className="ui-admin-mini-item">
@@ -262,16 +306,43 @@ export function QuestionEditorPanel({ api }: { api: QuestionPanelApi }) {
 function buildFormFromVersion(version: QuestionVersion): EditorForm {
   const content = version.content as { stem?: { text?: string | null }; options?: Array<{ key?: string; text?: string | null }> };
   const options = content.options ?? [];
-  const optionMap = new Map(options.map((item) => [item.key ?? "", item.text ?? ""]));
   const answer = version.answer as { correct_keys?: string[] };
+  const optionDrafts = options.length > 0 ? options.map((item) => createOptionDraft(item.text ?? "")) : createDefaultOptionDrafts("", "");
 
   return {
     stem: content.stem?.text ?? "",
-    optionA: optionMap.get("A") ?? "",
-    optionB: optionMap.get("B") ?? "",
-    optionC: optionMap.get("C") ?? "",
-    optionD: optionMap.get("D") ?? "",
-    correctKey: answer.correct_keys?.[0] ?? "A",
+    options: optionDrafts,
+    correctKey: normalizeCorrectKey(answer.correct_keys?.[0] ?? "A", optionDrafts),
     changeSummary: version.change_summary ?? ""
   };
 }
+
+const optionSectionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 10
+};
+
+const optionSectionTitleStyle: CSSProperties = {
+  fontWeight: 700
+};
+
+const optionListStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12
+};
+
+const optionRowStyle: CSSProperties = {
+  display: "grid",
+  gap: 6
+};
+
+const optionInputRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 8,
+  alignItems: "center"
+};

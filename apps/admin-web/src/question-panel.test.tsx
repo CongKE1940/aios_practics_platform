@@ -124,12 +124,29 @@ describe("QuestionPanel", () => {
     fireEvent.change(createModal.getByLabelText("题干"), { target: { value: "1+1等于几？" } });
     fireEvent.change(createModal.getByLabelText("选项 A"), { target: { value: "1" } });
     fireEvent.change(createModal.getByLabelText("选项 B"), { target: { value: "2" } });
-    fireEvent.change(createModal.getByLabelText("正确答案"), { target: { value: "B" } });
+    fireEvent.click(createModal.getByRole("button", { name: "增加选项" }));
+    fireEvent.change(createModal.getByLabelText("选项 C"), { target: { value: "3" } });
+    fireEvent.click(createModal.getByRole("button", { name: "增加选项" }));
+    fireEvent.change(createModal.getByLabelText("选项 D"), { target: { value: "4" } });
+    fireEvent.click(createModal.getAllByRole("button", { name: "删除" })[3]);
+    fireEvent.change(createModal.getByLabelText("正确答案"), { target: { value: "C" } });
     fireEvent.click(createModal.getByRole("button", { name: "新增题目" }));
 
     await waitFor(() => {
       expect(api.createQuestion).toHaveBeenCalled();
     });
+    expect(api.createQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        answer: { judge_mode: "by_option_key", correct_keys: ["C"] },
+        content: expect.objectContaining({
+          options: [
+            expect.objectContaining({ key: "A", text: "1" }),
+            expect.objectContaining({ key: "B", text: "2" }),
+            expect.objectContaining({ key: "C", text: "3" })
+          ]
+        })
+      })
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "详情" }));
 
@@ -138,7 +155,9 @@ describe("QuestionPanel", () => {
     });
 
     fireEvent.change(screen.getByLabelText("版本题干"), { target: { value: "1+1=？" } });
-    fireEvent.change(screen.getByLabelText("版本正确答案"), { target: { value: "B" } });
+    fireEvent.click(screen.getByRole("button", { name: "增加选项" }));
+    fireEvent.change(screen.getByLabelText("选项 C"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("版本正确答案"), { target: { value: "C" } });
     fireEvent.change(screen.getByLabelText("变更摘要"), { target: { value: "修复题干文案" } });
     fireEvent.click(screen.getByRole("button", { name: "新增版本" }));
 
@@ -146,6 +165,14 @@ describe("QuestionPanel", () => {
       expect(api.createQuestionVersion).toHaveBeenCalledWith(
         1001,
         expect.objectContaining({
+          answer: { judge_mode: "by_option_key", correct_keys: ["C"] },
+          content: expect.objectContaining({
+            options: [
+              expect.objectContaining({ key: "A", text: "1" }),
+              expect.objectContaining({ key: "B", text: "2" }),
+              expect.objectContaining({ key: "C", text: "3" })
+            ]
+          }),
           change_summary: "修复题干文案"
         })
       );

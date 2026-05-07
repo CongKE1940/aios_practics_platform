@@ -24,6 +24,14 @@ import {
 } from "@aios/ui-web";
 
 import { downloadCsv } from "./list-page-utils";
+import {
+  buildTextQuestionOptions,
+  createDefaultOptionDrafts,
+  createOptionDraft,
+  getOptionKey,
+  normalizeCorrectKey,
+  type QuestionOptionDraft
+} from "./question-option-draft";
 
 export interface QuestionPanelApi {
   listQuestions(query?: QuestionListQuery): Promise<PageResult<Question>>;
@@ -37,16 +45,34 @@ export interface QuestionPanelApi {
 
 const defaultPageSize = 10;
 
-const defaultQuestionForm = {
-  question_type: "single_choice",
-  difficulty: "medium",
-  bank_id: "",
-  course_id: "",
-  stem: "",
-  option_a: "",
-  option_b: "",
-  correct_key: "B"
-};
+interface QuestionForm {
+  question_type: string;
+  difficulty: string;
+  bank_id: string;
+  course_id: string;
+  stem: string;
+  options: QuestionOptionDraft[];
+  correct_key: string;
+}
+
+interface VersionForm {
+  stem: string;
+  options: QuestionOptionDraft[];
+  correct_key: string;
+  change_summary: string;
+}
+
+function createDefaultQuestionForm(): QuestionForm {
+  return {
+    question_type: "single_choice",
+    difficulty: "medium",
+    bank_id: "",
+    course_id: "",
+    stem: "",
+    options: createDefaultOptionDrafts("", ""),
+    correct_key: "B"
+  };
+}
 
 const defaultEditForm = {
   difficulty: "",
@@ -55,11 +81,33 @@ const defaultEditForm = {
   course_id: ""
 };
 
-const defaultVersionForm = {
-  stem: "",
-  correct_key: "B",
-  change_summary: ""
-};
+function createDefaultVersionForm(): VersionForm {
+  return {
+    stem: "",
+    options: createDefaultOptionDrafts("1", "2"),
+    correct_key: "B",
+    change_summary: ""
+  };
+}
+
+const questionTypeOptions = [
+  { value: "single_choice", label: "单选题" },
+  { value: "multiple_choice", label: "多选题" },
+  { value: "true_false", label: "判断题" },
+  { value: "fill_blank", label: "填空题" },
+  { value: "short_answer", label: "简答题" }
+];
+
+const difficultyOptions = [
+  { value: "easy", label: "简单" },
+  { value: "medium", label: "中等" },
+  { value: "hard", label: "困难" }
+];
+
+const statusOptions = [
+  { value: "active", label: "启用" },
+  { value: "disabled", label: "禁用" }
+];
 
 type ModalState =
   | { type: "create" }
@@ -83,9 +131,9 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [total, setTotal] = useState(0);
-  const [questionForm, setQuestionForm] = useState(defaultQuestionForm);
+  const [questionForm, setQuestionForm] = useState<QuestionForm>(() => createDefaultQuestionForm());
   const [editForm, setEditForm] = useState(defaultEditForm);
-  const [versionForm, setVersionForm] = useState(defaultVersionForm);
+  const [versionForm, setVersionForm] = useState<VersionForm>(() => createDefaultVersionForm());
   const [modal, setModal] = useState<ModalState>(null);
   const didLoadRef = useRef(false);
 
@@ -206,10 +254,10 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
     await api.createQuestion({
       question_type: questionForm.question_type,
       difficulty: questionForm.difficulty,
-      content: buildChoiceContent(questionForm.stem, questionForm.option_a, questionForm.option_b),
+      content: buildChoiceContent(questionForm.stem, questionForm.options),
       answer: {
         judge_mode: "by_option_key",
-        correct_keys: [questionForm.correct_key]
+        correct_keys: [normalizeCorrectKey(questionForm.correct_key, questionForm.options)]
       },
       analysis: {},
       bank_ids: questionForm.bank_id ? [Number(questionForm.bank_id)] : [],
@@ -241,15 +289,15 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
       return;
     }
     await api.createQuestionVersion(modal.item.id, {
-      content: buildChoiceContent(versionForm.stem, "1", "2"),
+      content: buildChoiceContent(versionForm.stem, versionForm.options),
       answer: {
         judge_mode: "by_option_key",
-        correct_keys: [versionForm.correct_key]
+        correct_keys: [normalizeCorrectKey(versionForm.correct_key, versionForm.options)]
       },
       analysis: {},
       change_summary: versionForm.change_summary || undefined
     });
-    setVersionForm(defaultVersionForm);
+    setVersionForm(createDefaultVersionForm());
     setVersions(await api.listQuestionVersions(modal.item.id));
     await loadPage();
   }
@@ -272,6 +320,62 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
       course_id: item.course_ids?.[0] ? String(item.course_ids[0]) : ""
     });
     setModal({ type: "edit", item });
+  }
+
+  function updateQuestionOption(index: number, text: string) {
+    setQuestionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? { ...option, text } : option))
+    }));
+  }
+
+  function addQuestionOption() {
+    setQuestionForm((current) => ({
+      ...current,
+      options: [...current.options, createOptionDraft()]
+    }));
+  }
+
+  function removeQuestionOption(index: number) {
+    setQuestionForm((current) => {
+      if (current.options.length <= 1) {
+        return current;
+      }
+      const options = current.options.filter((_, optionIndex) => optionIndex !== index);
+      return {
+        ...current,
+        options,
+        correct_key: normalizeCorrectKey(current.correct_key, options)
+      };
+    });
+  }
+
+  function updateVersionOption(index: number, text: string) {
+    setVersionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? { ...option, text } : option))
+    }));
+  }
+
+  function addVersionOption() {
+    setVersionForm((current) => ({
+      ...current,
+      options: [...current.options, createOptionDraft()]
+    }));
+  }
+
+  function removeVersionOption(index: number) {
+    setVersionForm((current) => {
+      if (current.options.length <= 1) {
+        return current;
+      }
+      const options = current.options.filter((_, optionIndex) => optionIndex !== index);
+      return {
+        ...current,
+        options,
+        correct_key: normalizeCorrectKey(current.correct_key, options)
+      };
+    });
   }
 
   async function handleBatchDelete(rowIds: FixedActionListRowId[]) {
@@ -319,9 +423,9 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
 
   function closeModal() {
     setModal(null);
-    setQuestionForm(defaultQuestionForm);
+    setQuestionForm(createDefaultQuestionForm());
     setEditForm(defaultEditForm);
-    setVersionForm(defaultVersionForm);
+    setVersionForm(createDefaultVersionForm());
     setVersions([]);
   }
 
@@ -336,11 +440,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
           <ClearableFilterInput id="question_keyword" label="关键字" placeholder="输入题目关键字" value={keyword} onChange={setKeyword} />
           <ClearableFilterSelect id="question_type_filter" label="题型" placeholder="请选择题型" value={questionType} onChange={setQuestionType}>
-              <option value="single_choice">单选题</option>
-              <option value="multiple_choice">多选题</option>
-              <option value="true_false">判断题</option>
-              <option value="fill_blank">填空题</option>
-              <option value="short_answer">简答题</option>
+            {questionTypeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </ClearableFilterSelect>
           <ClearableFilterSelect id="question_course_id" label="课程" placeholder="请选择课程" value={courseID} onChange={setCourseID}>
               {courses.map((course) => (
@@ -357,8 +461,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
               ))}
           </ClearableFilterSelect>
           <ClearableFilterSelect id="question_status_filter" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
-              <option value="active">启用</option>
-              <option value="disabled">禁用</option>
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </ClearableFilterSelect>
           <div className="ui-admin-actions-bar__group" style={queryActionsStyle}>
             <button type="submit" className="ui-button ui-button--primary" disabled={loading}>
@@ -418,11 +525,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           value={questionForm.question_type}
                           onChange={(event) => setQuestionForm((current) => ({ ...current, question_type: event.target.value }))}
                         >
-                          <option value="single_choice">单选题</option>
-                          <option value="multiple_choice">多选题</option>
-                          <option value="true_false">判断题</option>
-                          <option value="fill_blank">填空题</option>
-                          <option value="short_answer">简答题</option>
+                          {questionTypeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -432,9 +539,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           value={questionForm.difficulty}
                           onChange={(event) => setQuestionForm((current) => ({ ...current, difficulty: event.target.value }))}
                         >
-                          <option value="easy">简单</option>
-                          <option value="medium">中等</option>
-                          <option value="hard">困难</option>
+                          {difficultyOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -475,30 +584,16 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           onChange={(event) => setQuestionForm((current) => ({ ...current, stem: event.target.value }))}
                         />
                       </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="question_option_a">选项 A</label>
-                        <input
-                          id="question_option_a"
-                          value={questionForm.option_a}
-                          onChange={(event) => setQuestionForm((current) => ({ ...current, option_a: event.target.value }))}
-                        />
-                      </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="question_option_b">选项 B</label>
-                        <input
-                          id="question_option_b"
-                          value={questionForm.option_b}
-                          onChange={(event) => setQuestionForm((current) => ({ ...current, option_b: event.target.value }))}
-                        />
-                      </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="question_correct_key">正确答案</label>
-                        <input
-                          id="question_correct_key"
-                          value={questionForm.correct_key}
-                          onChange={(event) => setQuestionForm((current) => ({ ...current, correct_key: event.target.value }))}
-                        />
-                      </div>
+                      <OptionDraftFields
+                        idPrefix="question"
+                        options={questionForm.options}
+                        correctKey={questionForm.correct_key}
+                        correctKeyLabel="正确答案"
+                        onOptionChange={updateQuestionOption}
+                        onAddOption={addQuestionOption}
+                        onRemoveOption={removeQuestionOption}
+                        onCorrectKeyChange={(correctKey) => setQuestionForm((current) => ({ ...current, correct_key: correctKey }))}
+                      />
                     </div>
                   </div>
                   <div className="ui-admin-modal__footer">
@@ -533,9 +628,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           onChange={(event) => setEditForm((current) => ({ ...current, difficulty: event.target.value }))}
                         >
                           <option value="">不修改</option>
-                          <option value="easy">简单</option>
-                          <option value="medium">中等</option>
-                          <option value="hard">困难</option>
+                          {difficultyOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -546,8 +643,11 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           onChange={(event) => setEditForm((current) => ({ ...current, status: event.target.value }))}
                         >
                           <option value="">不修改</option>
-                          <option value="active">启用</option>
-                          <option value="disabled">禁用</option>
+                          {statusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="ui-admin-form__field">
@@ -666,14 +766,16 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
                           onChange={(event) => setVersionForm((current) => ({ ...current, stem: event.target.value }))}
                         />
                       </div>
-                      <div className="ui-admin-form__field">
-                        <label htmlFor="question_version_correct_key">版本正确答案</label>
-                        <input
-                          id="question_version_correct_key"
-                          value={versionForm.correct_key}
-                          onChange={(event) => setVersionForm((current) => ({ ...current, correct_key: event.target.value }))}
-                        />
-                      </div>
+                      <OptionDraftFields
+                        idPrefix="question_version"
+                        options={versionForm.options}
+                        correctKey={versionForm.correct_key}
+                        correctKeyLabel="版本正确答案"
+                        onOptionChange={updateVersionOption}
+                        onAddOption={addVersionOption}
+                        onRemoveOption={removeVersionOption}
+                        onCorrectKeyChange={(correctKey) => setVersionForm((current) => ({ ...current, correct_key: correctKey }))}
+                      />
                       <div className="ui-admin-form__field">
                         <label htmlFor="question_version_change_summary">变更摘要</label>
                         <input
@@ -707,6 +809,80 @@ export function QuestionPanel({ api, onNavigate }: { api: QuestionPanelApi; onNa
   );
 }
 
+interface OptionDraftFieldsProps {
+  idPrefix: string;
+  options: QuestionOptionDraft[];
+  correctKey: string;
+  correctKeyLabel: string;
+  onOptionChange(index: number, text: string): void;
+  onAddOption(): void;
+  onRemoveOption(index: number): void;
+  onCorrectKeyChange(correctKey: string): void;
+}
+
+function OptionDraftFields({
+  idPrefix,
+  options,
+  correctKey,
+  correctKeyLabel,
+  onOptionChange,
+  onAddOption,
+  onRemoveOption,
+  onCorrectKeyChange
+}: OptionDraftFieldsProps) {
+  return (
+    <>
+      <div className="ui-admin-form__field" style={{ gridColumn: "1 / -1" }}>
+        <div style={optionSectionHeaderStyle}>
+          <span style={optionSectionTitleStyle}>选项</span>
+          <button type="button" className="ui-button ui-button--ghost" onClick={onAddOption}>
+            增加选项
+          </button>
+        </div>
+        <div style={optionListStyle}>
+          {options.map((option, index) => {
+            const optionKey = getOptionKey(index);
+            const optionInputID = `${idPrefix}_option_${option.draft_id}`;
+            return (
+              <div key={option.draft_id} style={optionRowStyle}>
+                <label htmlFor={optionInputID}>{`选项 ${optionKey}`}</label>
+                <div style={optionInputRowStyle}>
+                  <input
+                    id={optionInputID}
+                    value={option.text}
+                    onChange={(event) => onOptionChange(index, event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="ui-button ui-button--ghost"
+                    onClick={() => onRemoveOption(index)}
+                    disabled={options.length <= 1}
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="ui-admin-form__field">
+        <label htmlFor={`${idPrefix}_correct_key`}>{correctKeyLabel}</label>
+        <select id={`${idPrefix}_correct_key`} value={normalizeCorrectKey(correctKey, options)} onChange={(event) => onCorrectKeyChange(event.target.value)}>
+          {options.map((_, index) => {
+            const optionKey = getOptionKey(index);
+            return (
+              <option key={optionKey} value={optionKey}>
+                {optionKey}
+              </option>
+            );
+          })}
+        </select>
+      </div>
+    </>
+  );
+}
+
 function buildQuestionQuery(
   keyword: string,
   questionType: string,
@@ -727,17 +903,14 @@ function buildQuestionQuery(
   };
 }
 
-function buildChoiceContent(stem: string, optionA: string, optionB: string): QuestionContentInput {
+function buildChoiceContent(stem: string, options: QuestionOptionDraft[]): QuestionContentInput {
   return {
     stem: {
       content_type: "text",
       text: stem,
       assets: []
     },
-    options: [
-      { key: "A", content_type: "text", text: optionA, assets: [] },
-      { key: "B", content_type: "text", text: optionB, assets: [] }
-    ],
+    options: buildTextQuestionOptions(options),
     option_order_randomizable: true,
     ext: {}
   };
@@ -877,4 +1050,34 @@ const queryActionsStyle: CSSProperties = {
   alignItems: "center",
   paddingBottom: 1,
   whiteSpace: "nowrap"
+};
+
+const optionSectionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  marginBottom: 10
+};
+
+const optionSectionTitleStyle: CSSProperties = {
+  fontWeight: 700
+};
+
+const optionListStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12
+};
+
+const optionRowStyle: CSSProperties = {
+  display: "grid",
+  gap: 6
+};
+
+const optionInputRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 8,
+  alignItems: "center"
 };
