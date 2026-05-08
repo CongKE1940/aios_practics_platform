@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export interface ToastNoticeProps {
   tone?: "info" | "success" | "warning" | "danger";
@@ -40,55 +40,21 @@ export function ToastNotice({ tone = "info", title, description, durationMs = 32
   }
 
   return (
-    <div style={toastLayerStyle} aria-live={tone === "danger" ? "assertive" : "polite"} aria-atomic="true">
-      <section className={`ui-status ui-status--${tone}`} role={tone === "danger" ? "alert" : "status"} style={toastStyle}>
-        <div style={toastContentStyle}>
+    <div className="ui-toast-layer" aria-live={tone === "danger" ? "assertive" : "polite"} aria-atomic="true">
+      <section className={`ui-status ui-status--${tone} ui-toast-notice`} role={tone === "danger" ? "alert" : "status"}>
+        <div className="ui-toast-notice__content">
           <strong>{title}</strong>
-          {description ? <p style={descriptionStyle}>{description}</p> : null}
+          {description ? <p>{description}</p> : null}
         </div>
-        <button type="button" className="ui-admin-link" aria-label="关闭提示" onClick={handleClose} style={closeButtonStyle}>
-          ×
+        <button
+          type="button"
+          className="ui-toast-notice__close"
+          aria-label="关闭提示"
+          onClick={handleClose}
+        >
+          &times;
         </button>
       </section>
     </div>
   );
 }
-
-const toastLayerStyle: CSSProperties = {
-  position: "fixed",
-  top: 18,
-  right: 22,
-  zIndex: 1200,
-  width: "min(420px, calc(100vw - 44px))",
-  pointerEvents: "none"
-};
-
-const toastStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 12,
-  margin: 0,
-  padding: "14px 16px",
-  pointerEvents: "auto",
-  boxShadow: "0 18px 48px rgba(24, 35, 50, 0.18)"
-};
-
-const toastContentStyle: CSSProperties = {
-  minWidth: 0
-};
-
-const descriptionStyle: CSSProperties = {
-  margin: "4px 0 0"
-};
-
-const closeButtonStyle: CSSProperties = {
-  flex: "0 0 auto",
-  border: 0,
-  minHeight: 24,
-  minWidth: 24,
-  padding: 0,
-  fontSize: 20,
-  lineHeight: 1,
-  textDecoration: "none"
-};

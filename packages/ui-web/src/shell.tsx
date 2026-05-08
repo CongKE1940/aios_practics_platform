@@ -24,6 +24,7 @@ export interface StatusNoticeProps {
 export interface EmptyStateProps {
   title: string;
   description?: string;
+  icon?: ReactNode;
 }
 
 const SIDEBAR_EXPAND_TARGET_SELECTOR = ".ui-nav-tree__item, .ui-nav-tree__group-trigger, .ui-sidebar-user__trigger";
@@ -84,12 +85,15 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
     <div className={shellClassName}>
       <aside
         className="ui-shell__sidebar"
+        aria-label="侧边导航"
         onMouseEnter={handleSidebarMouseEnter}
         onMouseMove={handleSidebarMouseMove}
         onMouseLeave={handleSidebarMouseLeave}
       >
         <div className="ui-shell__brand">{brand}</div>
-        <div className="ui-shell__nav">{sidebar}</div>
+        <nav className="ui-shell__nav" aria-label="主导航">
+          {sidebar}
+        </nav>
       </aside>
       <div className="ui-shell__main">
         <header className="ui-shell__header">
@@ -99,7 +103,7 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
               type="button"
               className="ui-theme-toggle"
               role="switch"
-              aria-label="暗夜模式"
+              aria-label={darkMode ? "切换到日间模式" : "切换到暗夜模式"}
               aria-checked={darkMode}
               title={darkMode ? "切换到日间模式" : "切换到暗夜模式"}
               onClick={() => setDarkMode((current) => !current)}
@@ -110,7 +114,9 @@ export function AppShell({ brand, sidebar, header, children, sidebarCollapsed = 
             </button>
           </div>
         </header>
-        <div className="ui-shell__content">{children}</div>
+        <main className="ui-shell__content" role="main">
+          {children}
+        </main>
       </div>
     </div>
   );
@@ -149,7 +155,7 @@ function blurActiveSidebarElement() {
 
 export function PageSection({ title, description, actions, children }: PageSectionProps) {
   return (
-    <section className="ui-page-section">
+    <section className="ui-page-section" aria-label={title}>
       <div className="ui-page-section__header">
         <div className="ui-page-section__copy">
           <h2>{title}</h2>
@@ -162,18 +168,30 @@ export function PageSection({ title, description, actions, children }: PageSecti
   );
 }
 
+const TONE_LABELS: Record<string, string> = {
+  info: "提示",
+  success: "成功",
+  warning: "警告",
+  danger: "错误"
+};
+
 export function StatusNotice({ tone, title, description }: StatusNoticeProps) {
   return (
-    <div className={`ui-status ui-status--${tone}`} role="status">
+    <div
+      className={`ui-status ui-status--${tone}`}
+      role={tone === "danger" ? "alert" : "status"}
+      aria-label={TONE_LABELS[tone] ?? tone}
+    >
       <strong>{title}</strong>
       {description ? <p>{description}</p> : null}
     </div>
   );
 }
 
-export function EmptyState({ title, description }: EmptyStateProps) {
+export function EmptyState({ title, description, icon }: EmptyStateProps) {
   return (
-    <div className="ui-empty-state">
+    <div className="ui-empty-state" role="status">
+      {icon ? <div className="ui-empty-state__icon" aria-hidden="true">{icon}</div> : null}
       <strong>{title}</strong>
       {description ? <p>{description}</p> : null}
     </div>
