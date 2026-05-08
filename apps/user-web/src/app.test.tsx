@@ -20,8 +20,7 @@ describe("UserApp", () => {
   it("shows login form when no session exists", () => {
     render(<UserApp authApi={createAuthApiMock()} />);
 
-    expect(screen.getByRole("heading", { name: "进入题练通学习工作台" })).toBeTruthy();
-    expect(screen.getByText("选择所在学校或组织后登录，继续课程练习、考试测评、错题巩固和班级学习。")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "题练通 · 学习端" })).toBeTruthy();
     expect(screen.getByRole("form", { name: "登录表单" })).toBeTruthy();
     expect(screen.getByLabelText("组织")).toBeTruthy();
     expect(screen.getByLabelText("用户名")).toBeTruthy();
@@ -1147,7 +1146,7 @@ describe("UserApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "班级学习" }));
 
     await waitFor(() => {
-      expect(screen.getByText("当前班级学习功能暂不可用。")).toBeTruthy();
+      expect(screen.getByText("功能暂不可用。")).toBeTruthy();
     });
   });
 

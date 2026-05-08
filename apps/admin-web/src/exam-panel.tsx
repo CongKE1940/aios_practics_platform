@@ -299,7 +299,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
 
       <section className="ui-admin-card" aria-label="考试数据展示区" style={dataRegionStyle} aria-busy={loading}>
         <form className="ui-admin-filters" style={filterFormStyle} onSubmit={(event) => void handleQuery(event)}>
-          <ClearableFilterInput id="admin_exam_keyword" label="关键字" placeholder="输入考试名称或组卷方式" value={keyword} onChange={setKeyword} />
+          <ClearableFilterInput id="admin_exam_keyword" label="关键字" placeholder="考试名称" value={keyword} onChange={setKeyword} />
           <ClearableFilterSelect id="admin_exam_status" label="状态" placeholder="请选择状态" value={status} onChange={setStatus}>
               <option value="draft">草稿</option>
               <option value="published">已发布</option>
@@ -525,7 +525,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                         <label htmlFor="exam_targets">发布范围</label>
                         <textarea
                           id="exam_targets"
-                          placeholder="每行一个，例如：class:301、course:10、user:1001"
+                          placeholder="class:301 或 course:10"
                           value={form.targets_text}
                           onChange={(event) => setForm((current) => ({ ...current, targets_text: event.target.value }))}
                         />
@@ -540,7 +540,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                           <label htmlFor="exam_fixed_questions">固定题目</label>
                           <textarea
                             id="exam_fixed_questions"
-                            placeholder="每行一个：question_id:question_version_id:score:display_order"
+                            placeholder="question_id:version_id:score:order"
                             value={form.fixed_questions_text}
                             onChange={(event) => setForm((current) => ({ ...current, fixed_questions_text: event.target.value }))}
                           />
@@ -550,7 +550,7 @@ export function ExamPanel({ api, onNavigate }: ExamPanelProps) {
                           <label htmlFor="exam_paper_rules">抽题规则</label>
                           <textarea
                             id="exam_paper_rules"
-                            placeholder="每行一个：question_type:score_per_question:question_count:bank_id|bank_id"
+                            placeholder="type:score:count:bank_id"
                             value={form.paper_rules_text}
                             onChange={(event) => setForm((current) => ({ ...current, paper_rules_text: event.target.value }))}
                           />

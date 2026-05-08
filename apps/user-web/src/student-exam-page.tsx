@@ -471,7 +471,6 @@ export function StudentExamPage({ api }: StudentExamPageProps) {
         <div className="ui-admin-card__header">
           <div>
             <h3>创建自测考试</h3>
-            <p className="ui-admin-subtle">按题型和题库随机抽题，仅当前学生可见。</p>
           </div>
         </div>
         <form className="ui-admin-form__grid ui-admin-form__grid--wide" onSubmit={(event) => void handleCreateSelfTest(event)}>

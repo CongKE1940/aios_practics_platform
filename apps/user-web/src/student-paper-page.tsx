@@ -326,7 +326,6 @@ export function StudentPaperPage({ api, onPracticeCreated, onNavigate }: Student
         <div>
           <span className="ui-admin-page__eyebrow">试卷中心</span>
           <h2>公开试卷</h2>
-          <p className="ui-admin-page__description">查看已发布试卷，按试卷进入练习或创建个人测试。</p>
         </div>
       </div>
       {errorMessage ? <ToastNotice tone="danger" title="试卷操作失败" description={errorMessage} onClose={() => setErrorMessage("")} /> : null}

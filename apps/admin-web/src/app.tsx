@@ -552,8 +552,7 @@ export function AdminApp({
         <img src={sceneBackground} alt="" className="ui-scene-image" />
         <section className="ui-auth-hero">
           <span className="ui-auth-hero__sr">AIOS 管理端登录说明</span>
-          <h1 className="ui-auth-hero__title">进入题练通管理工作台</h1>
-          <p className="ui-auth-hero__copy">按学校或组织进入对应租户，处理题库、导入、考试、公告、权限和审计任务。</p>
+          <h1 className="ui-auth-hero__title">题练通 · 管理端</h1>
         </section>
         <section className="ui-auth-card">
           <form
@@ -564,7 +563,6 @@ export function AdminApp({
             <header className="ui-auth-form__header">
               <img src={brandIcon} alt="" className="ui-brand-mark" />
               <h2>管理端登录</h2>
-              <p>选择组织后登录，进入学校运营与教学管理任务。</p>
             </header>
             <div className="ui-field">
               <label htmlFor="tenant_code">组织</label>
@@ -753,9 +751,9 @@ export function AdminApp({
           ) : isKnownAdminPath(selectedPath) && canOpenSelectedPath ? (
             currentView
           ) : isKnownAdminPath(selectedPath) ? (
-            <EmptyState title="无权限访问该页面。" description="" />
+            <EmptyState title="无权限访问" />
           ) : (
-            <EmptyState title="请选择左侧功能入口。" description="" />
+            <EmptyState title="请选择功能入口" />
           )}
         </div>
         {pendingAnnouncements.length > 0 ? (
@@ -909,7 +907,7 @@ function InitialPasswordChangeFields({
 }: InitialPasswordChangeFieldsProps) {
   return (
     <div className="ui-auth-form__stack" aria-label="初始密码修改">
-      <StatusNotice tone="warning" title="需要修改初始密码" description="当前账号使用一次性密码，修改后才能进入系统。" />
+      <StatusNotice tone="warning" title="需要修改初始密码" />
       <div className="ui-field">
         <label htmlFor="initial_new_password">新密码</label>
         <input
@@ -1002,7 +1000,7 @@ function AnnouncementLoginModal({ announcements, onConfirm }: { announcements: N
               <dd>{formatDateTime(firstAnnouncement.publish_at)}</dd>
             </div>
           </dl>
-          {announcements.length > 1 ? <p>还有 {announcements.length - 1} 条未读公告，本次确认后不再弹出这些公告。</p> : null}
+          {announcements.length > 1 ? <p>还有 {announcements.length - 1} 条未读公告</p> : null}
         </div>
         <div className="ui-admin-modal__footer">
           <button type="button" className="ui-button ui-button--primary" onClick={onConfirm}>

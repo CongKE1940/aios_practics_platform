@@ -18,7 +18,7 @@ const userWorkbenchMenu: MenuItem = {
 
 export function MenuNav({ menus, selectedPath, onSelect }: MenuNavProps) {
   if (menus.length === 0) {
-    return <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />;
+    return <EmptyState title="暂无可用功能" description="请联系管理员分配权限。" />;
   }
 
   return (

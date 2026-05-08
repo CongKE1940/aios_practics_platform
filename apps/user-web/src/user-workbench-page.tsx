@@ -87,8 +87,7 @@ export function UserWorkbenchPage({
       <div className="ui-hero-panel">
         <div className="ui-hero-panel__content">
           <span className="ui-hero-panel__eyebrow">学习路径</span>
-          <h2>{userDisplayName}，从今天最需要处理的学习任务开始。</h2>
-          <p>{`${userTypeLabel}工作台把课程、练题、考试、错题和通知放在同一条路径里；先进入当前任务，再回看结果与反馈。`}</p>
+          <h2>{userDisplayName}，欢迎回来</h2>
           <div className="ui-learning-strip" aria-label="学习路径要点">
             <span>课程入口</span>
             <span>练题闭环</span>
@@ -117,7 +116,6 @@ export function UserWorkbenchPage({
           <div>
             <span className="ui-kicker">下一步</span>
             <h3>学习任务入口</h3>
-            <p className="ui-admin-subtle">按当前身份展示常用入口，优先完成课程、练题、考试和反馈处理。</p>
           </div>
         </div>
         <div className="ui-quick-grid">
@@ -145,7 +143,6 @@ export function UserWorkbenchPage({
             <div>
               <span className="ui-kicker">学习节奏</span>
               <h3>学习节奏概览</h3>
-              <p>把课程、练题、考试和通知放在同一张视图里。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(resourceCount)}</strong>
           </header>
@@ -157,7 +154,6 @@ export function UserWorkbenchPage({
             <div>
               <span className="ui-kicker">题目状态</span>
               <h3>题目状态分布</h3>
-              <p>错题、熟题、疑惑题的沉淀情况。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(questionStateTotal)}</strong>
           </header>
@@ -186,7 +182,6 @@ export function UserWorkbenchPage({
             <div>
               <span className="ui-kicker">学习资源</span>
               <h3>学习资源占比</h3>
-              <p>当前账号可触达资源的粗略分布。</p>
             </div>
           </header>
           <div className="ui-admin-progress-list">
@@ -202,7 +197,6 @@ export function UserWorkbenchPage({
             <div>
               <span className="ui-kicker">行动顺序</span>
               <h3>下一步行动</h3>
-              <p>按“先学习、再巩固、最后处理提醒”的顺序推进。</p>
             </div>
           </header>
           <ol className="ui-learning-steps" style={stepListStyle}>
@@ -229,19 +223,19 @@ function buildNextActions(stats: UserWorkbenchStats, userTypeLabel: string, avai
   const sharedActions = [
     {
       title: "进入我的课程",
-      helper: `可用课程 ${formatNumber(stats.courseCount)} 门`,
+      helper: `${formatNumber(stats.courseCount)} 门`,
       path: "/app/courses",
       badge: "课"
     },
     {
       title: "开始练题",
-      helper: `历史练习 ${formatNumber(stats.practiceSessionCount)} 次`,
+      helper: `${formatNumber(stats.practiceSessionCount)} 次`,
       path: "/app/practice",
       badge: "练"
     },
     {
       title: "处理错题与疑惑",
-      helper: `错题 ${formatNumber(stats.wrongQuestionCount)} 道，疑惑 ${formatNumber(stats.confusedQuestionCount)} 道`,
+      helper: `错题 ${formatNumber(stats.wrongQuestionCount)}，疑惑 ${formatNumber(stats.confusedQuestionCount)}`,
       path: stats.wrongQuestionCount > 0 ? "/app/practice/wrong" : "/app/practice/confused",
       badge: "错"
     },
@@ -264,7 +258,7 @@ function buildNextActions(stats: UserWorkbenchStats, userTypeLabel: string, avai
       ...sharedActions,
       {
         title: "维护我的题库",
-        helper: `题库 ${formatNumber(stats.questionBankCount)} 个`,
+        helper: `题库 ${formatNumber(stats.questionBankCount)}`,
         path: "/app/teacher-banks",
         badge: "库"
       }

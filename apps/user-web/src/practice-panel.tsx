@@ -318,7 +318,6 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
         <div className="ui-admin-card__header">
           <div>
             <h3>开始练题</h3>
-            <p className="ui-admin-subtle">选择来源、流转方式和题量后开始本轮练习。</p>
           </div>
         </div>
 
@@ -420,7 +419,6 @@ export function PracticePanel({ api, initialSession, onInitialSessionConsumed, o
           <div className="ui-admin-card__header">
             <div>
               <h3>{`第 ${currentIndex + 1} 题`}</h3>
-              <p className="ui-admin-subtle">选择答案后提交，可继续标熟、标疑惑或进入互动反馈。</p>
             </div>
           </div>
           <div className="ui-practice-stem">

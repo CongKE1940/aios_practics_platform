@@ -353,8 +353,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         <img src={sceneBackground} alt="" className="ui-scene-image" />
         <section className="ui-auth-hero">
           <span className="ui-auth-hero__sr">AIOS 学习端登录说明</span>
-          <h1 className="ui-auth-hero__title">进入题练通学习工作台</h1>
-          <p className="ui-auth-hero__copy">选择所在学校或组织后登录，继续课程练习、考试测评、错题巩固和班级学习。</p>
+          <h1 className="ui-auth-hero__title">题练通 · 学习端</h1>
         </section>
         <section className="ui-auth-card">
           <LoginPage
@@ -463,7 +462,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         {session.menus.length === 0 ? (
           <div className="ui-admin-route ui-user-route">
             <PageSection title="当前学习内容" description="">
-              <EmptyState title="当前账号暂无可用功能" description="请联系管理员分配课程或权限。" />
+              <EmptyState title="暂无可用功能" description="请联系管理员分配权限。" />
             </PageSection>
           </div>
         ) : (
@@ -519,7 +518,7 @@ function renderUserContent({
         currentPracticeApi && isUserProfileApi(currentPracticeApi) ? (
           <ProfilePage api={currentPracticeApi} onUserUpdated={onUserUpdated} />
         ) : (
-          <p>当前个人信息功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/courses" ? (
@@ -531,35 +530,35 @@ function renderUserContent({
             onNavigate={setSelectedPath}
           />
         ) : (
-          <p>当前课程功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/notifications" ? (
         currentPracticeApi && isNotificationCenterApi(currentPracticeApi) ? (
           <NotificationCenterPage api={currentPracticeApi} onUnreadMayChange={onUnreadMayChange} />
         ) : (
-          <p>当前通知中心暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/announcements" ? (
         currentPracticeApi && isSystemAnnouncementApi(currentPracticeApi) ? (
           <SystemAnnouncementPage api={currentPracticeApi} onUnreadMayChange={onUnreadMayChange} />
         ) : (
-          <p>当前系统公告暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/teacher-banks" ? (
         currentPracticeApi && isTeacherQuestionBankApi(currentPracticeApi) ? (
           <TeacherQuestionBankPage api={currentPracticeApi} userType={session.user.user_type} />
         ) : (
-          <p>当前题库功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/questions/feedback" ? (
         currentPracticeApi && isQuestionFeedbackApi(currentPracticeApi) ? (
           <QuestionFeedbackPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
         ) : (
-          <p>当前题目互动功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {isStudentSessionQuestionRoute ? (
@@ -570,28 +569,28 @@ function renderUserContent({
             onNavigate={setSelectedPath}
           />
         ) : (
-          <p>当前单题详情功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {!isStudentSessionQuestionRoute && isStudentSessionRoute ? (
         currentPracticeApi && isStudentPracticeSessionDetailApi(currentPracticeApi) ? (
           <StudentPracticeSessionDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
         ) : (
-          <p>当前单次练题详情功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {!isStudentSessionRoute && selectedRoute.startsWith("/app/class-learning/student") ? (
         currentPracticeApi && isStudentLearningDetailApi(currentPracticeApi) ? (
           <StudentLearningDetailPage api={currentPracticeApi} path={selectedPath} onNavigate={setSelectedPath} />
         ) : (
-          <p>当前学生学习详情功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/class-learning" ? (
         currentPracticeApi && isClassLearningApi(currentPracticeApi) ? (
           <ClassLearningPage api={currentPracticeApi} onNavigate={setSelectedPath} />
         ) : (
-          <p>当前班级学习功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/exams" ? (
@@ -600,14 +599,14 @@ function renderUserContent({
         ) : session.user.user_type === "student" && currentPracticeApi && isStudentExamApi(currentPracticeApi) ? (
           <StudentExamPage api={currentPracticeApi} />
         ) : (
-          <p>当前考试功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/exam-papers" ? (
         session.user.user_type === "student" && currentPracticeApi && isStudentPaperApi(currentPracticeApi) ? (
           <StudentPaperPage api={currentPracticeApi} onPracticeCreated={setPendingPracticeSession} onNavigate={setSelectedPath} />
         ) : (
-          <p>当前试卷功能暂不可用。</p>
+          <p>功能暂不可用。</p>
         )
       ) : null}
       {selectedRoute === "/app/practice" && currentPracticeApi ? (
@@ -947,7 +946,7 @@ function AnnouncementLoginModal({ announcements, onConfirm }: { announcements: N
               <dd>{formatDateTime(firstAnnouncement.publish_at)}</dd>
             </div>
           </dl>
-          {announcements.length > 1 ? <p>还有 {announcements.length - 1} 条未读公告，可在系统公告页继续查看。</p> : null}
+          {announcements.length > 1 ? <p>还有 {announcements.length - 1} 条未读公告</p> : null}
         </div>
         <div className="ui-admin-modal__footer">
           <button type="button" className="ui-button ui-button--primary" onClick={onConfirm}>

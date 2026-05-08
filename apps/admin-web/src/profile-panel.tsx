@@ -36,7 +36,7 @@ export function ProfilePanel({ api, onUserUpdated }: ProfilePanelProps) {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [notice, setNotice] = useState<{ tone: "success" | "danger"; title: string; description: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "success" | "danger"; title: string; description?: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -83,7 +83,7 @@ export function ProfilePanel({ api, onUserUpdated }: ProfilePanelProps) {
       setProfile(updated);
       setProfileForm(toProfileForm(updated));
       onUserUpdated?.(updated);
-      setNotice({ tone: "success", title: "个人信息已保存", description: "页面中的用户名称已同步更新。" });
+      setNotice({ tone: "success", title: "个人信息已保存" });
     } catch (error) {
       setNotice({ tone: "danger", title: "保存失败", description: error instanceof Error ? error.message : "个人信息保存失败" });
     } finally {
@@ -95,11 +95,11 @@ export function ProfilePanel({ api, onUserUpdated }: ProfilePanelProps) {
     event.preventDefault();
     setNotice(null);
     if (passwordForm.new_password !== passwordForm.confirm_password) {
-      setNotice({ tone: "danger", title: "密码未保存", description: "两次输入的新密码不一致。" });
+      setNotice({ tone: "danger", title: "密码未保存", description: "两次输入的新密码不一致" });
       return;
     }
     if (passwordForm.new_password.length < 8 || passwordForm.new_password === passwordForm.old_password) {
-      setNotice({ tone: "danger", title: "密码未保存", description: "新密码至少 8 位，且不能与当前密码相同。" });
+      setNotice({ tone: "danger", title: "密码未保存", description: "新密码至少 8 位，不能与当前密码相同" });
       return;
     }
 
@@ -112,7 +112,7 @@ export function ProfilePanel({ api, onUserUpdated }: ProfilePanelProps) {
       setProfile(updated);
       onUserUpdated?.(updated);
       setPasswordForm(emptyPasswordForm);
-      setNotice({ tone: "success", title: "密码已更新", description: "下次登录请使用新密码。" });
+      setNotice({ tone: "success", title: "密码已更新" });
     } catch (error) {
       setNotice({ tone: "danger", title: "密码修改失败", description: error instanceof Error ? error.message : "密码修改失败" });
     } finally {

@@ -170,10 +170,7 @@ export function AdminWorkbench({
       <section className="ui-hero-panel" aria-label="管理端运营总览">
         <div className="ui-hero-panel__content">
           <span className="ui-hero-panel__eyebrow">运营总览</span>
-          <h2>{userDisplayName ? `${userDisplayName}，查看今日教学运营状态。` : "查看今日教学运营状态。"}</h2>
-          <p>
-            管理端围绕组织、成员、题库、导入、考试、公告和审计形成闭环；优先处理影响教学交付的任务，再进入明细页面核查。
-          </p>
+          <h2>{userDisplayName ? `${userDisplayName}，欢迎回来` : "管理工作台"}</h2>
           <div className="ui-dashboard-strip" aria-label="管理重点">
             <span>租户边界</span>
             <span>题库质量</span>
@@ -217,7 +214,6 @@ export function AdminWorkbench({
           <div>
             <span className="ui-kicker">下一步</span>
             <h3>运营任务入口</h3>
-            <p className="ui-admin-subtle">按教学交付顺序处理题库、导入、考试、通知和审计。</p>
           </div>
         </div>
         <div className="ui-quick-grid">
@@ -245,7 +241,6 @@ export function AdminWorkbench({
             <div>
               <span className="ui-kicker">组织结构</span>
               <h3>组织结构分布</h3>
-              <p>学校、年级和班级是后续课程、成员与考试目标的基础。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(stats.organizationCount + stats.gradeCount + stats.classCount)}</strong>
           </header>
@@ -257,7 +252,6 @@ export function AdminWorkbench({
             <div>
               <span className="ui-kicker">成员构成</span>
               <h3>成员构成</h3>
-              <p>教师与学生规模影响练题、批阅、考试统计和通知触达。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(stats.memberCount)}</strong>
           </header>
@@ -284,7 +278,6 @@ export function AdminWorkbench({
             <div>
               <span className="ui-kicker">内容测评</span>
               <h3>内容与考试规模</h3>
-              <p>题库、题目和考试共同构成练习与测评供给。</p>
             </div>
             <strong>{loading ? "--" : formatPercent(stats.passRate)}</strong>
           </header>
@@ -296,7 +289,6 @@ export function AdminWorkbench({
             <div>
               <span className="ui-kicker">通知触达</span>
               <h3>通知处理进度</h3>
-              <p>未读通知是运营沟通需要继续跟进的信号。</p>
             </div>
             <strong>{loading ? "--" : formatNumber(stats.noticeCount)}</strong>
           </header>
@@ -489,7 +481,7 @@ function buildDashboardCards(stats: WorkbenchStats, isSystemAdmin: boolean): Das
     {
       title: "公告数",
       value: formatNumber(stats.noticeCount),
-      helper: `已读人数 ${formatNumber(stats.noticeReadCount)} / 未读人数 ${formatNumber(stats.noticeUnreadCount)}`,
+      helper: `已读 ${formatNumber(stats.noticeReadCount)} / 未读 ${formatNumber(stats.noticeUnreadCount)}`,
       icon: "notice"
     }
   ];
@@ -499,37 +491,37 @@ function buildWorkbenchTasks(stats: WorkbenchStats, availablePaths?: string[]): 
   const tasks = [
     {
       title: "维护题库与题目",
-      helper: `题库 ${formatNumber(stats.questionBankCount)} 个，题目 ${formatNumber(stats.questionCount)} 道`,
+      helper: `题库 ${formatNumber(stats.questionBankCount)}，题目 ${formatNumber(stats.questionCount)}`,
       path: "/admin/questions",
       badge: "题"
     },
     {
       title: "处理导入任务",
-      helper: "下载模板、创建任务、查看行级错误和失败报告",
+      helper: "模板下载与导入管理",
       path: "/admin/imports",
       badge: "入"
     },
     {
       title: "推进考试流程",
-      helper: `当前考试 ${formatNumber(stats.examCount)} 场，通过率 ${formatPercent(stats.passRate)}`,
+      helper: `考试 ${formatNumber(stats.examCount)} 场`,
       path: "/admin/exams",
       badge: "考"
     },
     {
       title: "发布公告通知",
-      helper: `未读 ${formatNumber(stats.noticeUnreadCount)} 条，已读 ${formatNumber(stats.noticeReadCount)} 条`,
+      helper: `未读 ${formatNumber(stats.noticeUnreadCount)} 条`,
       path: "/admin/notices",
       badge: "告"
     },
     {
       title: "核查数据看板",
-      helper: "查看指标、异常、趋势和教学运营概览",
+      helper: "查看指标与趋势",
       path: "/admin/analytics",
       badge: "数"
     },
     {
       title: "追踪审计快照",
-      helper: "回看实体变更、学籍变更和任课变更记录",
+      helper: "变更记录与审计",
       path: "/admin/history",
       badge: "审"
     }

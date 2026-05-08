@@ -61,7 +61,6 @@ export function LoginPage({
       <header className="ui-auth-form__header">
         <img src={brandIcon} alt="" className="ui-brand-mark" />
         <h2>学习端登录</h2>
-        <p>进入课程、练题、考试和通知组成的学习工作台。</p>
       </header>
       <div className="ui-field">
         <label htmlFor="tenant_code">组织</label>
@@ -100,7 +99,7 @@ export function LoginPage({
       {errorMessage ? <StatusNotice tone="danger" title="登录失败" description={errorMessage} /> : null}
       {passwordChangeState ? (
         <>
-          <StatusNotice tone="warning" title="需要修改初始密码" description="当前账号使用一次性密码，修改后才能进入系统。" />
+          <StatusNotice tone="warning" title="需要修改初始密码" />
           <div className="ui-field">
             <label htmlFor="initial_new_password">新密码</label>
             <input

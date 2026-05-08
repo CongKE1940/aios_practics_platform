@@ -418,7 +418,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
             </div>
             <div className="ui-admin-modal__body">
               <p className="ui-admin-subtle">
-                默认删除会先检查所选学校/组织下是否存在年级、班级或学生；存在关联数据时系统会拒绝删除。
+                存在关联数据时系统会拒绝删除。
               </p>
               <label style={cascadeOptionStyle}>
                 <input
@@ -429,7 +429,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                 <span>同时删除所选学校/组织下的所有年级、班级、学生</span>
               </label>
               {deleteConfirm.cascadeDelete ? (
-                <p style={dangerHintStyle}>该操作会软删除年级、班级，并将学生置为离校/禁用，请谨慎确认。</p>
+                <p style={dangerHintStyle}>将同时删除年级、班级，并禁用学生。</p>
               ) : null}
             </div>
             <div className="ui-admin-modal__footer">
@@ -486,7 +486,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                 </div>
 
                 <div style={editorFooterStyle} className="school-management-modal__footer">
-                  <span style={editorFooterHintStyle} className="school-management-modal__footer-hint">详情仅展示当前数据，进入编辑后可修改基础信息。</span>
+                  <span style={editorFooterHintStyle} className="school-management-modal__footer-hint"></span>
                   <div className="ui-admin-actions-bar__group">
                     {isSystemAdmin ? <button type="button" className="ui-button ui-button--ghost" onClick={() => void handleToggleStatus(modal.school)}>{modal.school.status === "active" ? "停用" : "启用"}</button> : null}
                     <button type="button" className="ui-button ui-button--primary" onClick={() => void openEditModal(modal.school)}>编辑基础信息</button>
@@ -515,7 +515,7 @@ export function SchoolManagementPanel({ api }: { api: SchoolManagementApi }) {
                     <div className="ui-admin-form__field" style={logoUploadFieldStyle}>
                       <label htmlFor="school_logo_file">上传校徽/头像</label>
                       <input id="school_logo_file" type="file" accept="image/*" onChange={(event) => void handleLogoFile(event.target.files?.[0] ?? null)} />
-                      <small className="ui-admin-subtle">可为空，为空时展示默认图像。</small>
+                      <small className="ui-admin-subtle">可留空</small>
                     </div>
                   </aside>
 
