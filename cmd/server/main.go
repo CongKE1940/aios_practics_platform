@@ -111,6 +111,8 @@ func main() {
 			bootstrap.WithAPIV1Routes(noticeHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(dictionaryHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(orgHandler.RegisterRoutes),
+			bootstrap.WithAPIV1Routes(orgHandler.RegisterPeriodRoutes),
+			bootstrap.WithAPIV1Routes(orgHandler.RegisterLifecycleRoutes),
 			bootstrap.WithAPIV1Routes(questionBankHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(questionHandler.RegisterRoutes),
 			bootstrap.WithAPIV1Routes(importHandler.RegisterRoutes),
