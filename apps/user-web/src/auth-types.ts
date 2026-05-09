@@ -4,6 +4,7 @@ export interface UserSessionState {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  savedAt?: number;
   menus: MenuItem[];
   user: LoginResponse["user"];
 }
