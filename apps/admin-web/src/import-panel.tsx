@@ -31,6 +31,7 @@ const importTypes: Array<{ value: ImportTemplateType; label: string; filename: s
   { value: "student", label: "学生", filename: "student_import_template.csv" },
   { value: "question_bank", label: "题库", filename: "question_bank_import_template.csv" },
   { value: "question", label: "题目", filename: "question_import_template.csv" },
+  { value: "exam", label: "考试", filename: "exam_import_template.csv" },
   { value: "exam_paper", label: "试卷", filename: "exam_paper_import_template.csv" }
 ];
 
