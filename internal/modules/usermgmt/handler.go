@@ -37,6 +37,10 @@ func (handler *Handler) RegisterRoutes(router gin.IRouter) {
 	router.PUT("/users/:id/roles", handler.assignRoles)
 	router.POST("/users/:id/reset-password", handler.resetPassword)
 	router.POST("/users/:id/disable", handler.disableUser)
+	router.GET("/students", handler.listStudents)
+	router.POST("/students", handler.createStudent)
+	router.GET("/teachers", handler.listTeachers)
+	router.POST("/teachers", handler.createTeacher)
 }
 
 func (handler *Handler) myProfile(ctx *gin.Context) {
