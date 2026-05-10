@@ -28,6 +28,78 @@ describe("UserApp", () => {
     expect(screen.queryByRole("button", { name: "练题中心" })).toBeNull();
   });
 
+  it("opens a standalone initial password change page before entering user shell", async () => {
+    const changeInitialPassword = vi.fn(async () => true);
+    const login = vi.fn(async (body: { tenant_code: string; username: string; password: string }) => {
+      if (body.password === "Init@123456") {
+        throw new apiSdk.ApiError({
+          code: apiSdk.PASSWORD_CHANGE_REQUIRED_CODE,
+          message: "需要修改初始密码",
+          status: 428
+        });
+      }
+
+      return {
+        access_token: "access-1",
+        refresh_token: "refresh-1",
+        expires_in: 7200,
+        user: {
+          id: 7,
+          tenant_id: 1,
+          display_name: "李同学",
+          user_type: "student",
+          roles: ["student"],
+          permissions: ["practice:use"]
+        }
+      };
+    });
+
+    render(
+      <UserApp
+        authApi={{
+          ...createAuthApiMock(),
+          login,
+          changeInitialPassword,
+          menus: async () => [{ id: 21, name: "我的课程", path: "/app/courses", children: [] }]
+        }}
+        practiceApi={createPracticeApiMock()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "平台管理（platform）" })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText("组织"), { target: { value: "platform" } });
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "student_001" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "Init@123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("form", { name: "初始密码修改表单" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("form", { name: "登录表单" })).toBeNull();
+    expect(screen.queryByLabelText("组织")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("新密码"), { target: { value: "Safe@123456" } });
+    fireEvent.change(screen.getByLabelText("确认新密码"), { target: { value: "Safe@123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "修改密码并登录" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("欢迎回来，李同学")).toBeTruthy();
+    });
+    expect(changeInitialPassword).toHaveBeenCalledWith({
+      tenant_code: "platform",
+      username: "student_001",
+      old_password: "Init@123456",
+      new_password: "Safe@123456"
+    });
+    expect(login).toHaveBeenLastCalledWith({
+      tenant_code: "platform",
+      username: "student_001",
+      password: "Safe@123456"
+    });
+  });
+
   it("restores session from localStorage on startup", async () => {
     window.localStorage.setItem("aios.user.session", JSON.stringify(createSession([
       { id: 21, name: "我的课程", path: "/app/courses", children: [] },

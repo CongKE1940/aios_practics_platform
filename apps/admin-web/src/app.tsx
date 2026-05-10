@@ -405,6 +405,7 @@ export function AdminApp({
           new_password: ""
         });
         setPasswordChangeConfirm("");
+        setForm((current) => ({ ...current, password: "" }));
         setErrorMessage("");
       } else {
         setErrorMessage(error instanceof Error ? error.message : "登录失败");
@@ -547,6 +548,26 @@ export function AdminApp({
   }, [currentNotificationApi, session]);
 
   if (!session) {
+    if (passwordChangeState) {
+      return (
+        <InitialPasswordChangePage
+          state={passwordChangeState}
+          confirmPassword={passwordChangeConfirm}
+          submitting={passwordChanging}
+          errorMessage={errorMessage}
+          onSubmit={handleInitialPasswordChange}
+          onStateChange={setPasswordChangeState}
+          onConfirmPasswordChange={setPasswordChangeConfirm}
+          onBack={() => {
+            setPasswordChangeState(null);
+            setPasswordChangeConfirm("");
+            setForm((current) => ({ ...current, password: "" }));
+            setErrorMessage("");
+          }}
+        />
+      );
+    }
+
     return (
       <main className="ui-auth-page">
         <img src={sceneBackground} alt="" className="ui-scene-image" />
@@ -555,11 +576,7 @@ export function AdminApp({
           <h1 className="ui-auth-hero__title">题练通 · 管理端</h1>
         </section>
         <section className="ui-auth-card">
-          <form
-            onSubmit={(event) => (passwordChangeState ? void handleInitialPasswordChange(event) : void handleSubmit(event))}
-            aria-label="登录表单"
-            className="ui-auth-form"
-          >
+          <form onSubmit={(event) => void handleSubmit(event)} aria-label="登录表单" className="ui-auth-form">
             <header className="ui-auth-form__header">
               <img src={brandIcon} alt="" className="ui-brand-mark" />
               <h2>管理端登录</h2>
@@ -604,39 +621,21 @@ export function AdminApp({
               />
             </div>
             {errorMessage ? <StatusNotice tone="danger" title="登录失败" description={errorMessage} /> : null}
-            {passwordChangeState ? (
-              <InitialPasswordChangeFields
-                state={passwordChangeState}
-                confirmPassword={passwordChangeConfirm}
-                submitting={passwordChanging}
-                onStateChange={setPasswordChangeState}
-                onConfirmPasswordChange={setPasswordChangeConfirm}
-                onBack={() => {
-                  setPasswordChangeState(null);
-                  setPasswordChangeConfirm("");
-                  setForm((current) => ({ ...current, password: "" }));
-                  setErrorMessage("");
-                }}
-              />
-            ) : (
-              <>
-                <button
-                  type="submit"
-                  className="ui-button ui-button--primary"
-                  disabled={submitting || organizationsLoading || !form.tenant_code}
-                >
-                  {submitting ? "登录中..." : "登录"}
-                </button>
-                <footer className="ui-auth-form__footer">
-                  <button type="button" className="ui-auth-link">
-                    学习端入口
-                  </button>
-                  <button type="button" className="ui-auth-link">
-                    忘记密码？
-                  </button>
-                </footer>
-              </>
-            )}
+            <button
+              type="submit"
+              className="ui-button ui-button--primary"
+              disabled={submitting || organizationsLoading || !form.tenant_code}
+            >
+              {submitting ? "登录中..." : "登录"}
+            </button>
+            <footer className="ui-auth-form__footer">
+              <button type="button" className="ui-auth-link">
+                学习端入口
+              </button>
+              <button type="button" className="ui-auth-link">
+                忘记密码？
+              </button>
+            </footer>
           </form>
         </section>
       </main>
@@ -888,10 +887,60 @@ function isPasswordChangeRequired(error: unknown): boolean {
   return error instanceof ApiError && error.code === PASSWORD_CHANGE_REQUIRED_CODE;
 }
 
+interface InitialPasswordChangePageProps {
+  state: ChangeInitialPasswordRequest;
+  confirmPassword: string;
+  submitting: boolean;
+  errorMessage: string;
+  onSubmit(event: FormEvent<HTMLFormElement>): Promise<void>;
+  onStateChange(state: ChangeInitialPasswordRequest): void;
+  onConfirmPasswordChange(value: string): void;
+  onBack(): void;
+}
+
+function InitialPasswordChangePage({
+  state,
+  confirmPassword,
+  submitting,
+  errorMessage,
+  onSubmit,
+  onStateChange,
+  onConfirmPasswordChange,
+  onBack
+}: InitialPasswordChangePageProps) {
+  return (
+    <main className="ui-auth-page">
+      <img src={sceneBackground} alt="" className="ui-scene-image" />
+      <section className="ui-auth-hero">
+        <span className="ui-auth-hero__sr">AIOS 管理端初始密码修改背景</span>
+      </section>
+      <section className="ui-auth-card">
+        <form onSubmit={(event) => void onSubmit(event)} aria-label="初始密码修改表单" className="ui-auth-form">
+          <header className="ui-auth-form__header">
+            <img src={brandIcon} alt="" className="ui-brand-mark" />
+            <h1>修改初始密码</h1>
+            <p>{state.username}</p>
+          </header>
+          <InitialPasswordChangeFields
+            state={state}
+            confirmPassword={confirmPassword}
+            submitting={submitting}
+            errorMessage={errorMessage}
+            onStateChange={onStateChange}
+            onConfirmPasswordChange={onConfirmPasswordChange}
+            onBack={onBack}
+          />
+        </form>
+      </section>
+    </main>
+  );
+}
+
 interface InitialPasswordChangeFieldsProps {
   state: ChangeInitialPasswordRequest;
   confirmPassword: string;
   submitting: boolean;
+  errorMessage?: string;
   onStateChange(state: ChangeInitialPasswordRequest): void;
   onConfirmPasswordChange(value: string): void;
   onBack(): void;
@@ -901,6 +950,7 @@ function InitialPasswordChangeFields({
   state,
   confirmPassword,
   submitting,
+  errorMessage,
   onStateChange,
   onConfirmPasswordChange,
   onBack
@@ -928,6 +978,7 @@ function InitialPasswordChangeFields({
           onChange={(event) => onConfirmPasswordChange(event.target.value)}
         />
       </div>
+      {errorMessage ? <StatusNotice tone="danger" title="初始密码修改失败" description={errorMessage} /> : null}
       <button type="submit" className="ui-button ui-button--primary" disabled={submitting}>
         {submitting ? "修改中..." : "修改密码并登录"}
       </button>

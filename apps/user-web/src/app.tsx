@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 
 import {
   ApiError,
@@ -280,7 +280,8 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
     }
   }
 
-  async function handleInitialPasswordChange() {
+  async function handleInitialPasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (!passwordChangeState) {
       return;
     }
@@ -348,6 +349,25 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
   }
 
   if (!session) {
+    if (passwordChangeState) {
+      return (
+        <InitialPasswordChangePage
+          state={passwordChangeState}
+          confirmPassword={passwordChangeConfirm}
+          submitting={passwordChanging}
+          errorMessage={errorMessage}
+          onStateChange={setPasswordChangeState}
+          onConfirmPasswordChange={setPasswordChangeConfirm}
+          onSubmit={handleInitialPasswordChange}
+          onBack={() => {
+            setPasswordChangeState(null);
+            setPasswordChangeConfirm("");
+            setErrorMessage("");
+          }}
+        />
+      );
+    }
+
     return (
       <main className="ui-auth-page ui-auth-page--learner">
         <img src={sceneBackground} alt="" className="ui-scene-image" />
@@ -362,18 +382,7 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
             organizationsError={organizationsError}
             submitting={submitting}
             errorMessage={errorMessage}
-            passwordChangeState={passwordChangeState}
-            passwordChangeConfirm={passwordChangeConfirm}
-            passwordChanging={passwordChanging}
             onSubmit={handleLogin}
-            onPasswordChangeStateChange={setPasswordChangeState}
-            onPasswordChangeConfirmChange={setPasswordChangeConfirm}
-            onPasswordChangeSubmit={handleInitialPasswordChange}
-            onPasswordChangeBack={() => {
-              setPasswordChangeState(null);
-              setPasswordChangeConfirm("");
-              setErrorMessage("");
-            }}
           />
         </section>
       </main>
@@ -474,6 +483,74 @@ export function UserApp({ authApi, practiceApi, sessionStore }: UserAppProps) {
         ) : null}
       </AppShell>
     </div>
+  );
+}
+
+interface InitialPasswordChangePageProps {
+  state: ChangeInitialPasswordRequest;
+  confirmPassword: string;
+  submitting: boolean;
+  errorMessage: string;
+  onStateChange(state: ChangeInitialPasswordRequest): void;
+  onConfirmPasswordChange(value: string): void;
+  onSubmit(event: FormEvent<HTMLFormElement>): Promise<void>;
+  onBack(): void;
+}
+
+function InitialPasswordChangePage({
+  state,
+  confirmPassword,
+  submitting,
+  errorMessage,
+  onStateChange,
+  onConfirmPasswordChange,
+  onSubmit,
+  onBack
+}: InitialPasswordChangePageProps) {
+  return (
+    <main className="ui-auth-page ui-auth-page--learner">
+      <img src={sceneBackground} alt="" className="ui-scene-image" />
+      <section className="ui-auth-hero">
+        <span className="ui-auth-hero__sr">AIOS 学习端初始密码修改背景</span>
+        <h1 className="ui-auth-hero__title">修改初始密码</h1>
+        <p className="ui-auth-hero__copy">完成密码更新后进入学习工作台。</p>
+      </section>
+      <section className="ui-auth-card">
+        <form aria-label="初始密码修改表单" className="ui-auth-form" onSubmit={onSubmit}>
+          <header className="ui-auth-form__header">
+            <img src={brandIcon} alt="" className="ui-brand-mark" />
+            <h2>设置新密码</h2>
+            <p>{state.username}</p>
+          </header>
+          <StatusNotice tone="warning" title="需要修改初始密码" description="当前账号使用一次性密码，修改后才能进入系统。" />
+          <div className="ui-field">
+            <label htmlFor="initial_new_password">新密码</label>
+            <input
+              id="initial_new_password"
+              type="password"
+              value={state.new_password}
+              onChange={(event) => onStateChange({ ...state, new_password: event.target.value })}
+            />
+          </div>
+          <div className="ui-field">
+            <label htmlFor="initial_confirm_password">确认新密码</label>
+            <input
+              id="initial_confirm_password"
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => onConfirmPasswordChange(event.target.value)}
+            />
+          </div>
+          {errorMessage ? <StatusNotice tone="danger" title="初始密码修改失败" description={errorMessage} /> : null}
+          <button type="submit" className="ui-button ui-button--primary" disabled={submitting}>
+            {submitting ? "修改中..." : "修改密码并登录"}
+          </button>
+          <button type="button" className="ui-button ui-button--ghost" disabled={submitting} onClick={onBack}>
+            返回登录
+          </button>
+        </form>
+      </section>
+    </main>
   );
 }
 
