@@ -76,7 +76,7 @@ func TestRouterHandlesCORSPreflightForAPIV1Routes(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/auth/login", nil)
-	req.Header.Set("Origin", "http://127.0.0.1:5174")
+	req.Header.Set("Origin", "https://unknown.example.test")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
 	req.Header.Set("Access-Control-Request-Headers", "content-type")
 	rec := httptest.NewRecorder()
@@ -90,10 +90,36 @@ func TestRouterHandlesCORSPreflightForAPIV1Routes(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:5174" {
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://unknown.example.test" {
 		t.Fatalf("Access-Control-Allow-Origin = %q", got)
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Methods"); got == "" {
 		t.Fatal("Access-Control-Allow-Methods is empty")
+	}
+}
+
+func TestRouterSetsCORSHeadersForAnyOrigin(t *testing.T) {
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Origin", "http://192.168.1.200:5174")
+	rec := httptest.NewRecorder()
+
+	NewRouter(cfg).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://192.168.1.200:5174" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("Access-Control-Allow-Credentials = %q", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Private-Network"); got != "true" {
+		t.Fatalf("Access-Control-Allow-Private-Network = %q", got)
 	}
 }

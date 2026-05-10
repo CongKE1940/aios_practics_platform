@@ -7,17 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var allowedOrigins = map[string]struct{}{
-	"http://127.0.0.1:5173": {},
-	"http://127.0.0.1:5174": {},
-	"http://localhost:5173": {},
-	"http://localhost:5174": {},
-	"https://admin.congke.top": {},
-	"https://admin.congke.top:50443": {},
-	"https://user.congke.top": {},
-	"https://user.congke.top:50443": {},
-}
-
 func corsMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		origin := ctx.GetHeader("Origin")
@@ -26,25 +15,25 @@ func corsMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		if _, ok := allowedOrigins[origin]; ok {
-			headers := ctx.Writer.Header()
-			headers.Set("Access-Control-Allow-Origin", origin)
-			headers.Set("Vary", "Origin")
-			headers.Set("Access-Control-Allow-Credentials", "true")
-			headers.Set("Access-Control-Allow-Methods", strings.Join([]string{
-				http.MethodGet,
-				http.MethodPost,
-				http.MethodPut,
-				http.MethodDelete,
-				http.MethodOptions,
-			}, ", "))
+		headers := ctx.Writer.Header()
+		headers.Set("Access-Control-Allow-Origin", origin)
+		headers.Set("Vary", "Origin")
+		headers.Set("Access-Control-Allow-Credentials", "true")
+		headers.Set("Access-Control-Allow-Private-Network", "true")
+		headers.Set("Access-Control-Allow-Methods", strings.Join([]string{
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodOptions,
+		}, ", "))
 
-			requestHeaders := ctx.GetHeader("Access-Control-Request-Headers")
-			if requestHeaders == "" {
-				requestHeaders = "Authorization, Content-Type, X-Request-Id"
-			}
-			headers.Set("Access-Control-Allow-Headers", requestHeaders)
+		requestHeaders := ctx.GetHeader("Access-Control-Request-Headers")
+		if requestHeaders == "" {
+			requestHeaders = "Authorization, Content-Type, X-Request-Id"
 		}
+		headers.Set("Access-Control-Allow-Headers", requestHeaders)
 
 		if ctx.Request.Method == http.MethodOptions {
 			ctx.Status(http.StatusNoContent)
